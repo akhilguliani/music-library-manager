@@ -57,6 +57,7 @@ nav:
     - Quick Start: getting-started/quickstart.md
     - Configuration: getting-started/configuration.md
   - User Guide:
+    - Desktop Application: user-guide/desktop-app.md
     - Database Operations: user-guide/database.md
     - File Management: user-guide/files.md
     - Audio Analysis: user-guide/analysis.md

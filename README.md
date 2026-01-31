@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen.svg)]()
 
-A powerful Python CLI tool for managing VirtualDJ music libraries.
+A powerful Python tool for managing VirtualDJ music libraries, with both CLI and desktop GUI interfaces.
 
 ## Features
 
@@ -14,6 +14,7 @@ A powerful Python CLI tool for managing VirtualDJ music libraries.
 - **Audio Analysis** - Import Mixed In Key tags, calculate energy levels (1-10)
 - **Loudness Normalization** - LUFS-based normalization with parallel processing
 - **Serato Export** - Export cue points, beatgrid, and metadata to Serato DJ
+- **Desktop GUI** - Visual interface with progress tracking and pause/resume capability
 
 ## Installation
 
@@ -25,6 +26,9 @@ pip install -e .
 
 # Verify installation
 vdj-manager --version
+
+# Launch desktop GUI
+vdj-manager-gui
 ```
 
 ### Requirements
@@ -106,6 +110,20 @@ vdj-manager normalize apply TARGET [--destructive] [-w WORKERS]
 vdj-manager export serato [--all|--playlist NAME] [--cues-only]
 ```
 
+## Desktop Application
+
+For a visual interface with progress tracking and pause/resume support:
+
+```bash
+vdj-manager-gui
+```
+
+Features:
+- Database browser with virtual scrolling (18k+ tracks)
+- Real-time progress display
+- Pause/Resume long operations
+- Automatic checkpointing for recovery after interruption
+
 ## Database Locations
 
 | Database | Path |
@@ -173,9 +191,15 @@ vdj_manager/
 ├── normalize/
 │   ├── loudness.py     # LUFS measurement
 │   └── processor.py    # Parallel normalization
-└── export/
-    ├── serato.py       # Serato crate/tag writer
-    └── mapper.py       # VDJ→Serato mapping
+├── export/
+│   ├── serato.py       # Serato crate/tag writer
+│   └── mapper.py       # VDJ→Serato mapping
+└── ui/                 # Desktop GUI (PySide6)
+    ├── app.py          # Application entry point
+    ├── main_window.py  # Main window
+    ├── widgets/        # UI components
+    ├── workers/        # Background processing
+    └── state/          # Checkpoint management
 ```
 
 ## Development
