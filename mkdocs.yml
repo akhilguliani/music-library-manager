@@ -74,3 +74,4 @@ nav:
   - Development:
     - Contributing: development/contributing.md
     - Testing: development/testing.md
+    - Development History: development/history.md
