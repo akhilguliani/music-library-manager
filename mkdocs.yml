@@ -1,0 +1,75 @@
+site_name: VDJ Manager
+site_description: A Python CLI tool for managing VirtualDJ music libraries
+site_author: Akhil Guliani
+repo_url: https://github.com/aguliani/vdj-manager
+repo_name: aguliani/vdj-manager
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - tables
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Database Operations: user-guide/database.md
+    - File Management: user-guide/files.md
+    - Audio Analysis: user-guide/analysis.md
+    - Normalization: user-guide/normalization.md
+    - Serato Export: user-guide/serato-export.md
+  - CLI Reference:
+    - Commands: cli/commands.md
+  - API Reference:
+    - Core: api/core.md
+    - Files: api/files.md
+    - Analysis: api/analysis.md
+    - Normalize: api/normalize.md
+    - Export: api/export.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
