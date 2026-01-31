@@ -334,41 +334,23 @@ class VDJDatabase:
     def save(self, output_path: Optional[Path] = None) -> None:
         """Save the database to file.
 
-        This method preserves VDJ's expected format:
-        - Double quotes in XML declaration
-        - Windows line endings (CRLF)
+        VDJ database format:
+        - Single quotes in XML declaration (lxml default)
+        - Unix line endings (LF)
+        - UTF-8 encoding
         """
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
         path = output_path or self.db_path
 
-        # Serialize the XML tree
-        xml_bytes = etree.tostring(
-            self._root,
+        # Use lxml's tree.write() which preserves the format VDJ expects
+        self._tree.write(
+            str(path),
             encoding="UTF-8",
             xml_declaration=True,
             pretty_print=False,
         )
-
-        # lxml uses single quotes in XML declaration - VDJ expects double quotes
-        # Also ensure we use CRLF line endings which VDJ expects
-        xml_str = xml_bytes.decode("UTF-8")
-
-        # Fix XML declaration quotes: <?xml version='1.0' -> <?xml version="1.0"
-        if xml_str.startswith("<?xml"):
-            # Replace single quotes with double quotes in the declaration
-            decl_end = xml_str.index("?>") + 2
-            declaration = xml_str[:decl_end]
-            declaration = declaration.replace("'", '"')
-            xml_str = declaration + xml_str[decl_end:]
-
-        # Convert to CRLF line endings (Windows style) that VDJ expects
-        xml_str = xml_str.replace("\r\n", "\n").replace("\n", "\r\n")
-
-        # Write as binary to preserve exact bytes
-        with open(path, "wb") as f:
-            f.write(xml_str.encode("UTF-8"))
 
     def merge_from(self, other: "VDJDatabase", prefer_other: bool = True) -> dict:
         """Merge songs from another database into this one.
