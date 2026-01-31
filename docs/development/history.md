@@ -115,84 +115,69 @@ Each step was implemented with corresponding unit tests:
 
 ## Bugs Encountered and Fixes
 
-### Bug #1: VDJ Database Corruption
+### Bug #1: VDJ Database Corruption (Investigation & Correction)
 
-**Symptoms:**
+**Initial Symptoms:**
 - VirtualDJ reported database as "corrupted" after CLI operations
-- Only 39 files showing instead of thousands
+- Database file was empty (0 bytes) or truncated
 
-**Root Cause:**
-lxml's default XML output differs from VDJ's expected format:
+**Initial (Incorrect) Hypothesis:**
+We initially assumed VDJ required specific XML formatting different from lxml defaults:
+- Double quotes instead of single quotes in XML declaration
+- CRLF line endings instead of Unix LF
 
-| Aspect | lxml Default | VDJ Expected |
-|--------|--------------|--------------|
-| XML Declaration | `<?xml version='1.0'...?>` (single quotes) | `<?xml version="1.0"...?>` (double quotes) |
-| Line Endings | `\n` (Unix) | `\r\n` (Windows CRLF) |
+**Initial Fix (commit 34825db) - INCORRECT:**
+Changed the save() method to convert single quotes to double quotes and LF to CRLF.
 
-**Fix (commit 34825db):**
+**What Actually Happened:**
+After restoring from backup and examining working VDJ database files, we discovered:
+
+| Aspect | What VDJ Actually Uses | What We Changed To |
+|--------|------------------------|-------------------|
+| XML Declaration | `<?xml version='1.0'...?>` (single quotes) | Double quotes (wrong!) |
+| Line Endings | `\n` (Unix LF) | `\r\n` (CRLF - wrong!) |
+
+The original lxml output was **correct**. Our "fix" actually broke things!
+
+**Real Root Cause:**
+The database corruption was likely caused by:
+1. Application interruption during write operations
+2. The "fix" itself may have caused issues
+
+**Corrected Fix (commit 6b039d4):**
 
 ```python
 def save(self, output_path: Optional[Path] = None) -> None:
     """Save the database to file.
 
-    This method preserves VDJ's expected format:
-    - Double quotes in XML declaration
-    - Windows line endings (CRLF)
+    VDJ database format:
+    - Single quotes in XML declaration (lxml default)
+    - Unix line endings (LF)
+    - UTF-8 encoding
     """
-    # Serialize the XML tree
-    xml_bytes = etree.tostring(
-        self._root,
+    if not self.is_loaded:
+        raise RuntimeError("Database not loaded")
+
+    path = output_path or self.db_path
+
+    # Use lxml's tree.write() which produces format VDJ accepts
+    self._tree.write(
+        str(path),
         encoding="UTF-8",
         xml_declaration=True,
         pretty_print=False,
     )
-
-    xml_str = xml_bytes.decode("UTF-8")
-
-    # Fix XML declaration quotes
-    if xml_str.startswith("<?xml"):
-        decl_end = xml_str.index("?>") + 2
-        declaration = xml_str[:decl_end]
-        declaration = declaration.replace("'", '"')
-        xml_str = declaration + xml_str[decl_end:]
-
-    # Convert to CRLF line endings
-    xml_str = xml_str.replace("\r\n", "\n").replace("\n", "\r\n")
-
-    # Write as binary to preserve exact bytes
-    with open(path, "wb") as f:
-        f.write(xml_str.encode("UTF-8"))
 ```
 
-**Test case added (commit 15ac5de):**
+**Key Lesson Learned:**
+**ALWAYS examine actual working files before assuming format requirements!**
 
-```python
-class TestVDJDatabaseSaveFormat:
-    def test_save_uses_double_quotes_in_xml_declaration(self, temp_db_file):
-        db = VDJDatabase(temp_db_file)
-        db.load()
-        db.save()
+We assumed VDJ needed a specific format based on speculation, but examining actual VDJ-created database files showed lxml's default output was perfectly acceptable. The lesson is:
 
-        with open(temp_db_file, "rb") as f:
-            content = f.read()
-
-        xml_str = content.decode("UTF-8")
-        assert xml_str.startswith('<?xml version="1.0"')
-
-    def test_save_uses_crlf_line_endings(self, temp_db_file):
-        db = VDJDatabase(temp_db_file)
-        db.load()
-        db.save()
-
-        with open(temp_db_file, "rb") as f:
-            content = f.read()
-
-        lines_with_crlf = content.count(b"\r\n")
-        lines_with_lf_only = content.count(b"\n") - lines_with_crlf
-        assert lines_with_lf_only == 0
-```
-
-**Lesson learned:** Always verify output format matches consumer expectations, especially for proprietary software.
+1. **Before fixing**: Examine working examples of the target format
+2. **Hex dump comparison**: Use `xxd` to compare byte-by-byte
+3. **Don't over-engineer**: Sometimes the simplest solution (default lxml output) is correct
+4. **Test with actual software**: Verify saved files work in VDJ, not just pass unit tests
 
 ---
 
@@ -454,17 +439,23 @@ Final test count: **199 tests passing**
 
 ## Lessons Learned
 
-1. **Always test with real consumer software** - The VDJ corruption bug would have been caught by loading saved files in VirtualDJ during development.
+1. **Examine actual working files before fixing format issues** - We incorrectly assumed VDJ needed double quotes and CRLF, but examining actual VDJ database files showed lxml defaults were correct. Always `xxd` or hex-dump working files first.
 
-2. **File metadata preservation is tricky** - `shutil.copy2` preserving mtime caused unexpected sorting issues.
+2. **Test with real consumer software** - Unit tests passing doesn't mean the software works. Always verify with the actual application (VirtualDJ in this case).
 
-3. **Qt testing requires event loop awareness** - Signals won't be received without processing events.
+3. **Don't over-engineer** - The simplest solution (lxml's default output) was correct. Adding "fixes" for assumed requirements introduced bugs.
 
-4. **Batch boundaries are natural pause points** - Designing for interruptibility from the start makes pause/resume straightforward.
+4. **File metadata preservation is tricky** - `shutil.copy2` preserving mtime caused unexpected sorting issues.
 
-5. **Checkpoint early, checkpoint often** - JSON checkpoints are cheap and provide crash recovery for free.
+5. **Qt testing requires event loop awareness** - Signals won't be received without processing events.
 
-6. **Separate bugfix commits** - Each bug fix should be its own commit with a corresponding test case for traceability.
+6. **Batch boundaries are natural pause points** - Designing for interruptibility from the start makes pause/resume straightforward.
+
+7. **Checkpoint early, checkpoint often** - JSON checkpoints are cheap and provide crash recovery for free.
+
+8. **Separate bugfix commits** - Each bug fix should be its own commit with a corresponding test case for traceability.
+
+9. **When a fix doesn't work, question the hypothesis** - If the "fix" doesn't solve the problem, the root cause analysis was probably wrong.
 
 ## Future Improvements
 
