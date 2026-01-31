@@ -186,6 +186,82 @@ class TestVDJDatabase:
         assert len(songs) == 4
 
 
+class TestVDJDatabaseSaveFormat:
+    """Tests for VDJ database save format compatibility.
+
+    VirtualDJ expects specific XML formatting:
+    - Double quotes in XML declaration (not single quotes)
+    - CRLF line endings (Windows style)
+
+    These tests verify the save() method produces compatible output.
+    """
+
+    def test_save_uses_double_quotes_in_xml_declaration(self, temp_db_file):
+        """Test that saved XML uses double quotes in declaration.
+
+        Bug fix: lxml outputs single quotes by default, but VDJ expects:
+        <?xml version="1.0" encoding="UTF-8"?>
+        """
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        # Read raw bytes to check formatting
+        with open(temp_db_file, "rb") as f:
+            content = f.read()
+
+        # Check for double quotes in XML declaration
+        assert b'<?xml version="1.0"' in content or b"<?xml version='1.0'" not in content
+        # More specific: the declaration should have double quotes
+        xml_str = content.decode("UTF-8")
+        assert xml_str.startswith('<?xml version="1.0"')
+
+    def test_save_uses_crlf_line_endings(self, temp_db_file):
+        """Test that saved XML uses CRLF (Windows) line endings.
+
+        Bug fix: lxml outputs Unix line endings by default, but VDJ expects CRLF.
+        """
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        # Read raw bytes to check line endings
+        with open(temp_db_file, "rb") as f:
+            content = f.read()
+
+        # Should have CRLF line endings
+        # Check that we have \r\n and not standalone \n
+        lines_with_crlf = content.count(b"\r\n")
+        lines_with_lf_only = content.count(b"\n") - lines_with_crlf
+
+        # All line breaks should be CRLF
+        assert lines_with_lf_only == 0, f"Found {lines_with_lf_only} Unix line endings"
+        assert lines_with_crlf > 0, "No CRLF line endings found"
+
+    def test_save_preserves_format_after_modification(self, temp_db_file):
+        """Test that format is preserved even after modifying the database."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+
+        # Make a modification
+        db.update_song_tags("/path/to/track1.mp3", Grouping="Energy 9")
+        db.save()
+
+        # Read and verify format
+        with open(temp_db_file, "rb") as f:
+            content = f.read()
+
+        xml_str = content.decode("UTF-8")
+
+        # Should have double quotes in declaration
+        assert xml_str.startswith('<?xml version="1.0"')
+
+        # Should have CRLF line endings
+        lines_with_crlf = content.count(b"\r\n")
+        lines_with_lf_only = content.count(b"\n") - lines_with_crlf
+        assert lines_with_lf_only == 0
+
+
 class TestVDJDatabaseFileNotFound:
     def test_load_nonexistent_file(self):
         """Test loading non-existent file raises error."""
