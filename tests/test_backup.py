@@ -121,3 +121,28 @@ class TestBackupManager:
 
         with pytest.raises(FileNotFoundError):
             mgr.create_backup(Path("/nonexistent/file.xml"))
+
+    def test_backup_mtime_reflects_creation_time(self, temp_backup_dir, sample_db_file):
+        """Test that backup file mtime reflects backup creation time, not source mtime.
+
+        Bug fix: shutil.copy2 preserves source mtime, which broke sorting backups
+        by creation order. The fix touches the file after copying to update mtime.
+        """
+        import time
+        mgr = BackupManager(backup_dir=temp_backup_dir)
+
+        # Create first backup
+        first_backup = mgr.create_backup(sample_db_file, label="first")
+        first_mtime = first_backup.stat().st_mtime
+
+        # Wait to ensure different timestamps
+        time.sleep(0.1)
+
+        # Create second backup
+        second_backup = mgr.create_backup(sample_db_file, label="second")
+        second_mtime = second_backup.stat().st_mtime
+
+        # Second backup should have a later mtime
+        assert second_mtime > first_mtime, (
+            f"Second backup mtime ({second_mtime}) should be > first backup mtime ({first_mtime})"
+        )

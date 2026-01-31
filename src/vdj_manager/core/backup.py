@@ -47,6 +47,10 @@ class BackupManager:
         backup_path = self.backup_dir / backup_name
         shutil.copy2(db_path, backup_path)
 
+        # Update mtime to current time so backups sort correctly by creation order
+        # (copy2 preserves source mtime, which breaks sorting when creating multiple backups)
+        backup_path.touch()
+
         return backup_path
 
     def list_backups(self, source: Optional[str] = None) -> list[Path]:
