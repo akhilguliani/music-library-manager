@@ -837,88 +837,12 @@ def normalize():
 @normalize.command("measure")
 @click.option("--all", "measure_all", is_flag=True, help="Measure all tracks")
 @click.option("--export", "export_csv", type=click.Path(), help="Export results to CSV")
+@click.option("--workers", "-w", type=int, default=None, help="Number of parallel workers (default: CPU count - 1)")
+@click.option("--limit", "-n", type=int, default=None, help="Limit number of tracks to measure")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
 @click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def normalize_measure(measure_all: bool, export_csv: Optional[str], db_choice: str):
-    """Measure current loudness levels."""
-    try:
-        from .normalize.loudness import LoudnessMeasurer
-    except ImportError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        return
-
-    path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
-
-    if not path.exists():
-        console.print(f"[red]Database not found: {path}[/red]")
-        return
-
-    db = get_database(path)
-    measurer = LoudnessMeasurer()
-
-    # Find tracks to measure
-    to_measure = []
-    for song in db.songs.values():
-        if song.is_windows_path or song.is_netsearch:
-            continue
-        if not Path(song.file_path).exists():
-            continue
-        to_measure.append(song)
-
-    console.print(f"Measuring [bold]{len(to_measure)}[/bold] tracks")
-
-    results = []
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-    ) as progress:
-        task = progress.add_task("Measuring loudness...", total=len(to_measure))
-
-        for song in to_measure[:100]:  # Limit for demo
-            try:
-                lufs = measurer.measure(song.file_path)
-                if lufs is not None:
-                    results.append({
-                        "file_path": song.file_path,
-                        "artist": song.tags.author if song.tags else "",
-                        "title": song.tags.title if song.tags else "",
-                        "lufs": lufs,
-                    })
-            except Exception:
-                pass
-            progress.advance(task)
-
-    # Show summary
-    if results:
-        lufs_values = [r["lufs"] for r in results]
-        avg_lufs = sum(lufs_values) / len(lufs_values)
-        min_lufs = min(lufs_values)
-        max_lufs = max(lufs_values)
-
-        console.print(f"\n[bold]Loudness Summary[/bold]")
-        console.print(f"Average: {avg_lufs:.1f} LUFS")
-        console.print(f"Range: {min_lufs:.1f} to {max_lufs:.1f} LUFS")
-        console.print(f"Target: -14.0 LUFS (streaming standard)")
-
-    if export_csv and results:
-        import csv
-        with open(export_csv, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["file_path", "artist", "title", "lufs"])
-            writer.writeheader()
-            writer.writerows(results)
-        console.print(f"[green]✓[/green] Exported to {export_csv}")
-
-
-@normalize.command("apply")
-@click.argument("target", type=float, default=-14.0)
-@click.option("--destructive", is_flag=True, help="Rewrite files (default: adjust VDJ volume)")
-@click.option("--dry-run", is_flag=True, help="Show what would be done")
-@click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def normalize_apply(target: float, destructive: bool, dry_run: bool, db_choice: str):
-    """Apply loudness normalization."""
+def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Optional[int], limit: Optional[int], db_choice: str):
+    """Measure current loudness levels using parallel processing."""
     try:
         from .normalize.processor import NormalizationProcessor
     except ImportError as e:
@@ -931,9 +855,105 @@ def normalize_apply(target: float, destructive: bool, dry_run: bool, db_choice: 
         console.print(f"[red]Database not found: {path}[/red]")
         return
 
+    db = get_database(path)
+    processor = NormalizationProcessor(max_workers=workers)
+
+    # Find tracks to measure
+    to_measure = []
+    for song in db.songs.values():
+        if song.is_windows_path or song.is_netsearch:
+            continue
+        if not Path(song.file_path).exists():
+            continue
+        to_measure.append(song)
+
+    if limit:
+        to_measure = to_measure[:limit]
+
+    console.print(f"Measuring [bold]{len(to_measure)}[/bold] tracks using [bold]{processor.max_workers}[/bold] workers")
+
+    file_paths = [s.file_path for s in to_measure]
+    results_data = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[status]}"),
+    ) as progress:
+        task = progress.add_task("Measuring loudness...", total=len(to_measure), status="")
+
+        def on_result(result):
+            progress.advance(task)
+            if result.success:
+                # Find song info
+                song = db.songs.get(result.file_path)
+                results_data.append({
+                    "file_path": result.file_path,
+                    "artist": song.tags.author if song and song.tags else "",
+                    "title": song.tags.title if song and song.tags else "",
+                    "lufs": result.current_lufs,
+                    "gain_needed": result.gain_db,
+                })
+                progress.update(task, status=f"LUFS: {result.current_lufs:.1f}")
+
+        processor.measure_batch_parallel(file_paths, callback=on_result)
+
+    # Show summary
+    if results_data:
+        lufs_values = [r["lufs"] for r in results_data if r["lufs"] is not None]
+        if lufs_values:
+            import statistics
+            console.print(f"\n[bold]Loudness Summary[/bold]")
+            console.print(f"Measured: {len(lufs_values)} tracks")
+            console.print(f"Average: {statistics.mean(lufs_values):.1f} LUFS")
+            console.print(f"Median: {statistics.median(lufs_values):.1f} LUFS")
+            console.print(f"Range: {min(lufs_values):.1f} to {max(lufs_values):.1f} LUFS")
+            console.print(f"Target: -14.0 LUFS (streaming standard)")
+
+            # Count tracks needing adjustment
+            gains = [r["gain_needed"] for r in results_data if r["gain_needed"] is not None]
+            need_adj = sum(1 for g in gains if abs(g) > 1.0)
+            console.print(f"Tracks needing adjustment (>1dB): {need_adj}")
+
+    if export_csv and results_data:
+        import csv
+        with open(export_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["file_path", "artist", "title", "lufs", "gain_needed"])
+            writer.writeheader()
+            writer.writerows(results_data)
+        console.print(f"[green]✓[/green] Exported to {export_csv}")
+
+
+@normalize.command("apply")
+@click.argument("target", type=float, default=-14.0)
+@click.option("--destructive", is_flag=True, help="Rewrite files (default: adjust VDJ volume)")
+@click.option("--dry-run", is_flag=True, help="Show what would be done")
+@click.option("--workers", "-w", type=int, default=None, help="Number of parallel workers (default: CPU count - 1)")
+@click.option("--limit", "-n", type=int, default=None, help="Limit number of tracks to process")
+@click.option("--local", "db_choice", flag_value="local", help="Use local database")
+@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
+def normalize_apply(target: float, destructive: bool, dry_run: bool, workers: Optional[int], limit: Optional[int], db_choice: str):
+    """Apply loudness normalization using parallel processing."""
+    try:
+        from .normalize.processor import NormalizationProcessor
+    except ImportError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return
+
+    path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
+
+    if not path.exists():
+        console.print(f"[red]Database not found: {path}[/red]")
+        return
+
+    processor = NormalizationProcessor(target_lufs=target, max_workers=workers)
+
     mode = "destructive" if destructive else "non-destructive"
     console.print(f"[cyan]Normalization mode: {mode}[/cyan]")
     console.print(f"Target: {target} LUFS")
+    console.print(f"Workers: {processor.max_workers}")
 
     if destructive:
         console.print("[yellow]Warning: Destructive mode will modify audio files![/yellow]")
@@ -941,7 +961,6 @@ def normalize_apply(target: float, destructive: bool, dry_run: bool, db_choice: 
             return
 
     db = get_database(path)
-    processor = NormalizationProcessor(target_lufs=target)
 
     # Find tracks
     to_process = []
@@ -951,6 +970,9 @@ def normalize_apply(target: float, destructive: bool, dry_run: bool, db_choice: 
         if not Path(song.file_path).exists():
             continue
         to_process.append(song)
+
+    if limit:
+        to_process = to_process[:limit]
 
     console.print(f"Processing [bold]{len(to_process)}[/bold] tracks")
 
@@ -962,32 +984,45 @@ def normalize_apply(target: float, destructive: bool, dry_run: bool, db_choice: 
     backup_mgr = BackupManager()
     backup_mgr.create_backup(path, label="pre_normalize")
 
-    processed = 0
+    file_paths = [s.file_path for s in to_process]
+    successful = 0
+    failed = 0
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[status]}"),
     ) as progress:
-        task = progress.add_task("Normalizing...", total=len(to_process))
+        task = progress.add_task("Normalizing...", total=len(to_process), status="")
 
-        for song in to_process:
-            try:
-                if destructive:
-                    processor.normalize_file(song.file_path)
-                else:
-                    gain = processor.calculate_gain(song.file_path)
-                    if gain is not None:
-                        db.update_song_scan(song.file_path, Volume=gain)
-                processed += 1
-            except Exception as e:
-                console.print(f"[red]Error: {song.file_path}: {e}[/red]")
+        def on_result(result):
+            nonlocal successful, failed
             progress.advance(task)
+            if result.success:
+                successful += 1
+                if not destructive and result.gain_db is not None:
+                    # Store gain in VDJ Volume field for non-destructive mode
+                    import math
+                    volume = 10 ** (result.gain_db / 20)
+                    db.update_song_scan(result.file_path, Volume=round(volume, 4))
+                progress.update(task, status=f"OK: {result.gain_db:+.1f}dB")
+            else:
+                failed += 1
+                progress.update(task, status=f"FAIL: {result.error[:30] if result.error else 'Unknown'}")
+
+        if destructive:
+            processor.normalize_batch_parallel(file_paths, backup=True, callback=on_result)
+        else:
+            processor.measure_batch_parallel(file_paths, callback=on_result)
 
     if not destructive:
         db.save()
 
-    console.print(f"[green]✓[/green] Processed {processed} tracks")
+    console.print(f"\n[green]✓[/green] Processed {successful} tracks")
+    if failed > 0:
+        console.print(f"[yellow]![/yellow] Failed: {failed} tracks")
 
 
 # ============================================================================
