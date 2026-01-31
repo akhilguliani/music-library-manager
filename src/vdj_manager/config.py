@@ -7,6 +7,7 @@ from typing import Optional
 LOCAL_VDJ_DB = Path.home() / "Library/Application Support/VirtualDJ/database.xml"
 MYNVME_VDJ_DB = Path("/Volumes/MyNVMe/VirtualDJ/database.xml")
 BACKUP_DIR = Path.home() / ".vdj_manager/backups"
+CHECKPOINT_DIR = Path.home() / ".vdj_manager/checkpoints"
 SERATO_LOCAL = Path.home() / "Music/_Serato_"
 SERATO_MYNVME = Path("/Volumes/MyNVMe/_Serato_")
 
