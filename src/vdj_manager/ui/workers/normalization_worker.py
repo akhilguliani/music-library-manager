@@ -1,26 +1,33 @@
-"""Normalization worker with checkpoint support."""
+"""Normalization worker with checkpoint support and parallel processing."""
 
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any
 
 from PySide6.QtCore import Signal
 
 from vdj_manager.config import DEFAULT_LUFS_TARGET
-from vdj_manager.normalize.processor import NormalizationProcessor, NormalizationResult
+from vdj_manager.normalize.processor import (
+    NormalizationProcessor,
+    NormalizationResult,
+    _measure_single_file,
+)
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.workers.base_worker import PausableWorker
 
 
 class NormalizationWorker(PausableWorker):
-    """Worker for measuring and normalizing audio loudness.
+    """Worker for measuring and normalizing audio loudness with parallel processing.
 
-    This worker wraps the existing NormalizationProcessor and adds:
-    - Pause/Resume capability via PausableWorker
+    This worker uses ProcessPoolExecutor for true parallel processing:
+    - Multiple files are measured simultaneously using multiple CPU cores
+    - Pause/Resume works at batch boundaries
     - Checkpoint persistence for task recovery
-    - Qt signals for UI updates
+    - Qt signals for real-time UI updates
 
-    The worker processes files in batches, saving checkpoints after
-    each batch to allow recovery after application restart.
+    The worker processes files in batches, with each batch processed in
+    parallel. Checkpoints are saved after each batch completes.
 
     Signals (inherited from PausableWorker):
         progress: (current, total, percent)
@@ -42,6 +49,7 @@ class NormalizationWorker(PausableWorker):
         target_lufs: float = DEFAULT_LUFS_TARGET,
         checkpoint_manager: CheckpointManager | None = None,
         batch_size: int = 50,
+        max_workers: int | None = None,
         parent: Any = None,
     ) -> None:
         """Initialize the normalization worker.
@@ -51,19 +59,24 @@ class NormalizationWorker(PausableWorker):
             target_lufs: Target loudness in LUFS (default -14).
             checkpoint_manager: Manager for saving checkpoints.
             batch_size: Files per batch (checkpoint frequency).
+            max_workers: Number of parallel workers (default: CPU count - 1).
             parent: Optional parent QObject.
         """
         super().__init__(task_state, batch_size=batch_size, parent=parent)
 
         self.target_lufs = target_lufs
         self.checkpoint_manager = checkpoint_manager or CheckpointManager()
+        self.max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
+        self.ffmpeg_path = "ffmpeg"
+
+        # Keep processor for single-file fallback operations
         self._processor = NormalizationProcessor(
             target_lufs=target_lufs,
-            max_workers=1,  # We process one at a time in the UI worker
+            max_workers=self.max_workers,
         )
 
     def process_item(self, path: str) -> NormalizationResult:
-        """Measure loudness for a single file.
+        """Measure loudness for a single file (used for fallback only).
 
         Args:
             path: Audio file path.
@@ -122,9 +135,11 @@ class NormalizationWorker(PausableWorker):
         }
 
     def run(self) -> None:
-        """Main worker execution with checkpoint support.
+        """Main worker execution with parallel processing and checkpoint support.
 
-        Overrides PausableWorker.run() to add checkpoint saving.
+        Processes files in parallel batches using ProcessPoolExecutor.
+        Each batch is processed with multiple workers, then results are
+        collected and a checkpoint is saved before the next batch.
         """
         self.task_state.status = TaskStatus.RUNNING
         self.status_changed.emit(TaskStatus.RUNNING.value)
@@ -148,34 +163,14 @@ class NormalizationWorker(PausableWorker):
                 batch = pending[i : i + self.batch_size]
                 current_batch += 1
 
-                for path in batch:
-                    # Check for cancel between items
-                    if self._check_cancelled():
-                        self._save_checkpoint()
-                        self.finished_work.emit(False, "Cancelled by user")
-                        return
+                # Process entire batch in parallel
+                self._process_batch_parallel(batch, total)
 
-                    try:
-                        result = self.process_item(path)
-                        result_dict = self.get_result_dict(path, result)
-
-                        if result.success:
-                            self.task_state.mark_completed(path, result_dict)
-                        else:
-                            self.task_state.mark_failed(path, result.error or "Unknown error")
-
-                        self.result_ready.emit(path, result_dict)
-
-                    except Exception as e:
-                        error_msg = str(e)
-                        result_dict = self.get_result_dict(path, None, error=error_msg)
-                        self.task_state.mark_failed(path, error_msg)
-                        self.result_ready.emit(path, result_dict)
-
-                    # Emit progress
-                    processed = self.task_state.processed_count
-                    percent = (processed / total) * 100 if total > 0 else 0
-                    self.progress.emit(processed, total, percent)
+                # Check for cancel after batch processing
+                if self._check_cancelled():
+                    self._save_checkpoint()
+                    self.finished_work.emit(False, "Cancelled by user")
+                    return
 
                 # Batch complete - save checkpoint
                 self._save_checkpoint()
@@ -208,6 +203,53 @@ class NormalizationWorker(PausableWorker):
             self._save_checkpoint()
             self.error.emit(str(e))
             self.finished_work.emit(False, f"Error: {e}")
+
+    def _process_batch_parallel(self, batch: list[str], total: int) -> None:
+        """Process a batch of files in parallel.
+
+        Args:
+            batch: List of file paths to process.
+            total: Total number of files (for progress calculation).
+        """
+        # Prepare arguments for parallel processing
+        args_list = [
+            (path, self.target_lufs, self.ffmpeg_path)
+            for path in batch
+        ]
+
+        # Process batch in parallel using ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all jobs
+            futures = {
+                executor.submit(_measure_single_file, args): args[0]
+                for args in args_list
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                path = futures[future]
+
+                try:
+                    result = future.result()
+                    result_dict = self.get_result_dict(path, result)
+
+                    if result.success:
+                        self.task_state.mark_completed(path, result_dict)
+                    else:
+                        self.task_state.mark_failed(path, result.error or "Unknown error")
+
+                    self.result_ready.emit(path, result_dict)
+
+                except Exception as e:
+                    error_msg = str(e)
+                    result_dict = self.get_result_dict(path, None, error=error_msg)
+                    self.task_state.mark_failed(path, error_msg)
+                    self.result_ready.emit(path, result_dict)
+
+                # Emit progress after each file completes
+                processed = self.task_state.processed_count
+                percent = (processed / total) * 100 if total > 0 else 0
+                self.progress.emit(processed, total, percent)
 
     def _save_checkpoint(self) -> None:
         """Save current task state to checkpoint."""

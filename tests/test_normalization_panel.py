@@ -172,6 +172,23 @@ class TestNormalizationPanel:
         assert panel.batch_spin.minimum() == 10
         assert panel.batch_spin.maximum() == 500
 
+    def test_workers_spinner(self, app):
+        """Test parallel workers spinner configuration."""
+        import multiprocessing
+        cpu_count = multiprocessing.cpu_count()
+
+        panel = NormalizationPanel()
+
+        # Default should be CPU count - 1 (at least 1)
+        expected_default = max(1, cpu_count - 1)
+        assert panel.workers_spin.value() == expected_default
+        assert panel.workers_spin.minimum() == 1
+        assert panel.workers_spin.maximum() == cpu_count
+
+        # Test setting custom value
+        panel.workers_spin.setValue(2)
+        assert panel.workers_spin.value() == 2
+
     def test_is_running(self, app):
         """Test is_running property."""
         panel = NormalizationPanel()

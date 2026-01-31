@@ -87,6 +87,26 @@ class TestNormalizationWorker:
         assert worker is not None
         assert worker.target_lufs == -14.0
 
+    def test_worker_parallel_workers_config(self, app, task_state, checkpoint_manager):
+        """Test worker respects max_workers configuration."""
+        import multiprocessing
+        cpu_count = multiprocessing.cpu_count()
+
+        # Default workers should be CPU count - 1
+        worker = NormalizationWorker(
+            task_state,
+            checkpoint_manager=checkpoint_manager,
+        )
+        assert worker.max_workers == max(1, cpu_count - 1)
+
+        # Custom workers setting
+        worker_custom = NormalizationWorker(
+            task_state,
+            checkpoint_manager=checkpoint_manager,
+            max_workers=4,
+        )
+        assert worker_custom.max_workers == 4
+
     def test_get_result_dict_success(self, app, task_state, checkpoint_manager):
         """Test result dict conversion for success."""
         worker = NormalizationWorker(

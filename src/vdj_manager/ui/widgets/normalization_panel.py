@@ -1,5 +1,6 @@
-"""Normalization panel with workflow controls."""
+"""Normalization panel with workflow controls and parallel processing."""
 
+import multiprocessing
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,17 @@ class NormalizationPanel(QWidget):
         self.batch_spin.setToolTip("Files per batch (checkpoint frequency)")
         form_layout.addRow("Batch Size:", self.batch_spin)
 
+        # Parallel workers
+        cpu_count = multiprocessing.cpu_count()
+        default_workers = max(1, cpu_count - 1)
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, cpu_count)
+        self.workers_spin.setValue(default_workers)
+        self.workers_spin.setToolTip(
+            f"Number of parallel workers (detected {cpu_count} CPU cores)"
+        )
+        form_layout.addRow("Workers:", self.workers_spin)
+
         # Track count info
         self.track_count_label = QLabel("No database loaded")
         form_layout.addRow("Tracks:", self.track_count_label)
@@ -226,15 +238,17 @@ class NormalizationPanel(QWidget):
             config={
                 "target_lufs": self.lufs_spin.value(),
                 "batch_size": self.batch_spin.value(),
+                "max_workers": self.workers_spin.value(),
             },
         )
 
-        # Create worker
+        # Create worker with parallel processing
         self._worker = NormalizationWorker(
             self._task_state,
             target_lufs=self.lufs_spin.value(),
             checkpoint_manager=self._checkpoint_manager,
             batch_size=self.batch_spin.value(),
+            max_workers=self.workers_spin.value(),
         )
 
         # Connect signals
@@ -281,12 +295,16 @@ class NormalizationPanel(QWidget):
 
         self._task_state = task_state
 
-        # Create worker with existing state
+        # Get worker config (with defaults for backwards compatibility)
+        default_workers = max(1, multiprocessing.cpu_count() - 1)
+
+        # Create worker with existing state and parallel processing
         self._worker = NormalizationWorker(
             task_state,
             target_lufs=task_state.config.get("target_lufs", DEFAULT_LUFS_TARGET),
             checkpoint_manager=self._checkpoint_manager,
             batch_size=task_state.config.get("batch_size", 50),
+            max_workers=task_state.config.get("max_workers", default_workers),
         )
 
         # Connect signals
