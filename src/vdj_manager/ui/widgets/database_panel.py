@@ -26,7 +26,11 @@ from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song, DatabaseStats
 from vdj_manager.ui.models.track_model import TrackTableModel
-from vdj_manager.ui.workers.database_worker import DatabaseLoadWorker, DatabaseLoadResult
+from vdj_manager.ui.workers.database_worker import (
+    DatabaseLoadWorker,
+    DatabaseLoadResult,
+    BackupWorker,
+)
 
 
 class DatabasePanel(QWidget):
@@ -57,6 +61,7 @@ class DatabasePanel(QWidget):
         self._database: VDJDatabase | None = None
         self._tracks: list[Song] = []
         self._load_worker: DatabaseLoadWorker | None = None
+        self._backup_worker: BackupWorker | None = None
 
         self._setup_ui()
 
@@ -77,6 +82,28 @@ class DatabasePanel(QWidget):
         # Database selection
         selection_group = self._create_selection_group()
         layout.addWidget(selection_group)
+
+        # Actions row
+        actions_layout = QHBoxLayout()
+
+        self.backup_btn = QPushButton("Backup")
+        self.backup_btn.setEnabled(False)
+        self.backup_btn.setToolTip("Create a timestamped backup of the database")
+        self.backup_btn.clicked.connect(self._on_backup_clicked)
+        actions_layout.addWidget(self.backup_btn)
+
+        self.validate_btn = QPushButton("Validate")
+        self.validate_btn.setEnabled(False)
+        self.validate_btn.setToolTip("Check file existence and validate entries")
+        actions_layout.addWidget(self.validate_btn)
+
+        self.clean_btn = QPushButton("Clean")
+        self.clean_btn.setEnabled(False)
+        self.clean_btn.setToolTip("Remove invalid entries from database")
+        actions_layout.addWidget(self.clean_btn)
+
+        actions_layout.addStretch()
+        layout.addLayout(actions_layout)
 
         # Create splitter for stats and track table
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -276,6 +303,11 @@ class DatabasePanel(QWidget):
             self.status_label.setText(f"Loaded {len(result.tracks)} tracks")
             self.status_label.setStyleSheet("color: green;")
 
+            # Enable action buttons
+            self.backup_btn.setEnabled(True)
+            self.validate_btn.setEnabled(True)
+            self.clean_btn.setEnabled(True)
+
             # Emit signal
             self.database_loaded.emit(self._database)
         else:
@@ -367,3 +399,35 @@ class DatabasePanel(QWidget):
             if track:
                 tracks.append(track)
         return tracks
+
+    def _on_backup_clicked(self) -> None:
+        """Handle backup button click."""
+        if self._database is None:
+            return
+        if self._backup_worker is not None and self._backup_worker.isRunning():
+            QMessageBox.warning(self, "Backup In Progress", "A backup is already running.")
+            return
+
+        db_path = self._database.db_path
+        self.backup_btn.setEnabled(False)
+        self.status_label.setText("Creating backup...")
+        self.status_label.setStyleSheet("color: blue;")
+
+        self._backup_worker = BackupWorker(db_path)
+        self._backup_worker.finished_work.connect(self._on_backup_finished)
+        self._backup_worker.error.connect(self._on_backup_error)
+        self._backup_worker.start()
+
+    @Slot(object)
+    def _on_backup_finished(self, backup_path) -> None:
+        """Handle backup completion."""
+        self.backup_btn.setEnabled(True)
+        self.status_label.setText(f"Backup created: {Path(backup_path).name}")
+        self.status_label.setStyleSheet("color: green;")
+
+    @Slot(str)
+    def _on_backup_error(self, error: str) -> None:
+        """Handle backup error."""
+        self.backup_btn.setEnabled(True)
+        self.status_label.setText(f"Backup failed: {error}")
+        self.status_label.setStyleSheet("color: red;")

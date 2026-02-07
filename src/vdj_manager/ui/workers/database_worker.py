@@ -1,10 +1,11 @@
-"""Background worker for loading VDJ database."""
+"""Background workers for VDJ database operations."""
 
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Signal
 
+from vdj_manager.core.backup import BackupManager
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song, DatabaseStats
 from vdj_manager.ui.workers.base_worker import SimpleWorker
@@ -132,3 +133,26 @@ class DatabaseSaveWorker(SimpleWorker):
         """
         self.database.save()
         return True
+
+
+class BackupWorker(SimpleWorker):
+    """Worker for creating a database backup in the background."""
+
+    def __init__(
+        self,
+        db_path: Path,
+        label: str | None = None,
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self.db_path = db_path
+        self.label = label
+
+    def do_work(self) -> Path:
+        """Create a backup of the database.
+
+        Returns:
+            Path to the created backup file.
+        """
+        manager = BackupManager()
+        return manager.create_backup(self.db_path, label=self.label)
