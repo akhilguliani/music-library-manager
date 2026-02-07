@@ -89,15 +89,17 @@ class TestMainWindow:
         central = main_window.centralWidget()
         assert isinstance(central, QTabWidget)
 
-    def test_main_window_has_three_tabs(self, main_window):
-        """Test that main window has database, normalization, and analysis tabs."""
+    def test_main_window_has_five_tabs(self, main_window):
+        """Test that main window has all five tabs."""
         tab_widget = main_window.tab_widget
-        assert tab_widget.count() == 3
+        assert tab_widget.count() == 5
 
         # Check tab names
         assert tab_widget.tabText(0) == "Database"
         assert tab_widget.tabText(1) == "Normalization"
-        assert tab_widget.tabText(2) == "Analysis"
+        assert tab_widget.tabText(2) == "Files"
+        assert tab_widget.tabText(3) == "Analysis"
+        assert tab_widget.tabText(4) == "Export"
 
     def test_main_window_has_menu_bar(self, main_window):
         """Test that main window has a menu bar."""
@@ -127,14 +129,20 @@ class TestMainWindow:
         """Test that tabs can be switched."""
         tab_widget = main_window.tab_widget
 
-        tab_widget.setCurrentIndex(1)
-        assert tab_widget.currentIndex() == 1
-
-        tab_widget.setCurrentIndex(2)
-        assert tab_widget.currentIndex() == 2
+        for i in range(5):
+            tab_widget.setCurrentIndex(i)
+            assert tab_widget.currentIndex() == i
 
         tab_widget.setCurrentIndex(0)
         assert tab_widget.currentIndex() == 0
+
+    def test_panels_accessible(self, main_window):
+        """Test that all panel attributes are accessible."""
+        assert main_window.database_panel is not None
+        assert main_window.normalization_panel is not None
+        assert main_window.files_panel is not None
+        assert main_window.analysis_panel is not None
+        assert main_window.export_panel is not None
 
     def test_about_dialog(self, main_window, app):
         """Test that about action triggers about dialog."""

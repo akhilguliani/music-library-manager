@@ -43,10 +43,12 @@ class MainWindow(QMainWindow):
         self.tab_widget.setDocumentMode(True)
         self.setCentralWidget(self.tab_widget)
 
-        # Create placeholder tabs (will be replaced with actual panels)
+        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
         self._create_database_tab()
         self._create_normalization_tab()
+        self._create_files_tab()
         self._create_analysis_tab()
+        self._create_export_tab()
 
     def _create_database_tab(self) -> None:
         """Create the database overview tab."""
@@ -61,11 +63,37 @@ class MainWindow(QMainWindow):
         self.normalization_panel = NormalizationPanel()
         self.tab_widget.addTab(self.normalization_panel, "Normalization")
 
+    def _create_files_tab(self) -> None:
+        """Create the file management tab."""
+        # Placeholder - will be replaced with FilesPanel
+        self.files_panel = QWidget()
+        layout = QVBoxLayout(self.files_panel)
+
+        label = QLabel("File Management")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        info_label = QLabel(
+            "Manage files in your VirtualDJ database.\n\n"
+            "Features:\n"
+            "- Scan directories for new files\n"
+            "- Import files into database\n"
+            "- Remove missing entries\n"
+            "- Remap Windows paths\n"
+            "- Find duplicates"
+        )
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        layout.addStretch()
+
+        self.tab_widget.addTab(self.files_panel, "Files")
+
     def _create_analysis_tab(self) -> None:
         """Create the audio analysis tab."""
         # Placeholder - will be replaced with AnalysisPanel
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        self.analysis_panel = QWidget()
+        layout = QVBoxLayout(self.analysis_panel)
 
         label = QLabel("Analysis")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -83,7 +111,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(info_label)
         layout.addStretch()
 
-        self.tab_widget.addTab(widget, "Analysis")
+        self.tab_widget.addTab(self.analysis_panel, "Analysis")
+
+    def _create_export_tab(self) -> None:
+        """Create the export tab."""
+        # Placeholder - will be replaced with ExportPanel
+        self.export_panel = QWidget()
+        layout = QVBoxLayout(self.export_panel)
+
+        label = QLabel("Export")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        info_label = QLabel(
+            "Export your library to other DJ software.\n\n"
+            "Features:\n"
+            "- Export to Serato format\n"
+            "- Crate/playlist management"
+        )
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        layout.addStretch()
+
+        self.tab_widget.addTab(self.export_panel, "Export")
 
     def _setup_menu_bar(self) -> None:
         """Set up the application menu bar."""
@@ -117,10 +168,20 @@ class MainWindow(QMainWindow):
         normalize_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
         view_menu.addAction(normalize_tab_action)
 
+        files_tab_action = QAction("&Files", self)
+        files_tab_action.setShortcut(QKeySequence("Ctrl+3"))
+        files_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        view_menu.addAction(files_tab_action)
+
         analysis_tab_action = QAction("&Analysis", self)
-        analysis_tab_action.setShortcut(QKeySequence("Ctrl+3"))
-        analysis_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        analysis_tab_action.setShortcut(QKeySequence("Ctrl+4"))
+        analysis_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
         view_menu.addAction(analysis_tab_action)
+
+        export_tab_action = QAction("&Export", self)
+        export_tab_action.setShortcut(QKeySequence("Ctrl+5"))
+        export_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
+        view_menu.addAction(export_tab_action)
 
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
@@ -147,8 +208,12 @@ class MainWindow(QMainWindow):
         track_count = len(tracks)
         self.statusBar().showMessage(f"Loaded database with {track_count} tracks")
 
-        # Update normalization panel with database
+        # Update all panels with database
         self.normalization_panel.set_database(database, tracks)
+        # Files, Analysis, Export panels will get set_database when they're real panels
+        for panel in (self.files_panel, self.analysis_panel, self.export_panel):
+            if hasattr(panel, "set_database"):
+                panel.set_database(database)
 
     @Slot(object)
     def _on_track_selected(self, track) -> None:
