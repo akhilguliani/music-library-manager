@@ -48,5 +48,9 @@ docs/_build/
 .DS_Store
 Thumbs.db
 
+# mypy
+.mypy_cache/
+dmypy.json
+
 # Project specific
 *.backup.xml
