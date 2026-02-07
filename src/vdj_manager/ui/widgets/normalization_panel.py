@@ -14,9 +14,11 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QSpinBox,
     QDoubleSpinBox,
+    QCheckBox,
     QComboBox,
     QSplitter,
     QMessageBox,
+    QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, Slot
 
@@ -27,7 +29,10 @@ from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ResultsTable
-from vdj_manager.ui.workers.normalization_worker import NormalizationWorker
+from vdj_manager.ui.workers.normalization_worker import (
+    NormalizationWorker,
+    ApplyNormalizationWorker,
+)
 
 
 class NormalizationPanel(QWidget):
@@ -58,6 +63,7 @@ class NormalizationPanel(QWidget):
         self._database: VDJDatabase | None = None
         self._tracks: list[Song] = []
         self._worker: NormalizationWorker | None = None
+        self._apply_worker: ApplyNormalizationWorker | None = None
         self._checkpoint_manager = CheckpointManager()
         self._task_state: TaskState | None = None
 
@@ -151,6 +157,14 @@ class NormalizationPanel(QWidget):
         )
         form_layout.addRow("Workers:", self.workers_spin)
 
+        # Limit
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(0, 999999)
+        self.limit_spin.setValue(0)
+        self.limit_spin.setSpecialValueText("All")
+        self.limit_spin.setToolTip("Limit number of tracks to process (0 = all)")
+        form_layout.addRow("Limit:", self.limit_spin)
+
         # Track count info
         self.track_count_label = QLabel("No database loaded")
         form_layout.addRow("Tracks:", self.track_count_label)
@@ -165,7 +179,24 @@ class NormalizationPanel(QWidget):
         self.start_btn.clicked.connect(self._on_start_clicked)
         button_layout.addWidget(self.start_btn)
 
+        self.apply_btn = QPushButton("Apply Normalization")
+        self.apply_btn.setEnabled(False)
+        self.apply_btn.setToolTip("Apply normalization to measured files")
+        self.apply_btn.clicked.connect(self._on_apply_clicked)
+        button_layout.addWidget(self.apply_btn)
+
+        self.export_csv_btn = QPushButton("Export CSV")
+        self.export_csv_btn.setEnabled(False)
+        self.export_csv_btn.setToolTip("Export measurement results to CSV")
+        self.export_csv_btn.clicked.connect(self._on_export_csv)
+        button_layout.addWidget(self.export_csv_btn)
+
         button_layout.addStretch()
+
+        # Apply options
+        self.destructive_check = QCheckBox("Destructive")
+        self.destructive_check.setToolTip("Modify files in-place (non-destructive uses ReplayGain tags)")
+        button_layout.addWidget(self.destructive_check)
 
         layout.addLayout(button_layout)
 
@@ -189,7 +220,7 @@ class NormalizationPanel(QWidget):
             self.start_btn.setEnabled(audio_count > 0)
 
     def _get_audio_paths(self) -> list[str]:
-        """Get list of audio file paths to process.
+        """Get list of audio file paths to process, respecting limit.
 
         Returns:
             List of file paths.
@@ -209,6 +240,10 @@ class NormalizationPanel(QWidget):
             if track.is_windows_path:
                 continue
             paths.append(track.file_path)
+
+        limit = self.limit_spin.value()
+        if limit > 0:
+            paths = paths[:limit]
 
         return paths
 
@@ -271,6 +306,11 @@ class NormalizationPanel(QWidget):
         """Handle measurement completion."""
         self.start_btn.setEnabled(True)
 
+        # Enable apply and export buttons
+        has_results = self.results_table.row_count() > 0
+        self.apply_btn.setEnabled(has_results)
+        self.export_csv_btn.setEnabled(has_results)
+
         # Collect results
         results = self.results_table.get_all_results()
         self.measurement_completed.emit(results)
@@ -332,9 +372,89 @@ class NormalizationPanel(QWidget):
         self.measurement_started.emit()
 
     def is_running(self) -> bool:
-        """Check if a measurement is currently running.
+        """Check if a measurement or normalization is currently running.
 
         Returns:
             True if running.
         """
-        return self._worker is not None and self._worker.isRunning()
+        if self._worker is not None and self._worker.isRunning():
+            return True
+        if self._apply_worker is not None and self._apply_worker.isRunning():
+            return True
+        return False
+
+    def _on_apply_clicked(self) -> None:
+        """Handle apply normalization button click."""
+        if self.is_running():
+            QMessageBox.warning(self, "Already Running", "An operation is already in progress.")
+            return
+
+        if self.results_table.row_count() == 0:
+            QMessageBox.information(self, "No Results", "Run measurement first.")
+            return
+
+        if self.destructive_check.isChecked():
+            reply = QMessageBox.warning(
+                self, "Destructive Normalization",
+                "This will modify audio files in-place. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        paths = self._get_audio_paths()
+        if not paths:
+            return
+
+        task_state = self._checkpoint_manager.create_task(
+            TaskType.NORMALIZE,
+            paths,
+            config={
+                "target_lufs": self.lufs_spin.value(),
+                "destructive": self.destructive_check.isChecked(),
+                "batch_size": self.batch_spin.value(),
+            },
+        )
+
+        self._apply_worker = ApplyNormalizationWorker(
+            task_state,
+            target_lufs=self.lufs_spin.value(),
+            destructive=self.destructive_check.isChecked(),
+            checkpoint_manager=self._checkpoint_manager,
+            batch_size=self.batch_spin.value(),
+        )
+
+        self.progress_widget.connect_worker(self._apply_worker)
+        self._apply_worker.result_ready.connect(self.results_table.add_result)
+        self._apply_worker.finished_work.connect(self._on_apply_finished)
+
+        self.results_table.clear()
+        self.progress_widget.start(len(paths))
+        self.apply_btn.setEnabled(False)
+        self.start_btn.setEnabled(False)
+        self._apply_worker.start()
+
+    @Slot(bool, str)
+    def _on_apply_finished(self, success: bool, message: str) -> None:
+        """Handle normalization completion."""
+        self.start_btn.setEnabled(True)
+        self.apply_btn.setEnabled(self.results_table.row_count() > 0)
+        self.export_csv_btn.setEnabled(self.results_table.row_count() > 0)
+
+    def _on_export_csv(self) -> None:
+        """Handle CSV export button click."""
+        if self.results_table.row_count() == 0:
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Results",
+            "normalization_results.csv",
+            "CSV Files (*.csv)",
+        )
+        if not file_path:
+            return
+
+        count = self.results_table.export_to_csv(file_path)
+        QMessageBox.information(
+            self, "Export Complete", f"Exported {count} results to CSV."
+        )
