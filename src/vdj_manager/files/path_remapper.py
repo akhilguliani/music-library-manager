@@ -13,6 +13,7 @@ class PathRemapper:
 
     def __init__(self, mappings: dict[str, str] | None = None):
         self.mappings = mappings or DEFAULT_PATH_MAPPINGS.copy()
+        self._sorted_prefixes: list[str] | None = None
 
     def add_mapping(self, windows_prefix: str, mac_prefix: str) -> None:
         """Add a path mapping.
@@ -24,6 +25,7 @@ class PathRemapper:
         # Normalize to forward slashes
         windows_prefix = windows_prefix.replace("\\", "/")
         self.mappings[windows_prefix] = mac_prefix
+        self._sorted_prefixes = None  # Invalidate cache
 
     def remove_mapping(self, windows_prefix: str) -> bool:
         """Remove a path mapping.
@@ -37,6 +39,7 @@ class PathRemapper:
         windows_prefix = windows_prefix.replace("\\", "/")
         if windows_prefix in self.mappings:
             del self.mappings[windows_prefix]
+            self._sorted_prefixes = None  # Invalidate cache
             return True
         return False
 
@@ -52,8 +55,12 @@ class PathRemapper:
         # Normalize backslashes
         normalized = path.replace("\\", "/")
 
+        # Build sorted prefix cache on first use (invalidated on mapping changes)
+        if self._sorted_prefixes is None:
+            self._sorted_prefixes = sorted(self.mappings.keys(), key=len, reverse=True)
+
         # Try each mapping, longest prefix first
-        for win_prefix in sorted(self.mappings.keys(), key=len, reverse=True):
+        for win_prefix in self._sorted_prefixes:
             if normalized.startswith(win_prefix):
                 mac_prefix = self.mappings[win_prefix]
                 return mac_prefix + normalized[len(win_prefix):]

@@ -151,8 +151,11 @@ class DuplicateDetector:
                 if len(group) < 2:
                     continue
 
-                if use_partial and verify_full:
-                    # Re-verify with full hash
+                if use_partial and verify_full and len(group) > 2:
+                    # Only do expensive full-hash verification for groups of 3+
+                    # where partial hash collisions are more likely.
+                    # Groups of 2 matching on size + 1MB partial hash are
+                    # near-certainly true duplicates.
                     full_hash_groups: dict[str, list[Song]] = defaultdict(list)
                     for song in group:
                         full_hash = self.compute_file_hash(song.file_path)

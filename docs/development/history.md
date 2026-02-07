@@ -396,6 +396,12 @@ class TrackTableModel(QAbstractTableModel):
 ## Commit History
 
 ```
+20d2b1f Add performance optimizations across 6 modules with 39 new tests
+0bad51b Remove tracked __pycache__ files and update .gitignore
+19251fe Update development history with corrected database format findings
+6b039d4 Fix database save to use lxml default format (revert incorrect fix)
+7366d5b Add parallel processing to GUI normalization worker
+b8df4ed Add comprehensive development documentation
 7c374df Fix backup mtime to reflect creation time, not source mtime
 111760d Update documentation with desktop app guide
 7c2fc01 Add comprehensive UI tests
@@ -417,7 +423,7 @@ c37f228 Add comprehensive unit tests
 
 ## Test Coverage
 
-Final test count: **199 tests passing**
+Final test count: **240 tests passing**
 
 | Module | Tests |
 |--------|-------|
@@ -431,6 +437,7 @@ Final test count: **199 tests passing**
 | test_normalization_worker.py | 11 |
 | test_path_remapper.py | 9 |
 | test_pausable_worker.py | 16 |
+| test_performance_fixes.py | 39 |
 | test_progress_widget.py | 20 |
 | test_resume_dialog.py | 17 |
 | test_track_model.py | 16 |
@@ -456,6 +463,120 @@ Final test count: **199 tests passing**
 8. **Separate bugfix commits** - Each bug fix should be its own commit with a corresponding test case for traceability.
 
 9. **When a fix doesn't work, question the hypothesis** - If the "fix" doesn't solve the problem, the root cause analysis was probably wrong.
+
+### Phase 3: Performance Review & Optimization (February 2026)
+
+#### Motivation
+
+A full codebase review was performed across all commits to identify performance bottlenecks, algorithmic inefficiencies, and correctness issues. The review found several O(n) and O(n²) operations that would scale poorly with large VDJ databases (50,000+ songs), redundant I/O operations, and missing caching opportunities.
+
+#### Issues Identified & Fixes Applied
+
+**Fix 1: O(n) XML element lookups in database.py**
+
+| Before | After |
+|--------|-------|
+| `update_song_tags()`, `update_song_scan()`, `remap_path()`, `remove_song()` each iterated the entire XML tree with `self._root.iter("Song")` to find a single element by FilePath | Built `_filepath_to_elem: dict[str, etree._Element]` index during `load()` for O(1) lookups |
+
+**Impact:** For a 50K-song database, every single-song operation went from 50,000 element comparisons to 1 dict lookup.
+
+```python
+# Before: O(n) linear scan
+for song_elem in self._root.iter("Song"):
+    if song_elem.get("FilePath") == file_path:
+        ...
+
+# After: O(1) dict lookup
+song_elem = self._filepath_to_elem.get(file_path)
+if song_elem is None:
+    return False
+```
+
+---
+
+**Fix 2: O(n²) merge_from() in database.py**
+
+`merge_from()` called the now-fixed update methods (each formerly O(n)) inside a loop over the other DB's songs. For the "add new song" branch, it also iterated `other._root.iter("Song")` for each song. With both databases at 50K songs, this was O(n²).
+
+After Fix 1, the update methods are O(1), and the add-new-song branch uses the other database's `_filepath_to_elem` index directly instead of searching.
+
+---
+
+**Fix 3: Re-sorting mappings on every call in path_remapper.py**
+
+| Before | After |
+|--------|-------|
+| `sorted(self.mappings.keys(), key=len, reverse=True)` called on every `remap_path()` invocation | Cached as `_sorted_prefixes`, invalidated on `add_mapping()` / `remove_mapping()` |
+
+**Impact:** When remapping 10K paths, eliminated 10K sorts. The sorted list is now computed once and reused.
+
+---
+
+**Fix 4: Double file reads in duplicates.py**
+
+| Before | After |
+|--------|-------|
+| Partial hash (1MB read) followed by full hash (entire file) for ALL groups of 2+ files | Skip full-hash verification for groups of exactly 2 (size + 1MB partial hash is sufficient); only verify groups of 3+ |
+
+**Impact:** For a typical library where most duplicate groups are pairs, this halves the I/O during duplicate detection. A 100MB file is now read once (1MB) instead of twice (1MB + 100MB).
+
+---
+
+**Fix 5: Duplicated JSON parsing in loudness.py**
+
+| Before | After |
+|--------|-------|
+| `measure()` and `measure_detailed()` each had their own identical JSON parsing logic (20+ lines duplicated) | Extracted shared `_parse_ffmpeg_json()` static method used by both |
+
+Also fixed a correctness bug: `data.get("input_i", 0)` used `0` as default, but `0.0` is a valid LUFS value. Changed to `None` to distinguish "missing" from "silent".
+
+---
+
+**Fix 6: Redundant extension extraction in validator.py**
+
+| Before | After |
+|--------|-------|
+| `validate_song()` called `is_audio_file()` and `is_non_audio_file()` each extracting `Path(path).suffix.lower()` independently, plus `song.extension` doing it a third time | Added `_get_extension()` helper; extract once, pass to internal `_is_audio_ext()` / `_is_non_audio_ext()` |
+
+Also merged extension counting into `categorize_entries()` (via `collect_extensions=True` parameter), eliminating a second iteration over all songs in `generate_report()`.
+
+---
+
+**Fix 7: ffmpeg verification on every LoudnessMeasurer instantiation**
+
+| Before | After |
+|--------|-------|
+| Every `LoudnessMeasurer()` constructor called `ffmpeg -version` via subprocess | Class-level `_verified_paths: set[str]` cache; each ffmpeg path verified only once per process |
+
+**Impact:** Batch processing 100 files across 4 workers previously spawned 25+ redundant `ffmpeg -version` subprocesses. Now spawns exactly 1.
+
+#### Test Coverage
+
+39 new tests added in `tests/test_performance_fixes.py`:
+
+| Test Class | Tests | Covers |
+|------------|-------|--------|
+| TestDatabaseElementIndex | 9 | Fix 1: index creation, CRUD sync, 1000-song perf |
+| TestDatabaseMergeOptimized | 4 | Fix 2: merge add/update/index integrity |
+| TestPathRemapperCachedPrefixes | 5 | Fix 3: cache build/invalidation/reuse |
+| TestDuplicateHashOptimization | 3 | Fix 4: pair skips full hash, triple verifies |
+| TestLoudnessJsonParser | 7 | Fix 5: valid/missing/malformed JSON, 0.0 LUFS |
+| TestValidatorExtensionOptimization | 6 | Fix 6: single extraction, report extension counts |
+| TestFfmpegVerificationCache | 5 | Fix 7: single verify, cache miss on new path |
+
+Final test count: **240 tests passing** (199 existing + 39 new + 2 newly collected)
+
+#### Lessons Learned
+
+10. **Build indexes during parsing** — When XML elements need both model-level and element-level access, build both maps in a single parse pass.
+
+11. **Cache derived data, invalidate on mutation** — Sorted prefix lists, ffmpeg verification results, etc. should be computed once and invalidated explicitly when inputs change.
+
+12. **Profile before optimizing** — The O(n²) merge was the most impactful fix but wouldn't have been obvious without reading the code carefully. Always trace the full call path.
+
+13. **0 is not None** — Using `0` as a default return value for measurements where `0` is valid (LUFS, BPM) silently hides errors. Use `None` to represent "no data".
+
+---
 
 ## Future Improvements
 

@@ -9,6 +9,8 @@ from typing import Optional
 class LoudnessMeasurer:
     """Measure audio loudness in LUFS using ffmpeg."""
 
+    _verified_paths: set[str] = set()
+
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         """Initialize loudness measurer.
 
@@ -19,7 +21,10 @@ class LoudnessMeasurer:
         self._verify_ffmpeg()
 
     def _verify_ffmpeg(self) -> None:
-        """Verify ffmpeg is available."""
+        """Verify ffmpeg is available (cached per path)."""
+        if self.ffmpeg_path in LoudnessMeasurer._verified_paths:
+            return
+
         try:
             result = subprocess.run(
                 [self.ffmpeg_path, "-version"],
@@ -33,6 +38,8 @@ class LoudnessMeasurer:
             raise RuntimeError(f"ffmpeg not found at: {self.ffmpeg_path}")
         except subprocess.TimeoutExpired:
             raise RuntimeError("ffmpeg timed out")
+
+        LoudnessMeasurer._verified_paths.add(self.ffmpeg_path)
 
     def measure(self, file_path: str) -> Optional[float]:
         """Measure integrated loudness of an audio file.
@@ -70,16 +77,16 @@ class LoudnessMeasurer:
         except Exception:
             return None
 
-    def _parse_loudnorm_output(self, stderr: str) -> Optional[float]:
-        """Parse loudnorm JSON output from ffmpeg stderr.
+    @staticmethod
+    def _parse_ffmpeg_json(stderr: str) -> Optional[dict]:
+        """Parse JSON block from ffmpeg stderr output.
 
         Args:
             stderr: ffmpeg stderr output
 
         Returns:
-            Integrated loudness in LUFS
+            Parsed JSON dict, or None if no valid JSON found
         """
-        # Find the JSON block in stderr
         lines = stderr.split("\n")
         json_lines = []
         in_json = False
@@ -98,9 +105,30 @@ class LoudnessMeasurer:
 
         try:
             json_str = "\n".join(json_lines)
-            data = json.loads(json_str)
-            return float(data.get("input_i", 0))
+            return json.loads(json_str)
         except (json.JSONDecodeError, ValueError):
+            return None
+
+    def _parse_loudnorm_output(self, stderr: str) -> Optional[float]:
+        """Parse loudnorm JSON output from ffmpeg stderr.
+
+        Args:
+            stderr: ffmpeg stderr output
+
+        Returns:
+            Integrated loudness in LUFS
+        """
+        data = self._parse_ffmpeg_json(stderr)
+        if data is None:
+            return None
+
+        input_i = data.get("input_i")
+        if input_i is None:
+            return None
+
+        try:
+            return float(input_i)
+        except (TypeError, ValueError):
             return None
 
     def measure_detailed(self, file_path: str) -> Optional[dict]:
@@ -129,24 +157,8 @@ class LoudnessMeasurer:
                 timeout=120,
             )
 
-            # Parse JSON from stderr
-            stderr = result.stderr
-            lines = stderr.split("\n")
-            json_lines = []
-            in_json = False
-
-            for line in lines:
-                if "{" in line:
-                    in_json = True
-                    json_lines.append(line[line.index("{"):])
-                elif in_json:
-                    json_lines.append(line)
-                    if "}" in line:
-                        break
-
-            if json_lines:
-                json_str = "\n".join(json_lines)
-                data = json.loads(json_str)
+            data = self._parse_ffmpeg_json(result.stderr)
+            if data is not None:
                 return {
                     "integrated": float(data.get("input_i", 0)),
                     "true_peak": float(data.get("input_tp", 0)),

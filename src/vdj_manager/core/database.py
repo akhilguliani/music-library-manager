@@ -17,6 +17,7 @@ class VDJDatabase:
         self._root: Optional[etree._Element] = None
         self._songs: dict[str, Song] = {}
         self._playlists: list[Playlist] = []
+        self._filepath_to_elem: dict[str, etree._Element] = {}
 
     @property
     def is_loaded(self) -> bool:
@@ -32,12 +33,14 @@ class VDJDatabase:
         self._tree = etree.parse(str(self.db_path), parser)
         self._root = self._tree.getroot()
 
-        # Parse all songs
+        # Parse all songs and build element index
         self._songs.clear()
+        self._filepath_to_elem.clear()
         for song_elem in self._root.iter("Song"):
             song = self._parse_song(song_elem)
             if song:
                 self._songs[song.file_path] = song
+                self._filepath_to_elem[song.file_path] = song_elem
 
         # Parse playlists
         self._playlists.clear()
@@ -240,79 +243,88 @@ class VDJDatabase:
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
-        # Find the song element
-        for song_elem in self._root.iter("Song"):
-            if song_elem.get("FilePath") == file_path:
-                tags_elem = song_elem.find("Tags")
-                if tags_elem is None:
-                    tags_elem = etree.SubElement(song_elem, "Tags")
+        song_elem = self._filepath_to_elem.get(file_path)
+        if song_elem is None:
+            return False
 
-                for key, value in kwargs.items():
-                    if value is not None:
-                        tags_elem.set(key, str(value))
-                    elif key in tags_elem.attrib:
-                        del tags_elem.attrib[key]
+        tags_elem = song_elem.find("Tags")
+        if tags_elem is None:
+            tags_elem = etree.SubElement(song_elem, "Tags")
 
-                # Update in-memory model
-                if file_path in self._songs:
-                    song = self._songs[file_path]
-                    if song.tags is None:
-                        song.tags = Tags()
-                    for key, value in kwargs.items():
-                        if hasattr(song.tags, key.lower()):
-                            setattr(song.tags, key.lower(), value)
+        for key, value in kwargs.items():
+            if value is not None:
+                tags_elem.set(key, str(value))
+            elif key in tags_elem.attrib:
+                del tags_elem.attrib[key]
 
-                return True
-        return False
+        # Update in-memory model
+        if file_path in self._songs:
+            song = self._songs[file_path]
+            if song.tags is None:
+                song.tags = Tags()
+            for key, value in kwargs.items():
+                if hasattr(song.tags, key.lower()):
+                    setattr(song.tags, key.lower(), value)
+
+        return True
 
     def update_song_scan(self, file_path: str, **kwargs) -> bool:
         """Update scan data for a song in the XML tree."""
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
-        for song_elem in self._root.iter("Song"):
-            if song_elem.get("FilePath") == file_path:
-                scan_elem = song_elem.find("Scan")
-                if scan_elem is None:
-                    scan_elem = etree.SubElement(song_elem, "Scan")
+        song_elem = self._filepath_to_elem.get(file_path)
+        if song_elem is None:
+            return False
 
-                for key, value in kwargs.items():
-                    if value is not None:
-                        scan_elem.set(key, str(value))
+        scan_elem = song_elem.find("Scan")
+        if scan_elem is None:
+            scan_elem = etree.SubElement(song_elem, "Scan")
 
-                return True
-        return False
+        for key, value in kwargs.items():
+            if value is not None:
+                scan_elem.set(key, str(value))
+
+        return True
 
     def remap_path(self, old_path: str, new_path: str) -> bool:
         """Remap a file path in the database."""
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
-        for song_elem in self._root.iter("Song"):
-            if song_elem.get("FilePath") == old_path:
-                song_elem.set("FilePath", new_path)
+        song_elem = self._filepath_to_elem.get(old_path)
+        if song_elem is None:
+            return False
 
-                # Update in-memory model
-                if old_path in self._songs:
-                    song = self._songs.pop(old_path)
-                    song.file_path = new_path
-                    self._songs[new_path] = song
+        song_elem.set("FilePath", new_path)
 
-                return True
-        return False
+        # Update element index
+        del self._filepath_to_elem[old_path]
+        self._filepath_to_elem[new_path] = song_elem
+
+        # Update in-memory model
+        if old_path in self._songs:
+            song = self._songs.pop(old_path)
+            song.file_path = new_path
+            self._songs[new_path] = song
+
+        return True
 
     def remove_song(self, file_path: str) -> bool:
         """Remove a song from the database."""
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
-        for song_elem in self._root.iter("Song"):
-            if song_elem.get("FilePath") == file_path:
-                parent = song_elem.getparent()
-                if parent is not None:
-                    parent.remove(song_elem)
-                    self._songs.pop(file_path, None)
-                    return True
+        song_elem = self._filepath_to_elem.get(file_path)
+        if song_elem is None:
+            return False
+
+        parent = song_elem.getparent()
+        if parent is not None:
+            parent.remove(song_elem)
+            self._songs.pop(file_path, None)
+            self._filepath_to_elem.pop(file_path, None)
+            return True
         return False
 
     def add_song(self, file_path: str, file_size: Optional[int] = None) -> etree._Element:
@@ -325,9 +337,10 @@ class VDJDatabase:
         if file_size is not None:
             song_elem.set("FileSize", str(file_size))
 
-        # Add to in-memory model
+        # Add to in-memory model and element index
         song = Song(FilePath=file_path, FileSize=file_size)
         self._songs[file_path] = song
+        self._filepath_to_elem[file_path] = song_elem
 
         return song_elem
 
@@ -401,14 +414,13 @@ class VDJDatabase:
                 else:
                     stats["skipped"] += 1
             else:
-                # Add new song (copy XML element)
-                for song_elem in other._root.iter("Song"):
-                    if song_elem.get("FilePath") == file_path:
-                        # Deep copy the element
-                        new_elem = etree.fromstring(etree.tostring(song_elem))
-                        self._root.append(new_elem)
-                        self._songs[file_path] = other_song
-                        stats["added"] += 1
-                        break
+                # Add new song (copy XML element via index)
+                song_elem = other._filepath_to_elem.get(file_path)
+                if song_elem is not None:
+                    new_elem = etree.fromstring(etree.tostring(song_elem))
+                    self._root.append(new_elem)
+                    self._songs[file_path] = other_song
+                    self._filepath_to_elem[file_path] = new_elem
+                    stats["added"] += 1
 
         return stats

@@ -11,6 +11,11 @@ class FileValidator:
     """Validates files and detects non-audio entries."""
 
     @staticmethod
+    def _get_extension(path: str) -> str:
+        """Extract lowercase file extension from a path."""
+        return Path(path).suffix.lower()
+
+    @staticmethod
     def is_audio_file(path: str) -> bool:
         """Check if a file path has an audio extension."""
         ext = Path(path).suffix.lower()
@@ -20,6 +25,16 @@ class FileValidator:
     def is_non_audio_file(path: str) -> bool:
         """Check if a file path has a known non-audio extension."""
         ext = Path(path).suffix.lower()
+        return ext in NON_AUDIO_EXTENSIONS
+
+    @staticmethod
+    def _is_audio_ext(ext: str) -> bool:
+        """Check if an extension is an audio extension (pre-extracted)."""
+        return ext in AUDIO_EXTENSIONS
+
+    @staticmethod
+    def _is_non_audio_ext(ext: str) -> bool:
+        """Check if an extension is a non-audio extension (pre-extracted)."""
         return ext in NON_AUDIO_EXTENSIONS
 
     @staticmethod
@@ -46,15 +61,16 @@ class FileValidator:
         Returns:
             Dict with validation results
         """
+        ext = self._get_extension(song.file_path)
         result = {
             "file_path": song.file_path,
-            "is_audio": self.is_audio_file(song.file_path),
-            "is_non_audio": self.is_non_audio_file(song.file_path),
+            "is_audio": self._is_audio_ext(ext),
+            "is_non_audio": self._is_non_audio_ext(ext),
             "is_windows_path": song.is_windows_path,
             "is_netsearch": song.is_netsearch,
             "exists": False,
             "size_match": None,
-            "extension": song.extension,
+            "extension": ext,
         }
 
         # Only check existence for local paths
@@ -92,11 +108,15 @@ class FileValidator:
                 non_audio.append(song)
         return non_audio
 
-    def categorize_entries(self, songs: Iterator[Song]) -> dict:
+    def categorize_entries(self, songs: Iterator[Song], collect_extensions: bool = False) -> dict:
         """Categorize all entries by type.
 
+        Args:
+            songs: Iterator of Song objects
+            collect_extensions: If True, also collect extension counts
+
         Returns:
-            Dict with categorized song lists
+            Dict with categorized song lists (and 'extensions' if collect_extensions)
         """
         categories = {
             "audio_exists": [],
@@ -106,8 +126,13 @@ class FileValidator:
             "netsearch": [],
             "unknown": [],
         }
+        extensions: dict[str, int] = {}
 
         for song in songs:
+            if collect_extensions:
+                ext = self._get_extension(song.file_path) or "(none)"
+                extensions[ext] = extensions.get(ext, 0) + 1
+
             if song.is_netsearch:
                 categories["netsearch"].append(song)
             elif song.is_windows_path:
@@ -122,6 +147,9 @@ class FileValidator:
             else:
                 categories["unknown"].append(song)
 
+        if collect_extensions:
+            categories["extensions"] = extensions
+
         return categories
 
     def generate_report(self, songs: list[Song]) -> dict:
@@ -133,13 +161,9 @@ class FileValidator:
         Returns:
             Dict with report data
         """
-        categories = self.categorize_entries(iter(songs))
+        categories = self.categorize_entries(iter(songs), collect_extensions=True)
 
-        # Group by extension
-        extensions: dict[str, int] = {}
-        for song in songs:
-            ext = song.extension or "(none)"
-            extensions[ext] = extensions.get(ext, 0) + 1
+        extensions = categories.pop("extensions", {})
 
         # Group Windows paths by drive
         windows_drives: dict[str, int] = {}
