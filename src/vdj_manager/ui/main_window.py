@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
+from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 
 
@@ -65,28 +66,7 @@ class MainWindow(QMainWindow):
 
     def _create_files_tab(self) -> None:
         """Create the file management tab."""
-        # Placeholder - will be replaced with FilesPanel
-        self.files_panel = QWidget()
-        layout = QVBoxLayout(self.files_panel)
-
-        label = QLabel("File Management")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-
-        info_label = QLabel(
-            "Manage files in your VirtualDJ database.\n\n"
-            "Features:\n"
-            "- Scan directories for new files\n"
-            "- Import files into database\n"
-            "- Remove missing entries\n"
-            "- Remap Windows paths\n"
-            "- Find duplicates"
-        )
-        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-        layout.addStretch()
-
+        self.files_panel = FilesPanel()
         self.tab_widget.addTab(self.files_panel, "Files")
 
     def _create_analysis_tab(self) -> None:
