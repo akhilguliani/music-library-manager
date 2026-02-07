@@ -1,6 +1,8 @@
 """Results table widget for displaying processing results."""
 
-from typing import Any
+import csv
+from pathlib import Path
+from typing import Any, Callable
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -147,3 +149,146 @@ class ResultsTable(QWidget):
             Number of rows.
         """
         return self.table.rowCount()
+
+    def export_to_csv(self, file_path: str) -> int:
+        """Export all results to a CSV file.
+
+        Args:
+            file_path: Path to write the CSV file.
+
+        Returns:
+            Number of rows exported.
+        """
+        results = self.get_all_results()
+        if not results:
+            return 0
+
+        with open(file_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=results[0].keys())
+            writer.writeheader()
+            writer.writerows(results)
+
+        return len(results)
+
+
+class ConfigurableResultsTable(QWidget):
+    """A results table with configurable columns.
+
+    Each column is defined by a dict with:
+    - name: Column header text
+    - key: Key to look up in result dict
+    - width: Optional fixed width (default: stretch first column, resize-to-contents others)
+    - color_fn: Optional callable(value) -> QColor or None for color coding
+    - alignment: Optional Qt alignment flag (default: AlignLeft for first col, AlignRight for others)
+    - tooltip_key: Optional key in result dict to use as tooltip
+    """
+
+    def __init__(
+        self,
+        columns: list[dict[str, Any]],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._columns = columns
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(len(self._columns))
+        self.table.setHorizontalHeaderLabels([c["name"] for c in self._columns])
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+
+        header = self.table.horizontalHeader()
+        for i, col in enumerate(self._columns):
+            if "width" in col:
+                self.table.setColumnWidth(i, col["width"])
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
+            elif i == 0:
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+            else:
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+
+        layout.addWidget(self.table)
+
+    def clear(self) -> None:
+        self.table.setRowCount(0)
+
+    @Slot(dict)
+    def add_result(self, result: dict[str, Any]) -> None:
+        """Add a result row to the table.
+
+        Args:
+            result: Dict with keys matching column 'key' fields.
+        """
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        for i, col in enumerate(self._columns):
+            value = result.get(col["key"])
+            text = str(value) if value is not None else "-"
+            item = QTableWidgetItem(text)
+
+            # Alignment
+            if "alignment" in col:
+                item.setTextAlignment(col["alignment"])
+            elif i > 0:
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+
+            # Color function
+            color_fn = col.get("color_fn")
+            if color_fn is not None and value is not None:
+                color = color_fn(value)
+                if color is not None:
+                    item.setForeground(color)
+
+            # Tooltip
+            tooltip_key = col.get("tooltip_key")
+            if tooltip_key and tooltip_key in result:
+                item.setToolTip(str(result[tooltip_key]))
+
+            self.table.setItem(row, i, item)
+
+        self.table.scrollToBottom()
+
+    def get_all_results(self) -> list[dict[str, Any]]:
+        """Get all results as a list of dicts keyed by column key."""
+        results = []
+        for row in range(self.table.rowCount()):
+            result = {}
+            for i, col in enumerate(self._columns):
+                item = self.table.item(row, i)
+                result[col["key"]] = item.text() if item else ""
+            results.append(result)
+        return results
+
+    def row_count(self) -> int:
+        return self.table.rowCount()
+
+    def export_to_csv(self, file_path: str) -> int:
+        """Export all results to a CSV file.
+
+        Args:
+            file_path: Path to write the CSV file.
+
+        Returns:
+            Number of rows exported.
+        """
+        results = self.get_all_results()
+        if not results:
+            return 0
+
+        with open(file_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=results[0].keys())
+            writer.writeheader()
+            writer.writerows(results)
+
+        return len(results)

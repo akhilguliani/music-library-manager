@@ -14,6 +14,17 @@ class TaskType(str, Enum):
     MEASURE = "measure"
     ANALYZE_ENERGY = "analyze_energy"
     ANALYZE_MOOD = "analyze_mood"
+    BACKUP = "backup"
+    VALIDATE = "validate"
+    CLEAN = "clean"
+    SCAN = "scan"
+    IMPORT = "import"
+    REMOVE = "remove"
+    REMAP = "remap"
+    DUPLICATES = "duplicates"
+    IMPORT_MIK = "import_mik"
+    TAG_SET = "tag_set"
+    EXPORT_SERATO = "export_serato"
 
 
 class TaskStatus(str, Enum):
