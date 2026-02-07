@@ -287,3 +287,48 @@ class SimpleWorker(QThread):
             self.finished_work.emit(result)
         except Exception as e:
             self.error.emit(str(e))
+
+
+class ProgressSimpleWorker(QThread):
+    """Non-pausable worker with progress feedback.
+
+    Use this for operations that don't need pause/resume but do need
+    to report progress (e.g., validation, scanning).
+
+    Signals:
+        progress: Emitted with progress updates (current, total, message)
+        finished_work: Emitted when work completes (result)
+        error: Emitted on error (error_message)
+    """
+
+    progress = Signal(int, int, str)  # current, total, message
+    finished_work = Signal(object)  # result
+    error = Signal(str)  # error message
+
+    def __init__(self, parent: Any = None) -> None:
+        super().__init__(parent)
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        """Request cancellation."""
+        self._is_cancelled = True
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._is_cancelled
+
+    @abstractmethod
+    def do_work(self) -> Any:
+        """Perform the work. Subclass should call self.report_progress() periodically."""
+        raise NotImplementedError
+
+    def report_progress(self, current: int, total: int, message: str = "") -> None:
+        """Emit progress from within do_work()."""
+        self.progress.emit(current, total, message)
+
+    def run(self) -> None:
+        try:
+            result = self.do_work()
+            self.finished_work.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
