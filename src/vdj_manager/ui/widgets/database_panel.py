@@ -30,6 +30,8 @@ from vdj_manager.ui.workers.database_worker import (
     DatabaseLoadWorker,
     DatabaseLoadResult,
     BackupWorker,
+    ValidateWorker,
+    CleanWorker,
 )
 
 
@@ -62,6 +64,8 @@ class DatabasePanel(QWidget):
         self._tracks: list[Song] = []
         self._load_worker: DatabaseLoadWorker | None = None
         self._backup_worker: BackupWorker | None = None
+        self._validate_worker: ValidateWorker | None = None
+        self._clean_worker: CleanWorker | None = None
 
         self._setup_ui()
 
@@ -95,11 +99,13 @@ class DatabasePanel(QWidget):
         self.validate_btn = QPushButton("Validate")
         self.validate_btn.setEnabled(False)
         self.validate_btn.setToolTip("Check file existence and validate entries")
+        self.validate_btn.clicked.connect(self._on_validate_clicked)
         actions_layout.addWidget(self.validate_btn)
 
         self.clean_btn = QPushButton("Clean")
         self.clean_btn.setEnabled(False)
         self.clean_btn.setToolTip("Remove invalid entries from database")
+        self.clean_btn.clicked.connect(self._on_clean_clicked)
         actions_layout.addWidget(self.clean_btn)
 
         actions_layout.addStretch()
@@ -430,4 +436,144 @@ class DatabasePanel(QWidget):
         """Handle backup error."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup failed: {error}")
+        self.status_label.setStyleSheet("color: red;")
+
+    def _on_validate_clicked(self) -> None:
+        """Handle validate button click."""
+        if not self._tracks:
+            return
+        if self._validate_worker is not None and self._validate_worker.isRunning():
+            QMessageBox.warning(self, "Validation In Progress", "Validation is already running.")
+            return
+
+        self.validate_btn.setEnabled(False)
+        self.status_label.setText("Validating...")
+        self.status_label.setStyleSheet("color: blue;")
+
+        self._validate_worker = ValidateWorker(self._tracks)
+        self._validate_worker.finished_work.connect(self._on_validate_finished)
+        self._validate_worker.error.connect(self._on_validate_error)
+        self._validate_worker.start()
+
+    @Slot(object)
+    def _on_validate_finished(self, report: dict) -> None:
+        """Handle validation completion."""
+        self.validate_btn.setEnabled(True)
+
+        total = report.get("total", 0)
+        valid = report.get("audio_valid", 0)
+        missing = report.get("audio_missing", 0)
+        non_audio = report.get("non_audio", 0)
+        windows = report.get("windows_paths", 0)
+
+        summary = (
+            f"Validation: {valid} valid, {missing} missing, "
+            f"{non_audio} non-audio, {windows} Windows paths"
+        )
+        self.status_label.setText(summary)
+        self.status_label.setStyleSheet("color: green;" if missing == 0 else "color: orange;")
+
+        # Store for potential clean operation
+        self._last_validation = report
+
+        # Show dialog with details
+        detail_lines = [f"Total entries: {total}"]
+        detail_lines.append(f"Valid audio files: {valid}")
+        if missing > 0:
+            detail_lines.append(f"Missing files: {missing}")
+        if non_audio > 0:
+            detail_lines.append(f"Non-audio entries: {non_audio}")
+        if windows > 0:
+            detail_lines.append(f"Windows paths: {windows}")
+        netsearch = report.get("netsearch", 0)
+        if netsearch > 0:
+            detail_lines.append(f"Streaming entries: {netsearch}")
+
+        QMessageBox.information(
+            self, "Validation Results", "\n".join(detail_lines)
+        )
+
+    @Slot(str)
+    def _on_validate_error(self, error: str) -> None:
+        """Handle validation error."""
+        self.validate_btn.setEnabled(True)
+        self.status_label.setText(f"Validation failed: {error}")
+        self.status_label.setStyleSheet("color: red;")
+
+    def _on_clean_clicked(self) -> None:
+        """Handle clean button click."""
+        if self._database is None or not self._tracks:
+            return
+        if self._clean_worker is not None and self._clean_worker.isRunning():
+            QMessageBox.warning(self, "Clean In Progress", "Clean is already running.")
+            return
+
+        # Determine what to clean
+        from vdj_manager.files.validator import FileValidator
+        validator = FileValidator()
+        categories = validator.categorize_entries(iter(self._tracks))
+
+        non_audio = categories.get("non_audio", [])
+        missing = categories.get("audio_missing", [])
+        to_remove = non_audio + missing
+
+        if not to_remove:
+            QMessageBox.information(
+                self, "Nothing to Clean",
+                "No invalid entries found in the database."
+            )
+            return
+
+        # Confirm with user
+        msg = (
+            f"Found {len(to_remove)} entries to remove:\n"
+            f"  - {len(non_audio)} non-audio entries\n"
+            f"  - {len(missing)} missing files\n\n"
+            f"A backup will be created first. Continue?"
+        )
+        reply = QMessageBox.question(
+            self, "Confirm Clean", msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Create backup first
+        try:
+            from vdj_manager.core.backup import BackupManager
+            manager = BackupManager()
+            manager.create_backup(self._database.db_path, label="pre_clean")
+        except Exception as e:
+            QMessageBox.warning(self, "Backup Failed", f"Could not create backup: {e}")
+            return
+
+        self.clean_btn.setEnabled(False)
+        self.status_label.setText("Cleaning...")
+        self.status_label.setStyleSheet("color: blue;")
+
+        self._clean_worker = CleanWorker(self._database, to_remove)
+        self._clean_worker.finished_work.connect(self._on_clean_finished)
+        self._clean_worker.error.connect(self._on_clean_error)
+        self._clean_worker.start()
+
+    @Slot(object)
+    def _on_clean_finished(self, removed_count: int) -> None:
+        """Handle clean completion."""
+        self.clean_btn.setEnabled(True)
+        self.status_label.setText(f"Cleaned {removed_count} entries")
+        self.status_label.setStyleSheet("color: green;")
+
+        # Refresh tracks
+        if self._database is not None:
+            self._tracks = list(self._database.iter_songs())
+            self.track_model.set_tracks(self._tracks)
+            self._update_result_count()
+            stats = self._database.get_stats()
+            self._update_stats(stats)
+
+    @Slot(str)
+    def _on_clean_error(self, error: str) -> None:
+        """Handle clean error."""
+        self.clean_btn.setEnabled(True)
+        self.status_label.setText(f"Clean failed: {error}")
         self.status_label.setStyleSheet("color: red;")

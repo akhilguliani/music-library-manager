@@ -8,6 +8,7 @@ from PySide6.QtCore import Signal
 from vdj_manager.core.backup import BackupManager
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song, DatabaseStats
+from vdj_manager.files.validator import FileValidator
 from vdj_manager.ui.workers.base_worker import SimpleWorker
 
 
@@ -156,3 +157,48 @@ class BackupWorker(SimpleWorker):
         """
         manager = BackupManager()
         return manager.create_backup(self.db_path, label=self.label)
+
+
+class ValidateWorker(SimpleWorker):
+    """Worker for validating database entries in the background."""
+
+    def __init__(self, tracks: list[Song], parent: Any = None) -> None:
+        super().__init__(parent)
+        self.tracks = tracks
+
+    def do_work(self) -> dict:
+        """Validate all tracks and return a report.
+
+        Returns:
+            Validation report dict from FileValidator.generate_report().
+        """
+        validator = FileValidator()
+        return validator.generate_report(self.tracks)
+
+
+class CleanWorker(SimpleWorker):
+    """Worker for cleaning invalid entries from the database."""
+
+    def __init__(
+        self,
+        database: VDJDatabase,
+        tracks_to_remove: list[Song],
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self.database = database
+        self.tracks_to_remove = tracks_to_remove
+
+    def do_work(self) -> int:
+        """Remove invalid entries from the database.
+
+        Returns:
+            Number of entries removed.
+        """
+        removed = 0
+        for song in self.tracks_to_remove:
+            if self.database.remove_song(song.file_path):
+                removed += 1
+        if removed > 0:
+            self.database.save()
+        return removed

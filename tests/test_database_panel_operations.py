@@ -5,11 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QCoreApplication
 
+from vdj_manager.core.models import Song, Tags
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
-from vdj_manager.ui.workers.database_worker import BackupWorker
+from vdj_manager.ui.workers.database_worker import BackupWorker, ValidateWorker, CleanWorker
 
 
 @pytest.fixture(scope="module")
@@ -105,3 +106,134 @@ class TestDatabasePanelBackup:
         assert panel.backup_btn.isEnabled()
         assert "Backup failed" in panel.status_label.text()
         assert "File not found" in panel.status_label.text()
+
+
+def _make_song(path: str, is_netsearch: bool = False) -> Song:
+    """Helper to create a Song for testing."""
+    return Song(file_path=path, tags=Tags(author="Artist", title="Title"))
+
+
+class TestValidateWorker:
+    """Tests for ValidateWorker."""
+
+    def test_validate_worker_runs(self, qapp):
+        tracks = [_make_song("/music/song.mp3")]
+        worker = ValidateWorker(tracks)
+        results = []
+        worker.finished_work.connect(lambda r: results.append(r))
+        worker.start()
+        worker.wait(5000)
+        QCoreApplication.processEvents()
+
+        assert len(results) == 1
+        report = results[0]
+        assert "total" in report
+        assert report["total"] == 1
+
+    def test_validate_worker_counts_categories(self, qapp):
+        tracks = [
+            _make_song("/music/song.mp3"),
+            _make_song("/music/video.mp4"),
+        ]
+        worker = ValidateWorker(tracks)
+        results = []
+        worker.finished_work.connect(lambda r: results.append(r))
+        worker.start()
+        worker.wait(5000)
+        QCoreApplication.processEvents()
+
+        assert len(results) == 1
+        report = results[0]
+        assert report["total"] == 2
+        assert report["non_audio"] >= 1  # mp4 is non-audio
+
+
+class TestDatabasePanelValidate:
+    """Tests for validation in DatabasePanel."""
+
+    def test_on_validate_finished_shows_summary(self, qapp):
+        panel = DatabasePanel()
+        report = {
+            "total": 100,
+            "audio_valid": 90,
+            "audio_missing": 5,
+            "non_audio": 3,
+            "windows_paths": 2,
+            "netsearch": 0,
+            "unknown": 0,
+        }
+
+        with patch.object(QMessageBox, "information"):
+            panel._on_validate_finished(report)
+
+        assert panel.validate_btn.isEnabled()
+        assert "90 valid" in panel.status_label.text()
+        assert "5 missing" in panel.status_label.text()
+
+    def test_on_validate_finished_green_when_no_missing(self, qapp):
+        panel = DatabasePanel()
+        report = {
+            "total": 100,
+            "audio_valid": 100,
+            "audio_missing": 0,
+            "non_audio": 0,
+            "windows_paths": 0,
+            "netsearch": 0,
+        }
+
+        with patch.object(QMessageBox, "information"):
+            panel._on_validate_finished(report)
+
+        assert "green" in panel.status_label.styleSheet()
+
+    def test_on_validate_error(self, qapp):
+        panel = DatabasePanel()
+        panel._on_validate_error("Something went wrong")
+
+        assert panel.validate_btn.isEnabled()
+        assert "Validation failed" in panel.status_label.text()
+
+    def test_validate_no_tracks_does_nothing(self, qapp):
+        panel = DatabasePanel()
+        panel._on_validate_clicked()
+        assert panel._validate_worker is None
+
+
+class TestDatabasePanelClean:
+    """Tests for clean operation in DatabasePanel."""
+
+    def test_clean_nothing_to_clean(self, qapp):
+        panel = DatabasePanel()
+        panel._database = MagicMock()
+        panel._tracks = [_make_song("/existing/song.mp3")]
+
+        with patch("vdj_manager.files.validator.FileValidator.categorize_entries") as mock_cat:
+            mock_cat.return_value = {
+                "non_audio": [],
+                "audio_missing": [],
+                "audio_exists": [_make_song("/existing/song.mp3")],
+                "windows_paths": [],
+                "netsearch": [],
+                "unknown": [],
+            }
+            with patch.object(QMessageBox, "information") as mock_info:
+                panel._on_clean_clicked()
+                mock_info.assert_called_once()
+
+    def test_on_clean_finished(self, qapp):
+        panel = DatabasePanel()
+        panel._database = MagicMock()
+        panel._database.iter_songs.return_value = iter([])
+        panel._database.get_stats.return_value = None
+
+        panel._on_clean_finished(5)
+
+        assert panel.clean_btn.isEnabled()
+        assert "Cleaned 5" in panel.status_label.text()
+
+    def test_on_clean_error(self, qapp):
+        panel = DatabasePanel()
+        panel._on_clean_error("Remove failed")
+
+        assert panel.clean_btn.isEnabled()
+        assert "Clean failed" in panel.status_label.text()
