@@ -41,6 +41,7 @@ def _measure_single_file(args: tuple) -> NormalizationResult:
 
     try:
         # Check cache first
+        cache = None
         if cache_db_path:
             from .measurement_cache import MeasurementCache
 
@@ -66,11 +67,8 @@ def _measure_single_file(args: tuple) -> NormalizationResult:
 
         gain = target_lufs - lufs
 
-        # Write to cache
-        if cache_db_path:
-            from .measurement_cache import MeasurementCache
-
-            cache = MeasurementCache(db_path=Path(cache_db_path))
+        # Write to cache (reuse instance from above)
+        if cache is not None:
             cache.put(file_path, target_lufs, {
                 "integrated_lufs": lufs,
                 "gain_db": round(gain, 2),
@@ -119,6 +117,7 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
 
         # First pass: measure (check cache for detailed metrics)
         measurements = None
+        cache = None
         if cache_db_path:
             from .measurement_cache import MeasurementCache
 
