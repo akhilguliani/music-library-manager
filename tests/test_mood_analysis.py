@@ -242,6 +242,22 @@ class TestAnalyzeMoodSingleOnline:
             assert result["mood"] == "happy"
             assert result["status"] == "cached"
 
+    def test_skip_cache_invalidates_and_reanalyzes(self):
+        """skip_cache=True should invalidate cache and re-analyze."""
+        with patch("vdj_manager.analysis.analysis_cache.AnalysisCache") as MockCache, \
+             patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
+            mock_lookup.return_value = ("happy", "lastfm")
+            result = _analyze_mood_single(
+                "/a.mp3", cache_db_path="/tmp/cache.db",
+                artist="Artist", title="Title",
+                enable_online=True, lastfm_api_key="key",
+                skip_cache=True,
+            )
+            MockCache.return_value.invalidate.assert_called_once_with("/a.mp3")
+            MockCache.return_value.get.assert_not_called()
+            assert result["mood"] == "happy"
+            assert result["status"] == "ok (lastfm)"
+
 
 # =============================================================================
 # MoodWorker tests
@@ -562,3 +578,22 @@ class TestAnalysisPanelMoodHandlers:
         panel = AnalysisPanel()
         assert panel.mood_progress is not None
         assert not panel.mood_progress.isVisible()
+
+    def test_reanalyze_button_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_reanalyze_btn is not None
+        assert not panel.mood_reanalyze_btn.isEnabled()
+
+    def test_reanalyze_button_enabled_with_database(self, qapp):
+        panel = AnalysisPanel()
+        mock_db = MagicMock()
+        panel.set_database(mock_db, [_make_song("/a.mp3")])
+        assert panel.mood_reanalyze_btn.isEnabled()
+
+    def test_reanalyze_no_unknown_tracks_shows_info(self, qapp):
+        panel = AnalysisPanel()
+        panel._database = MagicMock()
+        panel._tracks = [_make_song("/a.mp3")]
+        with patch.object(QMessageBox, "information") as mock_info:
+            panel._on_mood_reanalyze_clicked()
+            mock_info.assert_called_once()

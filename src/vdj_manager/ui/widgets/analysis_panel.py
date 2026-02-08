@@ -76,6 +76,7 @@ class AnalysisPanel(QWidget):
         self.energy_untagged_btn.setEnabled(has_db)
         self.mik_scan_btn.setEnabled(has_db)
         self.mood_btn.setEnabled(has_db)
+        self.mood_reanalyze_btn.setEnabled(has_db)
         self._update_track_info()
 
     def _setup_ui(self) -> None:
@@ -253,6 +254,14 @@ class AnalysisPanel(QWidget):
         self.mood_btn.clicked.connect(self._on_mood_clicked)
         controls_layout.addWidget(self.mood_btn)
 
+        self.mood_reanalyze_btn = QPushButton("Re-analyze Unknown")
+        self.mood_reanalyze_btn.setEnabled(False)
+        self.mood_reanalyze_btn.setToolTip(
+            "Re-analyze tracks tagged #unknown using online lookup"
+        )
+        self.mood_reanalyze_btn.clicked.connect(self._on_mood_reanalyze_clicked)
+        controls_layout.addWidget(self.mood_reanalyze_btn)
+
         controls_layout.addStretch()
 
         self.mood_status = QLabel("")
@@ -300,7 +309,13 @@ class AnalysisPanel(QWidget):
             f"{len(audio_tracks)} audio tracks, {len(untagged)} without energy tags"
         )
         self.mik_info_label.setText(f"{len(audio_tracks)} audio tracks to scan")
-        self.mood_info_label.setText(f"{len(audio_tracks)} audio tracks")
+        unknown_mood = [
+            t for t in audio_tracks
+            if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
+        ]
+        self.mood_info_label.setText(
+            f"{len(audio_tracks)} audio tracks, {len(unknown_mood)} with #unknown mood"
+        )
 
     def _get_audio_tracks(self, untagged_only: bool = False) -> list[Song]:
         """Get filterable audio tracks, respecting duration and count limits.
@@ -572,10 +587,73 @@ class AnalysisPanel(QWidget):
 
         self._mood_worker.start()
 
+    def _on_mood_reanalyze_clicked(self) -> None:
+        """Re-analyze tracks with #unknown mood using online lookup."""
+        if self.is_running():
+            QMessageBox.warning(self, "Already Running", "An analysis is already in progress.")
+            return
+        if self._database is None:
+            return
+
+        # Filter to tracks with #unknown in User2
+        all_tracks = self._get_audio_tracks()
+        tracks = [
+            t for t in all_tracks
+            if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
+        ]
+        if not tracks:
+            QMessageBox.information(
+                self, "No Unknown Tracks",
+                "No tracks with #unknown mood tag found."
+            )
+            return
+
+        # Auto-backup
+        try:
+            from vdj_manager.core.backup import BackupManager
+            BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze")
+        except Exception:
+            pass
+
+        self.mood_btn.setEnabled(False)
+        self.mood_reanalyze_btn.setEnabled(False)
+        self.mood_status.setText(f"Re-analyzing {len(tracks)} unknown tracks...")
+        self.mood_results.clear()
+
+        lastfm_api_key = get_lastfm_api_key()
+
+        self._mood_worker = MoodWorker(
+            self._database, tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=True,
+            lastfm_api_key=lastfm_api_key,
+            skip_cache=True,
+        )
+        self._mood_worker.finished_work.connect(self._on_mood_finished)
+        self._mood_worker.error.connect(self._on_mood_error)
+        self._mood_worker.result_ready.connect(self.mood_results.add_result)
+
+        # Set up progress widget
+        self.mood_progress.reset()
+        self.mood_progress.start(len(tracks))
+        self.mood_progress.setVisible(True)
+        self._mood_worker.progress.connect(self.mood_progress.update_progress)
+        self._mood_worker.status_changed.connect(self.mood_progress.on_status_changed)
+        self._mood_worker.finished_work.connect(
+            lambda _: self.mood_progress.on_finished(True, "Done")
+        )
+        self.mood_progress.pause_requested.connect(self._mood_worker.pause)
+        self.mood_progress.resume_requested.connect(self._mood_worker.resume)
+        self.mood_progress.cancel_requested.connect(self._mood_worker.cancel)
+
+        self._mood_worker.start()
+
     @Slot(object)
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood analysis completion."""
         self.mood_btn.setEnabled(True)
+        self.mood_reanalyze_btn.setEnabled(True)
 
         if result.get("error"):
             self.mood_status.setText(f"Error: {result['error']}")
@@ -599,4 +677,5 @@ class AnalysisPanel(QWidget):
     def _on_mood_error(self, error: str) -> None:
         """Handle mood analysis error."""
         self.mood_btn.setEnabled(True)
+        self.mood_reanalyze_btn.setEnabled(True)
         self.mood_status.setText(f"Error: {error}")

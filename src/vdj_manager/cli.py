@@ -695,12 +695,13 @@ def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: 
 @analyze.command("mood")
 @click.option("--all", "analyze_all", is_flag=True, help="Analyze all tracks")
 @click.option("--untagged", is_flag=True, help="Only tracks without mood tags")
+@click.option("--update-unknown", is_flag=True, help="Re-analyze tracks with #unknown mood using online lookup")
 @click.option("--online/--no-online", default=True, help="Enable online mood lookup (Last.fm/MusicBrainz)")
 @click.option("--lastfm-key", help="Last.fm API key (overrides env var)")
 @click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
 @click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Optional[str], dry_run: bool, db_choice: str):
+def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online: bool, lastfm_key: Optional[str], dry_run: bool, db_choice: str):
     """Tag tracks with mood/emotion.
 
     Uses online databases (Last.fm, MusicBrainz) when available, with
@@ -745,7 +746,12 @@ def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Op
             continue
         if not Path(song.file_path).exists():
             continue
-        if untagged and song.tags and song.tags.user2:
+        if update_unknown:
+            # Only include tracks with #unknown mood
+            user2 = (song.tags.user2 or "") if song.tags else ""
+            if "#unknown" not in user2.split():
+                continue
+        elif untagged and song.tags and song.tags.user2:
             # Skip tracks that already have mood hashtags
             if any(w.startswith("#") for w in (song.tags.user2 or "").split()):
                 continue
@@ -756,6 +762,8 @@ def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Op
         return
 
     console.print(f"Found [bold]{len(to_analyze)}[/bold] tracks to analyze")
+    if update_unknown:
+        console.print("[cyan]Re-analyzing #unknown tracks (clearing cached results)[/cyan]")
 
     if dry_run:
         console.print("[yellow]Dry run - no analysis performed[/yellow]")
@@ -764,6 +772,13 @@ def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Op
     # Create backup
     backup_mgr = BackupManager()
     backup_mgr.create_backup(path, label="pre_mood")
+
+    # Invalidate cache for update-unknown tracks
+    if update_unknown:
+        from .analysis.analysis_cache import AnalysisCache, DEFAULT_ANALYSIS_CACHE_PATH
+        cache = AnalysisCache(db_path=DEFAULT_ANALYSIS_CACHE_PATH)
+        for song in to_analyze:
+            cache.invalidate(song.file_path)
 
     analyzed = 0
     failed = 0
@@ -798,7 +813,14 @@ def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Op
                 if mood:
                     mood_hashtag = f"#{mood}"
                     existing = (song.tags.user2 or "") if song and song.tags else ""
-                    if mood_hashtag not in existing.split():
+                    # When re-analyzing, replace #unknown with the new mood
+                    if update_unknown and "#unknown" in existing.split():
+                        words = existing.split()
+                        words = [w for w in words if w != "#unknown"]
+                        if mood_hashtag not in words:
+                            words.append(mood_hashtag)
+                        new_user2 = " ".join(words)
+                    elif mood_hashtag not in existing.split():
                         new_user2 = f"{existing} {mood_hashtag}".strip()
                     else:
                         new_user2 = existing

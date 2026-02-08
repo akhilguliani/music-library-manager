@@ -103,12 +103,16 @@ def _analyze_mood_single(
     title: str | None = None,
     lastfm_api_key: str | None = None,
     enable_online: bool = False,
+    skip_cache: bool = False,
 ) -> dict:
     """Analyze mood for a single file in a subprocess.
 
     When enable_online is True and artist+title are available, tries
     online lookup (Last.fm -> MusicBrainz) before falling back to
     local essentia analysis.
+
+    Args:
+        skip_cache: If True, ignore cached results and re-analyze.
 
     Returns:
         Dict with file_path, format, mood (str|None), and status.
@@ -119,9 +123,12 @@ def _analyze_mood_single(
         if cache_db_path:
             from vdj_manager.analysis.analysis_cache import AnalysisCache
             cache = AnalysisCache(db_path=Path(cache_db_path))
-            cached = cache.get(file_path, "mood")
-            if cached is not None:
-                return {"file_path": file_path, "format": fmt, "mood": cached, "status": "cached"}
+            if skip_cache:
+                cache.invalidate(file_path)
+            else:
+                cached = cache.get(file_path, "mood")
+                if cached is not None:
+                    return {"file_path": file_path, "format": fmt, "mood": cached, "status": "cached"}
 
         # Try online lookup first
         if enable_online and artist and title:
@@ -497,6 +504,7 @@ class MoodWorker(PausableAnalysisWorker):
         cache_db_path: str | None = None,
         enable_online: bool = False,
         lastfm_api_key: str | None = None,
+        skip_cache: bool = False,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -506,6 +514,7 @@ class MoodWorker(PausableAnalysisWorker):
         self._cache_db_path = cache_db_path
         self._enable_online = enable_online
         self._lastfm_api_key = lastfm_api_key
+        self._skip_cache = skip_cache
 
     def do_work(self) -> dict:
         """Analyze mood for all tracks in parallel."""
@@ -559,6 +568,7 @@ class MoodWorker(PausableAnalysisWorker):
                         title=title,
                         lastfm_api_key=self._lastfm_api_key,
                         enable_online=self._enable_online,
+                        skip_cache=self._skip_cache,
                     )] = fp
 
                 for future in as_completed(futures):
@@ -578,7 +588,13 @@ class MoodWorker(PausableAnalysisWorker):
                         mood_hashtag = f"#{result['mood']}"
                         song = self._database.get_song(result["file_path"])
                         existing = (song.tags.user2 or "") if song and song.tags else ""
-                        if mood_hashtag not in existing.split():
+                        # When re-analyzing, replace #unknown with the new mood
+                        if self._skip_cache and "#unknown" in existing.split():
+                            words = [w for w in existing.split() if w != "#unknown"]
+                            if mood_hashtag not in words:
+                                words.append(mood_hashtag)
+                            new_user2 = " ".join(words)
+                        elif mood_hashtag not in existing.split():
                             new_user2 = f"{existing} {mood_hashtag}".strip()
                         else:
                             new_user2 = existing
