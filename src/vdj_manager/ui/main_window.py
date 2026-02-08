@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 
+from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
 from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
@@ -71,26 +72,7 @@ class MainWindow(QMainWindow):
 
     def _create_analysis_tab(self) -> None:
         """Create the audio analysis tab."""
-        # Placeholder - will be replaced with AnalysisPanel
-        self.analysis_panel = QWidget()
-        layout = QVBoxLayout(self.analysis_panel)
-
-        label = QLabel("Analysis")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-
-        info_label = QLabel(
-            "Analyze audio features and import external tags.\n\n"
-            "Features:\n"
-            "- Energy level analysis (1-10)\n"
-            "- Mood classification\n"
-            "- Import Mixed In Key tags"
-        )
-        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-        layout.addStretch()
-
+        self.analysis_panel = AnalysisPanel()
         self.tab_widget.addTab(self.analysis_panel, "Analysis")
 
     def _create_export_tab(self) -> None:

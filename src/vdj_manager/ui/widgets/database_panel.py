@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QLineEdit,
+    QSpinBox,
     QSplitter,
 )
 from PySide6.QtCore import Qt, Signal, Slot, QSortFilterProxyModel
@@ -122,9 +123,14 @@ class DatabasePanel(QWidget):
         tracks_group = self._create_tracks_group()
         splitter.addWidget(tracks_group)
 
+        # Tag editing group
+        tag_group = self._create_tag_edit_group()
+        splitter.addWidget(tag_group)
+
         # Set stretch factors (give more space to tracks)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 4)
+        splitter.setStretchFactor(2, 1)
 
         layout.addWidget(splitter)
 
@@ -374,6 +380,7 @@ class DatabasePanel(QWidget):
 
         track = self.track_model.get_track(source_index.row())
         if track:
+            self._populate_tag_fields(track)
             self.track_selected.emit(track)
 
     def get_selected_track(self) -> Song | None:
@@ -405,6 +412,109 @@ class DatabasePanel(QWidget):
             if track:
                 tracks.append(track)
         return tracks
+
+    def _create_tag_edit_group(self) -> QGroupBox:
+        """Create the tag editing group box."""
+        group = QGroupBox("Edit Tags")
+        layout = QVBoxLayout(group)
+
+        form_layout = QFormLayout()
+
+        self.tag_track_label = QLabel("No track selected")
+        form_layout.addRow("Track:", self.tag_track_label)
+
+        self.tag_energy_spin = QSpinBox()
+        self.tag_energy_spin.setRange(0, 10)
+        self.tag_energy_spin.setSpecialValueText("None")
+        self.tag_energy_spin.setToolTip("Energy level (1-10, 0 = clear)")
+        form_layout.addRow("Energy:", self.tag_energy_spin)
+
+        self.tag_key_input = QLineEdit()
+        self.tag_key_input.setPlaceholderText("e.g. Am, Cm, 8A")
+        self.tag_key_input.setToolTip("Musical key")
+        form_layout.addRow("Key:", self.tag_key_input)
+
+        self.tag_comment_input = QLineEdit()
+        self.tag_comment_input.setPlaceholderText("Comment / mood tag")
+        self.tag_comment_input.setToolTip("Comment field (also used for mood)")
+        form_layout.addRow("Comment:", self.tag_comment_input)
+
+        layout.addLayout(form_layout)
+
+        # Save button
+        btn_layout = QHBoxLayout()
+        self.tag_save_btn = QPushButton("Save Tags")
+        self.tag_save_btn.setEnabled(False)
+        self.tag_save_btn.setToolTip("Save tag changes to database")
+        self.tag_save_btn.clicked.connect(self._on_tag_save_clicked)
+        btn_layout.addWidget(self.tag_save_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        return group
+
+    def _populate_tag_fields(self, track: Song) -> None:
+        """Populate tag editing fields from a track.
+
+        Args:
+            track: Song to populate from.
+        """
+        self.tag_track_label.setText(track.display_name)
+        self.tag_save_btn.setEnabled(True)
+
+        energy = track.energy if track.energy is not None else 0
+        self.tag_energy_spin.setValue(energy)
+
+        key = ""
+        if track.tags and track.tags.key:
+            key = track.tags.key
+        self.tag_key_input.setText(key)
+
+        comment = ""
+        if track.tags and track.tags.comment:
+            comment = track.tags.comment
+        self.tag_comment_input.setText(comment)
+
+        self._editing_track = track
+
+    def _on_tag_save_clicked(self) -> None:
+        """Handle tag save button click."""
+        if self._database is None or not hasattr(self, "_editing_track"):
+            return
+
+        track = self._editing_track
+        updates = {}
+
+        energy_val = self.tag_energy_spin.value()
+        if energy_val > 0:
+            updates["Grouping"] = f"Energy {energy_val}"
+        elif track.energy is not None:
+            updates["Grouping"] = None
+
+        key_val = self.tag_key_input.text().strip()
+        if key_val:
+            updates["Key"] = key_val
+        elif track.tags and track.tags.key:
+            updates["Key"] = None
+
+        comment_val = self.tag_comment_input.text().strip()
+        if comment_val:
+            updates["Comment"] = comment_val
+        elif track.tags and track.tags.comment:
+            updates["Comment"] = None
+
+        if not updates:
+            return
+
+        self._database.update_song_tags(track.file_path, **updates)
+        self._database.save()
+
+        self.status_label.setText(f"Tags saved for {track.display_name}")
+        self.status_label.setStyleSheet("color: green;")
+
+        # Refresh track list
+        self._tracks = list(self._database.iter_songs())
+        self.track_model.set_tracks(self._tracks)
 
     def _on_backup_clicked(self) -> None:
         """Handle backup button click."""

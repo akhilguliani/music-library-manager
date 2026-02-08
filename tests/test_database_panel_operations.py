@@ -237,3 +237,87 @@ class TestDatabasePanelClean:
 
         assert panel.clean_btn.isEnabled()
         assert "Clean failed" in panel.status_label.text()
+
+
+class TestDatabasePanelTagEditing:
+    """Tests for tag editing in DatabasePanel."""
+
+    def test_tag_edit_group_exists(self, qapp):
+        panel = DatabasePanel()
+        assert panel.tag_energy_spin is not None
+        assert panel.tag_key_input is not None
+        assert panel.tag_comment_input is not None
+        assert panel.tag_save_btn is not None
+
+    def test_tag_save_disabled_initially(self, qapp):
+        panel = DatabasePanel()
+        assert not panel.tag_save_btn.isEnabled()
+
+    def test_populate_tag_fields(self, qapp):
+        panel = DatabasePanel()
+        track = Song(
+            file_path="/music/test.mp3",
+            tags=Tags(author="Artist", title="Title", grouping="Energy 7", key="Am", comment="Mood: happy"),
+        )
+        panel._populate_tag_fields(track)
+
+        assert panel.tag_energy_spin.value() == 7
+        assert panel.tag_key_input.text() == "Am"
+        assert panel.tag_comment_input.text() == "Mood: happy"
+        assert panel.tag_save_btn.isEnabled()
+        assert "Artist - Title" in panel.tag_track_label.text()
+
+    def test_populate_tag_fields_no_tags(self, qapp):
+        panel = DatabasePanel()
+        track = Song(file_path="/music/test.mp3", tags=Tags())
+        panel._populate_tag_fields(track)
+
+        assert panel.tag_energy_spin.value() == 0  # "None"
+        assert panel.tag_key_input.text() == ""
+        assert panel.tag_comment_input.text() == ""
+
+    def test_tag_save_updates_database(self, qapp):
+        panel = DatabasePanel()
+        mock_db = MagicMock()
+        mock_db.iter_songs.return_value = iter([])
+        panel._database = mock_db
+
+        track = Song(file_path="/music/test.mp3", tags=Tags())
+        panel._populate_tag_fields(track)
+        panel.tag_energy_spin.setValue(5)
+        panel.tag_key_input.setText("Cm")
+        panel.tag_comment_input.setText("energetic")
+
+        panel._on_tag_save_clicked()
+
+        mock_db.update_song_tags.assert_called_once_with(
+            "/music/test.mp3",
+            Grouping="Energy 5",
+            Key="Cm",
+            Comment="energetic",
+        )
+        mock_db.save.assert_called_once()
+        assert "Tags saved" in panel.status_label.text()
+
+    def test_tag_save_clears_energy(self, qapp):
+        panel = DatabasePanel()
+        mock_db = MagicMock()
+        mock_db.iter_songs.return_value = iter([])
+        panel._database = mock_db
+
+        track = Song(
+            file_path="/music/test.mp3",
+            tags=Tags(grouping="Energy 7"),
+        )
+        panel._populate_tag_fields(track)
+        panel.tag_energy_spin.setValue(0)  # Clear energy
+
+        panel._on_tag_save_clicked()
+
+        call_kwargs = mock_db.update_song_tags.call_args
+        assert call_kwargs[1]["Grouping"] is None
+
+    def test_tag_save_no_database_does_nothing(self, qapp):
+        panel = DatabasePanel()
+        panel._on_tag_save_clicked()
+        # Should not crash
