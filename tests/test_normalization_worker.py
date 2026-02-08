@@ -2,6 +2,7 @@
 
 import pytest
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -19,6 +20,13 @@ from vdj_manager.ui.workers.normalization_worker import (
     MeasureWorker,
 )
 from vdj_manager.normalize.processor import NormalizationResult
+
+# Patch ProcessPoolExecutor → ThreadPoolExecutor so forked subprocesses
+# don't collide with Qt threads (causes bus errors on macOS).
+_PATCH_POOL = patch(
+    "vdj_manager.ui.workers.normalization_worker.ProcessPoolExecutor",
+    ThreadPoolExecutor,
+)
 
 
 def process_events_until(condition_fn, timeout_ms=5000, interval_ms=10):
@@ -181,24 +189,25 @@ class TestNormalizationWorker:
             )
         ]
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-            batch_size=2,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+                batch_size=2,
+            )
 
-        results = []
-        finished = []
+            results = []
+            finished = []
 
-        worker.result_ready.connect(lambda p, r: results.append((p, r)))
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            worker.result_ready.connect(lambda p, r: results.append((p, r)))
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success, "Worker did not finish in time"
+            worker.start()
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success, "Worker did not finish in time"
 
-        assert len(finished) == 1
-        assert finished[0][0] is True  # success
+            assert len(finished) == 1
+            assert finished[0][0] is True  # success
 
     @patch("vdj_manager.ui.workers.normalization_worker.NormalizationProcessor")
     def test_worker_saves_checkpoints(
@@ -216,135 +225,135 @@ class TestNormalizationWorker:
             )
         ]
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-            batch_size=2,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+                batch_size=2,
+            )
 
-        checkpoint_signals = []
-        finished = []
+            checkpoint_signals = []
+            finished = []
 
-        worker.checkpoint_saved.connect(lambda tid: checkpoint_signals.append(tid))
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            worker.checkpoint_saved.connect(lambda tid: checkpoint_signals.append(tid))
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success
+            worker.start()
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success
 
-        # Should have saved checkpoints
-        assert len(checkpoint_signals) >= 1
+            # Should have saved checkpoints
+            assert len(checkpoint_signals) >= 1
 
-        # Verify checkpoint file exists
-        loaded = checkpoint_manager.load(task_state.task_id)
-        assert loaded is not None
+            # Verify checkpoint file exists
+            loaded = checkpoint_manager.load(task_state.task_id)
+            assert loaded is not None
 
+    @patch("vdj_manager.ui.workers.normalization_worker._measure_single_file")
     @patch("vdj_manager.ui.workers.normalization_worker.NormalizationProcessor")
     def test_worker_handles_pause_and_resume(
-        self, mock_processor_cls, app, task_state, checkpoint_manager
+        self, mock_processor_cls, mock_measure_fn, app, task_state, checkpoint_manager
     ):
         """Test worker can be paused and resumed."""
-        mock_processor = MagicMock()
-        mock_processor_cls.return_value = mock_processor
+        mock_processor_cls.return_value = MagicMock()
 
-        # Slow down processing to allow pause
-        def slow_measure(paths):
-            time.sleep(0.05)
-            return [
-                NormalizationResult(
-                    file_path=paths[0],
-                    success=True,
-                    current_lufs=-14.0,
-                    gain_db=0.0,
-                )
-            ]
+        # Patch _measure_single_file to be slow enough for pause to take effect
+        def slow_measure(args):
+            time.sleep(0.2)
+            return NormalizationResult(
+                file_path=args[0],
+                success=True,
+                current_lufs=-14.0,
+                gain_db=0.0,
+            )
 
-        mock_processor.measure_batch_parallel.side_effect = slow_measure
+        mock_measure_fn.side_effect = slow_measure
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-            batch_size=1,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+                batch_size=1,
+            )
 
-        results = []
-        finished = []
+            results = []
+            finished = []
 
-        worker.result_ready.connect(lambda p, r: results.append((p, r)))
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            worker.result_ready.connect(lambda p, r: results.append((p, r)))
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
+            worker.start()
 
-        # Let some work happen
-        time.sleep(0.1)
-        app.processEvents()
+            # Let some work happen
+            time.sleep(0.15)
+            app.processEvents()
 
-        # Pause
-        worker.pause()
-        results_at_pause = len(results)
+            # Pause
+            worker.pause()
+            results_at_pause = len(results)
 
-        time.sleep(0.1)
-        app.processEvents()
+            time.sleep(0.3)
+            app.processEvents()
 
-        # Should not have progressed much (maybe current item finished)
-        assert len(results) <= results_at_pause + 1
+            # Should not have progressed much (maybe current item finished)
+            assert len(results) <= results_at_pause + 1
 
-        # Resume
-        worker.resume()
+            # Resume
+            worker.resume()
 
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success
 
-        # Should complete all items
-        assert finished[0][0] is True
+            # Should complete all items
+            assert finished[0][0] is True
 
+    @patch("vdj_manager.ui.workers.normalization_worker._measure_single_file")
     @patch("vdj_manager.ui.workers.normalization_worker.NormalizationProcessor")
     def test_worker_handles_cancel(
-        self, mock_processor_cls, app, task_state, checkpoint_manager
+        self, mock_processor_cls, mock_measure_fn, app, task_state, checkpoint_manager
     ):
         """Test worker can be cancelled."""
-        mock_processor = MagicMock()
-        mock_processor_cls.return_value = mock_processor
+        mock_processor_cls.return_value = MagicMock()
 
-        def slow_measure(paths):
-            time.sleep(0.05)
-            return [
-                NormalizationResult(
-                    file_path=paths[0],
-                    success=True,
-                    current_lufs=-14.0,
-                    gain_db=0.0,
-                )
-            ]
+        # Patch _measure_single_file (called by _process_batch_parallel) to be slow
+        def slow_measure(args):
+            time.sleep(0.3)
+            return NormalizationResult(
+                file_path=args[0],
+                success=True,
+                current_lufs=-14.0,
+                gain_db=0.0,
+            )
 
-        mock_processor.measure_batch_parallel.side_effect = slow_measure
+        mock_measure_fn.side_effect = slow_measure
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-            batch_size=1,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+                batch_size=1,
+            )
 
-        finished = []
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            finished = []
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
-        time.sleep(0.1)
-        app.processEvents()
+            worker.start()
+            time.sleep(0.15)
+            app.processEvents()
 
-        worker.cancel()
+            worker.cancel()
 
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success
 
-        # Should report cancellation
-        assert finished[0][0] is False
-        assert "Cancel" in finished[0][1]
+            # Should report cancellation
+            assert finished[0][0] is False
+            assert "Cancel" in finished[0][1]
 
-        # Checkpoint should be saved
-        loaded = checkpoint_manager.load(task_state.task_id)
-        assert loaded is not None
-        assert loaded.status == TaskStatus.CANCELLED
+            # Checkpoint should be saved
+            loaded = checkpoint_manager.load(task_state.task_id)
+            assert loaded is not None
+            assert loaded.status == TaskStatus.CANCELLED
 
 
 class TestMeasureWorker:
@@ -370,20 +379,21 @@ class TestWorkerEdgeCases:
             pending_paths=[],
         )
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+            )
 
-        finished = []
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            finished = []
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success
+            worker.start()
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success
 
-        assert finished[0][0] is True
-        assert task_state.status == TaskStatus.COMPLETED
+            assert finished[0][0] is True
+            assert task_state.status == TaskStatus.COMPLETED
 
     @patch("vdj_manager.ui.workers.normalization_worker.NormalizationProcessor")
     def test_all_failures(self, mock_processor_cls, app, task_state, checkpoint_manager):
@@ -399,20 +409,21 @@ class TestWorkerEdgeCases:
             )
         ]
 
-        worker = NormalizationWorker(
-            task_state,
-            checkpoint_manager=checkpoint_manager,
-            batch_size=2,
-        )
+        with _PATCH_POOL:
+            worker = NormalizationWorker(
+                task_state,
+                checkpoint_manager=checkpoint_manager,
+                batch_size=2,
+            )
 
-        finished = []
-        worker.finished_work.connect(lambda s, m: finished.append((s, m)))
+            finished = []
+            worker.finished_work.connect(lambda s, m: finished.append((s, m)))
 
-        worker.start()
-        success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
-        assert success
+            worker.start()
+            success = process_events_until(lambda: len(finished) > 0, timeout_ms=10000)
+            assert success
 
-        # Should still complete (with failures noted)
-        assert finished[0][0] is True
-        assert "failed" in finished[0][1].lower()
-        assert len(task_state.failed_paths) == 5
+            # Should still complete (with failures noted)
+            assert finished[0][0] is True
+            assert "failed" in finished[0][1].lower()
+            assert len(task_state.failed_paths) == 5
