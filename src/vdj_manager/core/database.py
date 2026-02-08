@@ -379,11 +379,21 @@ class VDJDatabase:
 
         # Restore &apos; entities in attribute values.
         # lxml unescapes &apos; on parse and outputs raw ' (valid XML but
-        # differs from VDJ's format). Re-escape apostrophes inside
-        # double-quoted attribute values only.
+        # differs from VDJ's format). [^"<>] prevents matching across tags.
         def _escape_apos_in_attrs(match: re.Match) -> str:
             return match.group(0).replace("'", "&apos;")
-        xml_str = re.sub(r'"[^"]*\'[^"]*"', _escape_apos_in_attrs, xml_str)
+        xml_str = re.sub(r'"[^"<>]*\'[^"<>]*"', _escape_apos_in_attrs, xml_str)
+
+        # Restore entities in text content (between > and <).
+        # lxml unescapes &quot; and &apos; in text content.
+        def _fix_text_content(match: re.Match) -> str:
+            text = match.group(1)
+            if not text.strip():
+                return match.group(0)
+            text = text.replace("'", "&apos;")
+            text = text.replace('"', "&quot;")
+            return ">" + text + "<"
+        xml_str = re.sub(r">([^<]+)<", _fix_text_content, xml_str)
 
         # Add space before /> in self-closing tags (VDJ format)
         xml_str = xml_str.replace("/>", " />")
