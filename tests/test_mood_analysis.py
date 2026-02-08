@@ -34,8 +34,8 @@ def qapp():
     return app
 
 
-def _make_song(path: str, comment: str | None = None) -> Song:
-    return Song(file_path=path, tags=Tags(author="Artist", title="Title", comment=comment))
+def _make_song(path: str, comment: str | None = None, user2: str | None = None) -> Song:
+    return Song(file_path=path, tags=Tags(author="Artist", title="Title", comment=comment, user2=user2))
 
 
 # =============================================================================
@@ -238,6 +238,9 @@ class TestMoodWorkerDetailed:
             _make_song("/b.mp3"),
             _make_song("/c.mp3"),
         ]
+        mock_db.get_song.side_effect = lambda fp: next(
+            (t for t in tracks if t.file_path == fp), None
+        )
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
@@ -263,10 +266,12 @@ class TestMoodWorkerDetailed:
             assert by_path["/c.mp3"]["mood"] == "aggressive"
             mock_db.save.assert_called_once()
 
-    def test_mood_worker_updates_comment_tag(self, qapp):
-        """Worker should update Comment tag with mood string."""
+    def test_mood_worker_updates_user2_tag(self, qapp):
+        """Worker should append mood as hashtag to User2 tag."""
         mock_db = MagicMock()
-        tracks = [_make_song("/song.mp3")]
+        song = _make_song("/song.mp3")
+        mock_db.get_song.return_value = song
+        tracks = [song]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
@@ -280,7 +285,7 @@ class TestMoodWorkerDetailed:
             worker.wait(5000)
             QCoreApplication.processEvents()
 
-            mock_db.update_song_tags.assert_called_once_with("/song.mp3", Comment="relaxed")
+            mock_db.update_song_tags.assert_called_once_with("/song.mp3", User2="#relaxed")
 
     def test_mood_worker_no_save_when_all_fail(self, qapp):
         """Worker should not save database if nothing was analyzed."""

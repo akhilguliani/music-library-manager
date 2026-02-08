@@ -757,7 +757,7 @@ def analyze_import_mik(dry_run: bool, db_choice: str):
                         if mik_data.get("energy") and not song.energy:
                             updates["Grouping"] = f"Energy {mik_data['energy']}"
                         if mik_data.get("key"):
-                            updates["Comment"] = mik_data["key"]
+                            updates["Key"] = mik_data["key"]
                         if updates:
                             db.update_song_tags(song.file_path, **updates)
             except Exception:
@@ -815,7 +815,14 @@ def tag_set(file_path: str, tag_type: str, value: str, db_choice: str):
             console.print("[red]Energy must be 1-10[/red]")
             return
     elif tag_type == "mood":
-        db.update_song_tags(file_path, Comment=value)
+        mood_hashtag = f"#{value}"
+        song = db.get_song(file_path)
+        existing = (song.tags.user2 or "") if song and song.tags else ""
+        if mood_hashtag not in existing.split():
+            new_user2 = f"{existing} {mood_hashtag}".strip()
+        else:
+            new_user2 = existing
+        db.update_song_tags(file_path, User2=new_user2)
     elif tag_type == "key":
         db.update_song_tags(file_path, Key=value)
 

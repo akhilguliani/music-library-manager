@@ -152,7 +152,7 @@ class NormalizationPanel(QWidget):
         cpu_count = multiprocessing.cpu_count()
         default_workers = max(1, cpu_count - 1)
         self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(1, cpu_count)
+        self.workers_spin.setRange(1, 20)
         self.workers_spin.setValue(default_workers)
         self.workers_spin.setToolTip(
             f"Number of parallel workers (detected {cpu_count} CPU cores)"

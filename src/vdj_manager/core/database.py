@@ -74,6 +74,7 @@ class VDJDatabase:
                 Remix=tags_elem.get("Remix"),
                 Label=tags_elem.get("Label"),
                 Comment=tags_elem.get("Comment"),
+                User2=tags_elem.get("User2"),
                 Bpm=self._safe_float(tags_elem.get("Bpm")),
                 Key=tags_elem.get("Key"),
                 Color=tags_elem.get("Color"),

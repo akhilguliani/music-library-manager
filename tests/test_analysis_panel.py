@@ -257,7 +257,9 @@ class TestMoodWorker:
 
     def test_mood_worker_success(self, qapp):
         mock_db = MagicMock()
-        tracks = [_make_song("/a.mp3")]
+        song = _make_song("/a.mp3")
+        mock_db.get_song.return_value = song
+        tracks = [song]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
@@ -274,7 +276,7 @@ class TestMoodWorker:
             assert len(results) == 1
             assert results[0]["analyzed"] == 1
             assert results[0]["results"][0]["mood"] == "happy"
-            mock_db.update_song_tags.assert_called_once_with("/a.mp3", Comment="happy")
+            mock_db.update_song_tags.assert_called_once_with("/a.mp3", User2="#happy")
             mock_db.save.assert_called_once()
 
 

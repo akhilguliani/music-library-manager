@@ -183,7 +183,7 @@ class TestNormalizationPanel:
         expected_default = max(1, cpu_count - 1)
         assert panel.workers_spin.value() == expected_default
         assert panel.workers_spin.minimum() == 1
-        assert panel.workers_spin.maximum() == cpu_count
+        assert panel.workers_spin.maximum() == 20
 
         # Test setting custom value
         panel.workers_spin.setValue(2)

@@ -46,6 +46,7 @@ class Tags(BaseModel):
     color: Optional[str] = Field(default=None, alias="Color")
     rating: Optional[int] = Field(default=None, alias="Rating", description="0-5 star rating")
     flag: Optional[int] = Field(default=None, alias="Flag")
+    user2: Optional[str] = Field(default=None, alias="User2", description="Hashtag-based style/mood tags")
 
     model_config = {"populate_by_name": True}
 
@@ -161,6 +162,17 @@ class Song(BaseModel):
     def energy(self) -> Optional[int]:
         """Get energy level from tags."""
         return self.tags.energy_level if self.tags else None
+
+    @property
+    def mood(self) -> Optional[str]:
+        """Get mood from User2 hashtags (last hashtag added by mood analysis)."""
+        if not self.tags or not self.tags.user2:
+            return None
+        # User2 contains space-separated hashtags like "#ClearBeat #Mellow #happy"
+        # Mood tags are lowercase hashtags added by the analyzer
+        hashtags = self.tags.user2.split()
+        mood_tags = [h[1:] for h in hashtags if h.startswith("#") and h[1:].islower()]
+        return mood_tags[-1] if mood_tags else None
 
     @property
     def actual_bpm(self) -> Optional[float]:
