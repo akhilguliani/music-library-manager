@@ -91,6 +91,24 @@ class AnalysisPanel(QWidget):
             f"Parallel workers for analysis ({cpu_count} CPU cores detected)"
         )
         config_layout.addWidget(self.workers_spin)
+
+        config_layout.addWidget(QLabel("Limit:"))
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(0, 999999)
+        self.limit_spin.setValue(0)
+        self.limit_spin.setSpecialValueText("All")
+        self.limit_spin.setToolTip("Limit number of tracks to process (0 = all)")
+        config_layout.addWidget(self.limit_spin)
+
+        config_layout.addWidget(QLabel("Max Duration:"))
+        self.max_duration_spin = QSpinBox()
+        self.max_duration_spin.setRange(0, 999)
+        self.max_duration_spin.setValue(0)
+        self.max_duration_spin.setSuffix(" min")
+        self.max_duration_spin.setSpecialValueText("No limit")
+        self.max_duration_spin.setToolTip("Skip tracks longer than this (minutes, 0 = no limit)")
+        config_layout.addWidget(self.max_duration_spin)
+
         config_layout.addStretch()
         layout.addLayout(config_layout)
 
@@ -256,7 +274,7 @@ class AnalysisPanel(QWidget):
         self.mood_info_label.setText(f"{len(audio_tracks)} audio tracks")
 
     def _get_audio_tracks(self, untagged_only: bool = False) -> list[Song]:
-        """Get filterable audio tracks.
+        """Get filterable audio tracks, respecting duration and count limits.
 
         Args:
             untagged_only: If True, only return tracks without energy tags.
@@ -279,6 +297,20 @@ class AnalysisPanel(QWidget):
             if not Path(track.file_path).exists():
                 continue
             tracks.append(track)
+
+        # Duration filter (minutes → seconds); tracks without metadata are kept
+        max_duration = self.max_duration_spin.value() * 60
+        if max_duration > 0:
+            tracks = [
+                t for t in tracks
+                if not (t.infos and t.infos.song_length and t.infos.song_length > max_duration)
+            ]
+
+        # Count limit
+        limit = self.limit_spin.value()
+        if limit > 0:
+            tracks = tracks[:limit]
+
         return tracks
 
     def is_running(self) -> bool:

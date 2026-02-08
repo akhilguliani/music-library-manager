@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QCoreApplication
 
-from vdj_manager.core.models import Song, Tags
+from vdj_manager.core.models import Infos, Song, Tags
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.workers.analysis_workers import (
     EnergyWorker,
@@ -348,3 +348,86 @@ class TestAnalysisPanelHandlers:
         }
         panel._on_energy_finished(result)
         assert len(signals) == 1
+
+
+class TestAnalysisPanelLimits:
+    """Tests for track count limit and duration filter."""
+
+    def test_limit_spinner_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.limit_spin is not None
+        assert panel.limit_spin.value() == 0
+        assert panel.limit_spin.specialValueText() == "All"
+
+    def test_max_duration_spinner_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.max_duration_spin is not None
+        assert panel.max_duration_spin.value() == 0
+        assert panel.max_duration_spin.specialValueText() == "No limit"
+
+    def test_limit_restricts_track_count(self, qapp):
+        panel = AnalysisPanel()
+        tracks = [_make_song(f"/song{i}.mp3") for i in range(5)]
+        panel._tracks = tracks
+        panel.limit_spin.setValue(2)
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        assert len(result) == 2
+
+    def test_limit_zero_means_all(self, qapp):
+        panel = AnalysisPanel()
+        tracks = [_make_song(f"/song{i}.mp3") for i in range(5)]
+        panel._tracks = tracks
+        panel.limit_spin.setValue(0)
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        assert len(result) == 5
+
+    def test_max_duration_filters_long_tracks(self, qapp):
+        panel = AnalysisPanel()
+        tracks = [
+            Song(file_path="/short.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),   # 3 min
+            Song(file_path="/medium.mp3", tags=Tags(), infos=Infos(SongLength=420.0)),  # 7 min
+            Song(file_path="/long.mp3", tags=Tags(), infos=Infos(SongLength=3600.0)),   # 60 min
+            Song(file_path="/no_info.mp3", tags=Tags()),                                # no duration
+        ]
+        panel._tracks = tracks
+        panel.max_duration_spin.setValue(10)  # 10 minutes
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        paths = [t.file_path for t in result]
+        assert "/short.mp3" in paths
+        assert "/medium.mp3" in paths
+        assert "/long.mp3" not in paths
+        assert "/no_info.mp3" in paths  # tracks without metadata are kept
+
+    def test_both_limits_combined(self, qapp):
+        """Duration filter is applied first, then count limit."""
+        panel = AnalysisPanel()
+        tracks = [
+            Song(file_path="/a.mp3", tags=Tags(), infos=Infos(SongLength=120.0)),   # 2 min
+            Song(file_path="/b.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),   # 3 min
+            Song(file_path="/c.mp3", tags=Tags(), infos=Infos(SongLength=7200.0)),  # 120 min
+            Song(file_path="/d.mp3", tags=Tags(), infos=Infos(SongLength=240.0)),   # 4 min
+        ]
+        panel._tracks = tracks
+        panel.max_duration_spin.setValue(5)  # 5 min max
+        panel.limit_spin.setValue(2)         # only 2 tracks
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        # /c.mp3 (120 min) filtered by duration, remaining 3 tracks limited to 2
+        assert len(result) == 2
+        assert result[0].file_path == "/a.mp3"
+        assert result[1].file_path == "/b.mp3"
