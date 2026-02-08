@@ -1,5 +1,6 @@
 """Analysis panel with energy, mood, and MIK import sub-tabs."""
 
+import multiprocessing
 from pathlib import Path
 from typing import Any
 
@@ -7,10 +8,12 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QFormLayout,
     QLabel,
     QPushButton,
     QGroupBox,
     QTabWidget,
+    QSpinBox,
     QCheckBox,
     QMessageBox,
 )
@@ -76,6 +79,20 @@ class AnalysisPanel(QWidget):
     def _setup_ui(self) -> None:
         """Set up the panel UI with sub-tabs."""
         layout = QVBoxLayout(self)
+
+        # Workers configuration (shared across all sub-tabs)
+        config_layout = QHBoxLayout()
+        config_layout.addWidget(QLabel("Workers:"))
+        cpu_count = multiprocessing.cpu_count()
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, cpu_count)
+        self.workers_spin.setValue(max(1, cpu_count - 1))
+        self.workers_spin.setToolTip(
+            f"Parallel workers for analysis ({cpu_count} CPU cores detected)"
+        )
+        config_layout.addWidget(self.workers_spin)
+        config_layout.addStretch()
+        layout.addLayout(config_layout)
 
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -296,7 +313,9 @@ class AnalysisPanel(QWidget):
         self.energy_status.setText("Analyzing...")
         self.energy_results.clear()
 
-        self._energy_worker = EnergyWorker(self._database, tracks)
+        self._energy_worker = EnergyWorker(
+            self._database, tracks, max_workers=self.workers_spin.value()
+        )
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(self._on_energy_error)
         self._energy_worker.start()
@@ -348,7 +367,9 @@ class AnalysisPanel(QWidget):
         self.mik_status.setText("Scanning...")
         self.mik_results.clear()
 
-        self._mik_worker = MIKImportWorker(self._database, tracks)
+        self._mik_worker = MIKImportWorker(
+            self._database, tracks, max_workers=self.workers_spin.value()
+        )
         self._mik_worker.finished_work.connect(self._on_mik_finished)
         self._mik_worker.error.connect(self._on_mik_error)
         self._mik_worker.start()
@@ -398,7 +419,9 @@ class AnalysisPanel(QWidget):
         self.mood_status.setText("Analyzing...")
         self.mood_results.clear()
 
-        self._mood_worker = MoodWorker(self._database, tracks)
+        self._mood_worker = MoodWorker(
+            self._database, tracks, max_workers=self.workers_spin.value()
+        )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
         self._mood_worker.start()

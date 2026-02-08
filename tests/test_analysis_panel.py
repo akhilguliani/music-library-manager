@@ -1,5 +1,6 @@
 """Tests for AnalysisPanel and analysis workers."""
 
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,13 @@ from vdj_manager.ui.workers.analysis_workers import (
     EnergyWorker,
     MIKImportWorker,
     MoodWorker,
+)
+
+# Use ThreadPoolExecutor in tests so mocks are visible (ProcessPoolExecutor
+# spawns subprocesses that don't share the parent's mock patches).
+_PATCH_POOL = patch(
+    "vdj_manager.ui.workers.analysis_workers.ProcessPoolExecutor",
+    ThreadPoolExecutor,
 )
 
 
@@ -96,11 +104,11 @@ class TestEnergyWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 7
 
-            worker = EnergyWorker(mock_db, tracks)
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -118,11 +126,11 @@ class TestEnergyWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = None
 
-            worker = EnergyWorker(mock_db, tracks)
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -138,11 +146,11 @@ class TestEnergyWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.side_effect = RuntimeError("bad file")
 
-            worker = EnergyWorker(mock_db, tracks)
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -161,13 +169,13 @@ class TestMIKImportWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
                 "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks)
+            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -184,13 +192,13 @@ class TestMIKImportWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
                 "energy": None, "key": None, "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks)
+            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -206,13 +214,13 @@ class TestMIKImportWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3", energy=5)]
 
-        with patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
                 "energy": 8, "key": None, "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks)
+            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -232,11 +240,11 @@ class TestMoodWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.is_available = False
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -251,12 +259,12 @@ class TestMoodWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.is_available = True
             analyzer_instance.get_mood_tag.return_value = "happy"
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()

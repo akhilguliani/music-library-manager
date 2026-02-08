@@ -6,6 +6,7 @@ Tests cover:
 3. AnalysisPanel mood handlers (GUI integration)
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -16,6 +17,13 @@ from vdj_manager.core.models import Song, Tags
 from vdj_manager.analysis.mood import MoodAnalyzer
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.workers.analysis_workers import MoodWorker
+
+# Use ThreadPoolExecutor in tests so mocks are visible (ProcessPoolExecutor
+# spawns subprocesses that don't share the parent's mock patches).
+_PATCH_POOL = patch(
+    "vdj_manager.ui.workers.analysis_workers.ProcessPoolExecutor",
+    ThreadPoolExecutor,
+)
 
 
 @pytest.fixture(scope="module")
@@ -181,12 +189,12 @@ class TestMoodWorkerDetailed:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
             instance.get_mood_tag.return_value = None
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -204,12 +212,12 @@ class TestMoodWorkerDetailed:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
             instance.get_mood_tag.side_effect = RuntimeError("analysis crashed")
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -231,12 +239,12 @@ class TestMoodWorkerDetailed:
             _make_song("/c.mp3"),
         ]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
             instance.get_mood_tag.side_effect = ["happy", None, "aggressive"]
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -247,9 +255,12 @@ class TestMoodWorkerDetailed:
             assert results[0]["analyzed"] == 2
             assert results[0]["failed"] == 1
             assert len(results[0]["results"]) == 3
-            assert results[0]["results"][0]["mood"] == "happy"
-            assert results[0]["results"][1]["mood"] is None
-            assert results[0]["results"][2]["mood"] == "aggressive"
+            # Results may arrive in any order with parallel processing,
+            # so check by file_path
+            by_path = {r["file_path"]: r for r in results[0]["results"]}
+            assert by_path["/a.mp3"]["mood"] == "happy"
+            assert by_path["/b.mp3"]["mood"] is None
+            assert by_path["/c.mp3"]["mood"] == "aggressive"
             mock_db.save.assert_called_once()
 
     def test_mood_worker_updates_comment_tag(self, qapp):
@@ -257,12 +268,12 @@ class TestMoodWorkerDetailed:
         mock_db = MagicMock()
         tracks = [_make_song("/song.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
             instance.get_mood_tag.return_value = "relaxed"
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -276,12 +287,12 @@ class TestMoodWorkerDetailed:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
             instance.get_mood_tag.return_value = None
 
-            worker = MoodWorker(mock_db, tracks)
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -296,11 +307,11 @@ class TestMoodWorkerDetailed:
         """Worker should handle empty track list gracefully."""
         mock_db = MagicMock()
 
-        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
 
-            worker = MoodWorker(mock_db, [])
+            worker = MoodWorker(mock_db, [], max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
