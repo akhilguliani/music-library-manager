@@ -4,17 +4,13 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
     QWidget,
-    QVBoxLayout,
-    QLabel,
-    QStatusBar,
-    QMenuBar,
-    QMenu,
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
+from vdj_manager.ui.widgets.export_panel import ExportPanel
 from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 
@@ -77,25 +73,7 @@ class MainWindow(QMainWindow):
 
     def _create_export_tab(self) -> None:
         """Create the export tab."""
-        # Placeholder - will be replaced with ExportPanel
-        self.export_panel = QWidget()
-        layout = QVBoxLayout(self.export_panel)
-
-        label = QLabel("Export")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-
-        info_label = QLabel(
-            "Export your library to other DJ software.\n\n"
-            "Features:\n"
-            "- Export to Serato format\n"
-            "- Crate/playlist management"
-        )
-        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-        layout.addStretch()
-
+        self.export_panel = ExportPanel()
         self.tab_widget.addTab(self.export_panel, "Export")
 
     def _setup_menu_bar(self) -> None:
