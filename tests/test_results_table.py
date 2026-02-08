@@ -153,6 +153,78 @@ class TestConfigurableResultsTable:
         table = ConfigurableResultsTable(columns)
         assert table.table.columnWidth(1) == 100
 
+    def test_file_path_shows_filename_with_tooltip(self, qapp):
+        """file_path column should show filename only, full path as tooltip."""
+        columns = [
+            {"name": "Track", "key": "file_path"},
+            {"name": "Status", "key": "status"},
+        ]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"file_path": "/music/library/song.mp3", "status": "ok"})
+
+        assert table.table.item(0, 0).text() == "song.mp3"
+        assert table.table.item(0, 0).toolTip() == "/music/library/song.mp3"
+
+    def test_status_color_coding_ok(self, qapp):
+        """Status 'ok' should be green."""
+        columns = [{"name": "Status", "key": "status"}]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"status": "ok"})
+
+        assert table.table.item(0, 0).foreground().color() == QColor("#22aa22")
+
+    def test_status_color_coding_error(self, qapp):
+        """Status starting with 'error' should be red with tooltip."""
+        columns = [{"name": "Status", "key": "status"}]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"status": "error: file not found"})
+
+        assert table.table.item(0, 0).foreground().color() == QColor("#dd2222")
+        assert table.table.item(0, 0).toolTip() == "error: file not found"
+
+    def test_status_color_coding_failed(self, qapp):
+        """Status 'failed' should be orange."""
+        columns = [{"name": "Status", "key": "status"}]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"status": "failed"})
+
+        assert table.table.item(0, 0).foreground().color() == QColor("#cc8800")
+
+    def test_status_color_coding_cached(self, qapp):
+        """Status 'cached' should be green."""
+        columns = [{"name": "Status", "key": "status"}]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"status": "cached"})
+
+        assert table.table.item(0, 0).foreground().color() == QColor("#22aa22")
+
+    def test_sorting_enabled(self, qapp):
+        """Table should have sorting enabled."""
+        columns = [{"name": "File", "key": "file"}]
+        table = ConfigurableResultsTable(columns)
+        assert table.table.isSortingEnabled()
+
+    def test_row_count_label_updates(self, qapp):
+        """Row count label should update on add_result."""
+        columns = [{"name": "File", "key": "file"}]
+        table = ConfigurableResultsTable(columns)
+        assert table.row_count_label.text() == "0 results"
+
+        table.add_result({"file": "a.mp3"})
+        assert table.row_count_label.text() == "1 result"
+
+        table.add_result({"file": "b.mp3"})
+        assert table.row_count_label.text() == "2 results"
+
+    def test_clear_resets_row_count_label(self, qapp):
+        """Clear should reset row count label."""
+        columns = [{"name": "File", "key": "file"}]
+        table = ConfigurableResultsTable(columns)
+        table.add_result({"file": "a.mp3"})
+        table.add_result({"file": "b.mp3"})
+        table.clear()
+        assert table.row_count_label.text() == "0 results"
+
 
 class TestResultsTableExportCsv:
     """Tests for ResultsTable.export_to_csv."""

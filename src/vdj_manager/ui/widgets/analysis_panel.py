@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QFormLayout,
     QLabel,
     QPushButton,
     QGroupBox,
@@ -81,8 +80,11 @@ class AnalysisPanel(QWidget):
         """Set up the panel UI with sub-tabs."""
         layout = QVBoxLayout(self)
 
-        # Workers configuration (shared across all sub-tabs)
-        config_layout = QHBoxLayout()
+        # Settings bar
+        settings_group = QGroupBox("Settings")
+        config_layout = QHBoxLayout(settings_group)
+        config_layout.setContentsMargins(8, 4, 8, 4)
+
         config_layout.addWidget(QLabel("Workers:"))
         cpu_count = multiprocessing.cpu_count()
         self.workers_spin = QSpinBox()
@@ -111,7 +113,7 @@ class AnalysisPanel(QWidget):
         config_layout.addWidget(self.max_duration_spin)
 
         config_layout.addStretch()
-        layout.addLayout(config_layout)
+        layout.addWidget(settings_group)
 
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -127,17 +129,10 @@ class AnalysisPanel(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Info section
-        info_group = QGroupBox("Energy Analysis")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel(
-            "Analyze audio features to classify energy levels (1-10 scale).\n"
-            "Uses tempo, RMS energy, and spectral centroid analysis.\n"
-            "Requires: librosa"
-        ))
+        # Info
         self.energy_info_label = QLabel("No database loaded")
-        info_layout.addWidget(self.energy_info_label)
-        layout.addWidget(info_group)
+        self.energy_info_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.energy_info_label)
 
         # Controls
         controls_layout = QHBoxLayout()
@@ -163,9 +158,10 @@ class AnalysisPanel(QWidget):
 
         # Results table
         self.energy_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path", "width": 400},
+            {"name": "Track", "key": "file_path"},
+            {"name": "Fmt", "key": "format", "width": 50},
             {"name": "Energy", "key": "energy", "width": 80},
-            {"name": "Status", "key": "status", "width": 120},
+            {"name": "Status", "key": "status", "width": 100},
         ])
         layout.addWidget(self.energy_results)
 
@@ -176,17 +172,10 @@ class AnalysisPanel(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Info section
-        info_group = QGroupBox("Mixed In Key Import")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel(
-            "Import energy and key tags from Mixed In Key data\n"
-            "embedded in audio file metadata (ID3/MP4/FLAC tags).\n"
-            "Requires: mutagen"
-        ))
+        # Info
         self.mik_info_label = QLabel("No database loaded")
-        info_layout.addWidget(self.mik_info_label)
-        layout.addWidget(info_group)
+        self.mik_info_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.mik_info_label)
 
         # Controls
         controls_layout = QHBoxLayout()
@@ -206,10 +195,11 @@ class AnalysisPanel(QWidget):
 
         # Results table
         self.mik_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path", "width": 400},
+            {"name": "Track", "key": "file_path"},
+            {"name": "Fmt", "key": "format", "width": 50},
             {"name": "Energy", "key": "energy", "width": 80},
             {"name": "Key", "key": "key", "width": 100},
-            {"name": "Status", "key": "status", "width": 120},
+            {"name": "Status", "key": "status", "width": 100},
         ])
         layout.addWidget(self.mik_results)
 
@@ -220,17 +210,10 @@ class AnalysisPanel(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Info section
-        info_group = QGroupBox("Mood Analysis")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel(
-            "Classify audio mood/emotion using audio analysis.\n"
-            "Requires: essentia-tensorflow\n"
-            "Install with: pip install 'vdj-manager[mood]'"
-        ))
+        # Info
         self.mood_info_label = QLabel("No database loaded")
-        info_layout.addWidget(self.mood_info_label)
-        layout.addWidget(info_group)
+        self.mood_info_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.mood_info_label)
 
         # Controls
         controls_layout = QHBoxLayout()
@@ -250,9 +233,10 @@ class AnalysisPanel(QWidget):
 
         # Results table
         self.mood_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path", "width": 400},
+            {"name": "Track", "key": "file_path"},
+            {"name": "Fmt", "key": "format", "width": 50},
             {"name": "Mood", "key": "mood", "width": 120},
-            {"name": "Status", "key": "status", "width": 120},
+            {"name": "Status", "key": "status", "width": 100},
         ])
         layout.addWidget(self.mood_results)
 
@@ -361,6 +345,22 @@ class AnalysisPanel(QWidget):
         )
         self._energy_worker.start()
 
+    @staticmethod
+    def _format_failure_summary(results: list[dict], failed_count: int) -> str:
+        """Build a failure breakdown by format, e.g. '(.flac: 2, .wav: 1)'."""
+        if failed_count == 0:
+            return ""
+        from collections import Counter
+        fmt_counts = Counter()
+        for r in results:
+            status = str(r.get("status", "")).lower()
+            if status in ("failed", "none") or status.startswith("error"):
+                fmt_counts[r.get("format", "?")] += 1
+        if not fmt_counts:
+            return ""
+        breakdown = ", ".join(f"{fmt}: {cnt}" for fmt, cnt in fmt_counts.most_common())
+        return f" ({breakdown})"
+
     @Slot(object)
     def _on_energy_finished(self, result: dict) -> None:
         """Handle energy analysis completion."""
@@ -374,7 +374,9 @@ class AnalysisPanel(QWidget):
         if cached:
             parts.append(f"{cached} cached")
         parts.append(f"{failed} failed")
-        self.energy_status.setText(f"Done: {', '.join(parts)}")
+        summary = f"Done: {', '.join(parts)}"
+        summary += self._format_failure_summary(result.get("results", []), failed)
+        self.energy_status.setText(summary)
 
         if analyzed + cached > 0:
             self.database_changed.emit()
@@ -498,7 +500,9 @@ class AnalysisPanel(QWidget):
         if cached:
             parts.append(f"{cached} cached")
         parts.append(f"{failed} failed")
-        self.mood_status.setText(f"Done: {', '.join(parts)}")
+        summary = f"Done: {', '.join(parts)}"
+        summary += self._format_failure_summary(result.get("results", []), failed)
+        self.mood_status.setText(summary)
 
         if analyzed + cached > 0:
             self.database_changed.emit()

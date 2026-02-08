@@ -127,8 +127,8 @@ class TestDatabaseToAnalysisFlow:
         """Results are streamed via result_ready; finished handler updates status."""
         panel = AnalysisPanel()
         results_data = [
-            {"file_path": "/a.mp3", "energy": 7, "status": "ok"},
-            {"file_path": "/b.mp3", "energy": 3, "status": "ok"},
+            {"file_path": "/a.mp3", "format": ".mp3", "energy": 7, "status": "ok"},
+            {"file_path": "/b.mp3", "format": ".mp3", "energy": 3, "status": "ok"},
         ]
         # Simulate streaming results (result_ready signal adds rows during processing)
         for r in results_data:
@@ -145,7 +145,7 @@ class TestDatabaseToAnalysisFlow:
     def test_mik_results_update_panel(self, qapp):
         """Results are streamed via result_ready; finished handler updates status."""
         panel = AnalysisPanel()
-        result_item = {"file_path": "/a.mp3", "energy": 5, "key": "Am", "status": "updated"}
+        result_item = {"file_path": "/a.mp3", "format": ".mp3", "energy": 5, "key": "Am", "status": "updated"}
         # Simulate streaming
         panel.mik_results.add_result(result_item)
 

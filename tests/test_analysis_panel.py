@@ -290,7 +290,7 @@ class TestAnalysisPanelHandlers:
 
         result = {
             "analyzed": 1, "failed": 0,
-            "results": [{"file_path": "/a.mp3", "energy": 7, "status": "ok"}],
+            "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 7, "status": "ok"}],
         }
         panel._on_energy_finished(result)
 
@@ -301,7 +301,7 @@ class TestAnalysisPanelHandlers:
         panel = AnalysisPanel()
         # Simulate streaming a result
         panel.energy_results.add_result(
-            {"file_path": "/a.mp3", "energy": 7, "status": "ok"}
+            {"file_path": "/a.mp3", "format": ".mp3", "energy": 7, "status": "ok"}
         )
         assert panel.energy_results.row_count() == 1
 
@@ -321,7 +321,7 @@ class TestAnalysisPanelHandlers:
 
         result = {
             "found": 1, "updated": 1,
-            "results": [{"file_path": "/a.mp3", "energy": 8, "key": "Am", "status": "updated"}],
+            "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 8, "key": "Am", "status": "updated"}],
         }
         panel._on_mik_finished(result)
 
@@ -330,7 +330,7 @@ class TestAnalysisPanelHandlers:
     def test_mik_results_streamed_via_result_ready(self, qapp):
         panel = AnalysisPanel()
         panel.mik_results.add_result(
-            {"file_path": "/a.mp3", "energy": 8, "key": "Am", "status": "updated"}
+            {"file_path": "/a.mp3", "format": ".mp3", "energy": 8, "key": "Am", "status": "updated"}
         )
         assert panel.mik_results.row_count() == 1
 
@@ -345,8 +345,8 @@ class TestAnalysisPanelHandlers:
         result = {
             "analyzed": 2, "failed": 0,
             "results": [
-                {"file_path": "/a.mp3", "mood": "happy", "status": "ok"},
-                {"file_path": "/b.mp3", "mood": "sad", "status": "ok"},
+                {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok"},
+                {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok"},
             ],
         }
         panel._on_mood_finished(result)
@@ -355,10 +355,10 @@ class TestAnalysisPanelHandlers:
     def test_mood_results_streamed_via_result_ready(self, qapp):
         panel = AnalysisPanel()
         panel.mood_results.add_result(
-            {"file_path": "/a.mp3", "mood": "happy", "status": "ok"}
+            {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok"}
         )
         panel.mood_results.add_result(
-            {"file_path": "/b.mp3", "mood": "sad", "status": "ok"}
+            {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok"}
         )
         assert panel.mood_results.row_count() == 2
 
@@ -369,7 +369,7 @@ class TestAnalysisPanelHandlers:
 
         result = {
             "analyzed": 1, "failed": 0,
-            "results": [{"file_path": "/a.mp3", "energy": 5, "status": "ok"}],
+            "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 5, "status": "ok"}],
         }
         panel._on_energy_finished(result)
         assert len(signals) == 1
@@ -502,6 +502,42 @@ class TestAudioFormatSupport:
 
         assert len(result) == 1
         assert result[0].extension == ".mp3"
+
+
+class TestFormatColumnAndFailureSummary:
+    """Tests for format column and failure summary."""
+
+    def test_energy_results_has_format_column(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.energy_results.table.columnCount() == 4
+        assert panel.energy_results.table.horizontalHeaderItem(1).text() == "Fmt"
+
+    def test_mik_results_has_format_column(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mik_results.table.columnCount() == 5
+        assert panel.mik_results.table.horizontalHeaderItem(1).text() == "Fmt"
+
+    def test_mood_results_has_format_column(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_results.table.columnCount() == 4
+        assert panel.mood_results.table.horizontalHeaderItem(1).text() == "Fmt"
+
+    def test_failure_summary_includes_format_breakdown(self, qapp):
+        results = [
+            {"file_path": "/a.flac", "format": ".flac", "energy": None, "status": "failed"},
+            {"file_path": "/b.flac", "format": ".flac", "energy": None, "status": "failed"},
+            {"file_path": "/c.wav", "format": ".wav", "energy": None, "status": "error: bad file"},
+        ]
+        summary = AnalysisPanel._format_failure_summary(results, 3)
+        assert ".flac: 2" in summary
+        assert ".wav: 1" in summary
+
+    def test_failure_summary_empty_when_no_failures(self, qapp):
+        results = [
+            {"file_path": "/a.mp3", "format": ".mp3", "energy": 7, "status": "ok"},
+        ]
+        summary = AnalysisPanel._format_failure_summary(results, 0)
+        assert summary == ""
 
 
 class TestWorkerResultReady:

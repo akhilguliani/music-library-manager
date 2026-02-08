@@ -27,7 +27,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
 
         self.setWindowTitle("VDJ Manager")
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(1000, 700)
 
         self._setup_ui()
         self._setup_menu_bar()

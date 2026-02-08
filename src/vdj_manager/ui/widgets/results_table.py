@@ -7,6 +7,7 @@ from typing import Any, Callable
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QLabel,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
@@ -181,7 +182,15 @@ class ConfigurableResultsTable(QWidget):
     - color_fn: Optional callable(value) -> QColor or None for color coding
     - alignment: Optional Qt alignment flag (default: AlignLeft for first col, AlignRight for others)
     - tooltip_key: Optional key in result dict to use as tooltip
+
+    Built-in smart formatting:
+    - "file_path" key: shows filename only, full path as tooltip
+    - "status" key: color-coded (green=ok, red=error, orange=failed)
     """
+
+    # Status values considered successful
+    _OK_STATUSES = frozenset({"ok", "found", "updated", "cached", "exists"})
+    _FAIL_STATUSES = frozenset({"failed", "none"})
 
     def __init__(
         self,
@@ -204,6 +213,7 @@ class ConfigurableResultsTable(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.setSortingEnabled(True)
 
         header = self.table.horizontalHeader()
         for i, col in enumerate(self._columns):
@@ -217,8 +227,14 @@ class ConfigurableResultsTable(QWidget):
 
         layout.addWidget(self.table)
 
+        # Row count label
+        self.row_count_label = QLabel("0 results")
+        self.row_count_label.setStyleSheet("color: gray; font-size: 11px;")
+        layout.addWidget(self.row_count_label)
+
     def clear(self) -> None:
         self.table.setRowCount(0)
+        self.row_count_label.setText("0 results")
 
     @Slot(dict)
     def add_result(self, result: dict[str, Any]) -> None:
@@ -227,13 +243,23 @@ class ConfigurableResultsTable(QWidget):
         Args:
             result: Dict with keys matching column 'key' fields.
         """
+        # Disable sorting during insertion to prevent row corruption
+        self.table.setSortingEnabled(False)
+
         row = self.table.rowCount()
         self.table.insertRow(row)
 
         for i, col in enumerate(self._columns):
             value = result.get(col["key"])
             text = str(value) if value is not None else "-"
-            item = QTableWidgetItem(text)
+
+            # Smart formatting for file_path: show filename, tooltip full path
+            if col["key"] == "file_path" and value is not None:
+                text = Path(str(value)).name
+                item = QTableWidgetItem(text)
+                item.setToolTip(str(value))
+            else:
+                item = QTableWidgetItem(text)
 
             # Alignment
             if "alignment" in col:
@@ -243,21 +269,37 @@ class ConfigurableResultsTable(QWidget):
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
 
-            # Color function
+            # Smart color coding for status column
+            if col["key"] == "status" and value is not None:
+                status_str = str(value).lower()
+                if status_str in self._OK_STATUSES:
+                    item.setForeground(QColor("#22aa22"))
+                elif status_str.startswith("error"):
+                    item.setForeground(QColor("#dd2222"))
+                    item.setToolTip(str(value))
+                elif status_str in self._FAIL_STATUSES:
+                    item.setForeground(QColor("#cc8800"))
+
+            # Custom color function (overrides built-in)
             color_fn = col.get("color_fn")
             if color_fn is not None and value is not None:
                 color = color_fn(value)
                 if color is not None:
                     item.setForeground(color)
 
-            # Tooltip
+            # Tooltip from explicit key
             tooltip_key = col.get("tooltip_key")
             if tooltip_key and tooltip_key in result:
                 item.setToolTip(str(result[tooltip_key]))
 
             self.table.setItem(row, i, item)
 
+        self.table.setSortingEnabled(True)
         self.table.scrollToBottom()
+
+        # Update row count
+        count = self.table.rowCount()
+        self.row_count_label.setText(f"{count} result{'s' if count != 1 else ''}")
 
     def get_all_results(self) -> list[dict[str, Any]]:
         """Get all results as a list of dicts keyed by column key."""

@@ -86,67 +86,45 @@ class DatabasePanel(QWidget):
         """Set up the panel UI."""
         layout = QVBoxLayout(self)
 
-        # Database selection
+        # Database selection + actions (merged header)
         selection_group = self._create_selection_group()
         layout.addWidget(selection_group)
 
-        # Actions row
-        actions_layout = QHBoxLayout()
+        # Compact stats summary
+        self.stats_summary_label = QLabel("No database loaded")
+        self.stats_summary_label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 4px;")
+        layout.addWidget(self.stats_summary_label)
 
-        self.backup_btn = QPushButton("Backup")
-        self.backup_btn.setEnabled(False)
-        self.backup_btn.setToolTip("Create a timestamped backup of the database")
-        self.backup_btn.clicked.connect(self._on_backup_clicked)
-        actions_layout.addWidget(self.backup_btn)
-
-        self.validate_btn = QPushButton("Validate")
-        self.validate_btn.setEnabled(False)
-        self.validate_btn.setToolTip("Check file existence and validate entries")
-        self.validate_btn.clicked.connect(self._on_validate_clicked)
-        actions_layout.addWidget(self.validate_btn)
-
-        self.clean_btn = QPushButton("Clean")
-        self.clean_btn.setEnabled(False)
-        self.clean_btn.setToolTip("Remove invalid entries from database")
-        self.clean_btn.clicked.connect(self._on_clean_clicked)
-        actions_layout.addWidget(self.clean_btn)
-
-        actions_layout.addStretch()
-        layout.addLayout(actions_layout)
-
-        # Create splitter for stats and track table
+        # Create splitter for track table, tag editor, and log
         splitter = QSplitter(Qt.Orientation.Vertical)
-
-        # Statistics group
-        stats_group = self._create_stats_group()
-        splitter.addWidget(stats_group)
 
         # Track table group
         tracks_group = self._create_tracks_group()
         splitter.addWidget(tracks_group)
 
-        # Tag editing group
+        # Tag editing group (hidden until a track is selected)
         tag_group = self._create_tag_edit_group()
+        self._tag_group = tag_group
+        tag_group.setVisible(False)
         splitter.addWidget(tag_group)
 
         # Operation log
         log_group = QGroupBox("Operation Log")
         log_layout = QVBoxLayout(log_group)
         self.operation_log = QListWidget()
-        self.operation_log.setMaximumHeight(120)
+        self.operation_log.setMaximumHeight(150)
         log_layout.addWidget(self.operation_log)
         splitter.addWidget(log_group)
 
-        # Set stretch factors (give more space to tracks)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 4)
+        # Set stretch factors (give most space to tracks)
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 1)
-        splitter.setStretchFactor(3, 1)
 
         layout.addWidget(splitter)
 
     def _create_selection_group(self) -> QGroupBox:
-        """Create the database selection group box."""
+        """Create the database selection and actions group box."""
         group = QGroupBox("Database")
         layout = QHBoxLayout(group)
 
@@ -164,35 +142,33 @@ class DatabasePanel(QWidget):
         self.load_btn.clicked.connect(self._on_load_clicked)
         layout.addWidget(self.load_btn)
 
-        # Status label
-        self.status_label = QLabel("Not loaded")
-        self.status_label.setStyleSheet("color: gray;")
-        layout.addWidget(self.status_label)
+        layout.addSpacing(16)
+
+        # Action buttons
+        self.backup_btn = QPushButton("Backup")
+        self.backup_btn.setEnabled(False)
+        self.backup_btn.setToolTip("Create a timestamped backup of the database")
+        self.backup_btn.clicked.connect(self._on_backup_clicked)
+        layout.addWidget(self.backup_btn)
+
+        self.validate_btn = QPushButton("Validate")
+        self.validate_btn.setEnabled(False)
+        self.validate_btn.setToolTip("Check file existence and validate entries")
+        self.validate_btn.clicked.connect(self._on_validate_clicked)
+        layout.addWidget(self.validate_btn)
+
+        self.clean_btn = QPushButton("Clean")
+        self.clean_btn.setEnabled(False)
+        self.clean_btn.setToolTip("Remove invalid entries from database")
+        self.clean_btn.clicked.connect(self._on_clean_clicked)
+        layout.addWidget(self.clean_btn)
 
         layout.addStretch()
 
-        return group
-
-    def _create_stats_group(self) -> QGroupBox:
-        """Create the statistics display group box."""
-        group = QGroupBox("Statistics")
-        layout = QFormLayout(group)
-
-        # Create stat labels
-        self.stats_labels = {}
-        stat_items = [
-            ("total", "Total Tracks:"),
-            ("audio", "Audio Files:"),
-            ("with_energy", "With Energy:"),
-            ("with_cues", "With Cue Points:"),
-            ("windows", "Windows Paths:"),
-            ("netsearch", "Streaming:"),
-        ]
-
-        for key, label in stat_items:
-            value_label = QLabel("-")
-            self.stats_labels[key] = value_label
-            layout.addRow(label, value_label)
+        # Status label (right-aligned)
+        self.status_label = QLabel("Not loaded")
+        self.status_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.status_label)
 
         return group
 
@@ -352,16 +328,27 @@ class DatabasePanel(QWidget):
             stats: Database statistics.
         """
         if stats is None:
-            for label in self.stats_labels.values():
-                label.setText("-")
+            self.stats_summary_label.setText("No database loaded")
+            self.stats_summary_label.setStyleSheet(
+                "color: gray; font-size: 11px; padding: 2px 4px;"
+            )
             return
 
-        self.stats_labels["total"].setText(str(stats.total_songs))
-        self.stats_labels["audio"].setText(str(stats.audio_files))
-        self.stats_labels["with_energy"].setText(str(stats.with_energy))
-        self.stats_labels["with_cues"].setText(str(stats.with_cue_points))
-        self.stats_labels["windows"].setText(str(stats.windows_paths))
-        self.stats_labels["netsearch"].setText(str(stats.netsearch))
+        parts = [
+            f"{stats.total_songs:,} tracks",
+            f"{stats.audio_files:,} audio",
+            f"{stats.with_energy:,} energy",
+            f"{stats.with_cue_points:,} cues",
+        ]
+        if stats.windows_paths > 0:
+            parts.append(f"{stats.windows_paths:,} Windows")
+        if stats.netsearch > 0:
+            parts.append(f"{stats.netsearch:,} streaming")
+
+        self.stats_summary_label.setText("  |  ".join(parts))
+        self.stats_summary_label.setStyleSheet(
+            "color: #666; font-size: 11px; padding: 2px 4px;"
+        )
 
     @Slot(str)
     def _on_search_changed(self, text: str) -> None:
@@ -471,6 +458,7 @@ class DatabasePanel(QWidget):
         Args:
             track: Song to populate from.
         """
+        self._tag_group.setVisible(True)
         self.tag_track_label.setText(track.display_name)
         self.tag_save_btn.setEnabled(True)
 

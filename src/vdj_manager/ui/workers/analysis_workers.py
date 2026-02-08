@@ -48,8 +48,9 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
     """Analyze energy for a single file in a subprocess.
 
     Returns:
-        Dict with file_path, energy (int|None), and status.
+        Dict with file_path, format, energy (int|None), and status.
     """
+    fmt = Path(file_path).suffix.lower()
     try:
         # Check cache first
         if cache_db_path:
@@ -57,7 +58,7 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
             cache = AnalysisCache(db_path=Path(cache_db_path))
             cached = cache.get(file_path, "energy")
             if cached is not None:
-                return {"file_path": file_path, "energy": int(cached), "status": "cached"}
+                return {"file_path": file_path, "format": fmt, "energy": int(cached), "status": "cached"}
 
         from vdj_manager.analysis.energy import EnergyAnalyzer
 
@@ -70,18 +71,19 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
                 from vdj_manager.analysis.analysis_cache import AnalysisCache
                 cache = AnalysisCache(db_path=Path(cache_db_path))
                 cache.put(file_path, "energy", str(energy))
-            return {"file_path": file_path, "energy": energy, "status": "ok"}
-        return {"file_path": file_path, "energy": None, "status": "failed"}
+            return {"file_path": file_path, "format": fmt, "energy": energy, "status": "ok"}
+        return {"file_path": file_path, "format": fmt, "energy": None, "status": "failed"}
     except Exception as e:
-        return {"file_path": file_path, "energy": None, "status": f"error: {e}"}
+        return {"file_path": file_path, "format": fmt, "energy": None, "status": f"error: {e}"}
 
 
 def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Analyze mood for a single file in a subprocess.
 
     Returns:
-        Dict with file_path, mood (str|None), and status.
+        Dict with file_path, format, mood (str|None), and status.
     """
+    fmt = Path(file_path).suffix.lower()
     try:
         # Check cache first
         if cache_db_path:
@@ -89,7 +91,7 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
             cache = AnalysisCache(db_path=Path(cache_db_path))
             cached = cache.get(file_path, "mood")
             if cached is not None:
-                return {"file_path": file_path, "mood": cached, "status": "cached"}
+                return {"file_path": file_path, "format": fmt, "mood": cached, "status": "cached"}
 
         from vdj_manager.analysis.mood import MoodAnalyzer
 
@@ -102,18 +104,19 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
                 from vdj_manager.analysis.analysis_cache import AnalysisCache
                 cache = AnalysisCache(db_path=Path(cache_db_path))
                 cache.put(file_path, "mood", mood_tag)
-            return {"file_path": file_path, "mood": mood_tag, "status": "ok"}
-        return {"file_path": file_path, "mood": None, "status": "failed"}
+            return {"file_path": file_path, "format": fmt, "mood": mood_tag, "status": "ok"}
+        return {"file_path": file_path, "format": fmt, "mood": None, "status": "failed"}
     except Exception as e:
-        return {"file_path": file_path, "mood": None, "status": f"error: {e}"}
+        return {"file_path": file_path, "format": fmt, "mood": None, "status": f"error: {e}"}
 
 
 def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Import MIK tags for a single file in a subprocess.
 
     Returns:
-        Dict with file_path, energy, key, and status.
+        Dict with file_path, format, energy, key, and status.
     """
+    fmt = Path(file_path).suffix.lower()
     try:
         # Check cache first
         if cache_db_path:
@@ -128,6 +131,7 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
                 if energy or key:
                     return {
                         "file_path": file_path,
+                        "format": fmt,
                         "energy": energy,
                         "key": key,
                         "status": "cached",
@@ -147,13 +151,14 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
                 cache.put(file_path, "mik", f"{energy_str}:{key_str}")
             return {
                 "file_path": file_path,
+                "format": fmt,
                 "energy": mik_data.get("energy"),
                 "key": mik_data.get("key"),
                 "status": "found",
             }
-        return {"file_path": file_path, "energy": None, "key": None, "status": "none"}
+        return {"file_path": file_path, "format": fmt, "energy": None, "key": None, "status": "none"}
     except Exception:
-        return {"file_path": file_path, "status": "error"}
+        return {"file_path": file_path, "format": fmt, "status": "error"}
 
 
 # ------------------------------------------------------------------
