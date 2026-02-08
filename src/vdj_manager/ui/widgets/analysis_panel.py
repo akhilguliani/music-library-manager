@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, Slot
 
+from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
@@ -85,7 +86,7 @@ class AnalysisPanel(QWidget):
         config_layout.addWidget(QLabel("Workers:"))
         cpu_count = multiprocessing.cpu_count()
         self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(1, cpu_count)
+        self.workers_spin.setRange(1, 20)
         self.workers_spin.setValue(max(1, cpu_count - 1))
         self.workers_spin.setToolTip(
             f"Parallel workers for analysis ({cpu_count} CPU cores detected)"
@@ -346,7 +347,9 @@ class AnalysisPanel(QWidget):
         self.energy_results.clear()
 
         self._energy_worker = EnergyWorker(
-            self._database, tracks, max_workers=self.workers_spin.value()
+            self._database, tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(self._on_energy_error)
@@ -360,7 +363,12 @@ class AnalysisPanel(QWidget):
 
         analyzed = result["analyzed"]
         failed = result["failed"]
-        self.energy_status.setText(f"Done: {analyzed} analyzed, {failed} failed")
+        cached = result.get("cached", 0)
+        parts = [f"{analyzed} analyzed"]
+        if cached:
+            parts.append(f"{cached} cached")
+        parts.append(f"{failed} failed")
+        self.energy_status.setText(f"Done: {', '.join(parts)}")
 
         for r in result["results"]:
             self.energy_results.add_result(r)
@@ -400,7 +408,9 @@ class AnalysisPanel(QWidget):
         self.mik_results.clear()
 
         self._mik_worker = MIKImportWorker(
-            self._database, tracks, max_workers=self.workers_spin.value()
+            self._database, tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._mik_worker.finished_work.connect(self._on_mik_finished)
         self._mik_worker.error.connect(self._on_mik_error)
@@ -452,7 +462,9 @@ class AnalysisPanel(QWidget):
         self.mood_results.clear()
 
         self._mood_worker = MoodWorker(
-            self._database, tracks, max_workers=self.workers_spin.value()
+            self._database, tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
@@ -469,7 +481,12 @@ class AnalysisPanel(QWidget):
 
         analyzed = result["analyzed"]
         failed = result["failed"]
-        self.mood_status.setText(f"Done: {analyzed} analyzed, {failed} failed")
+        cached = result.get("cached", 0)
+        parts = [f"{analyzed} analyzed"]
+        if cached:
+            parts.append(f"{cached} cached")
+        parts.append(f"{failed} failed")
+        self.mood_status.setText(f"Done: {', '.join(parts)}")
 
         for r in result["results"]:
             self.mood_results.add_result(r)

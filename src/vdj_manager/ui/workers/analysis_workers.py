@@ -2,6 +2,7 @@
 
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 from vdj_manager.core.database import VDJDatabase
@@ -13,54 +14,105 @@ from vdj_manager.ui.workers.base_worker import ProgressSimpleWorker
 # Top-level worker functions (required for ProcessPoolExecutor pickling)
 # ------------------------------------------------------------------
 
-def _analyze_energy_single(file_path: str) -> dict:
+def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Analyze energy for a single file in a subprocess.
 
     Returns:
         Dict with file_path, energy (int|None), and status.
     """
     try:
+        # Check cache first
+        if cache_db_path:
+            from vdj_manager.analysis.analysis_cache import AnalysisCache
+            cache = AnalysisCache(db_path=Path(cache_db_path))
+            cached = cache.get(file_path, "energy")
+            if cached is not None:
+                return {"file_path": file_path, "energy": int(cached), "status": "cached"}
+
         from vdj_manager.analysis.energy import EnergyAnalyzer
 
         analyzer = EnergyAnalyzer()
         energy = analyzer.analyze(file_path)
         if energy is not None:
+            # Store in cache
+            if cache_db_path:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                cache = AnalysisCache(db_path=Path(cache_db_path))
+                cache.put(file_path, "energy", str(energy))
             return {"file_path": file_path, "energy": energy, "status": "ok"}
         return {"file_path": file_path, "energy": None, "status": "failed"}
     except Exception as e:
         return {"file_path": file_path, "energy": None, "status": f"error: {e}"}
 
 
-def _analyze_mood_single(file_path: str) -> dict:
+def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Analyze mood for a single file in a subprocess.
 
     Returns:
         Dict with file_path, mood (str|None), and status.
     """
     try:
+        # Check cache first
+        if cache_db_path:
+            from vdj_manager.analysis.analysis_cache import AnalysisCache
+            cache = AnalysisCache(db_path=Path(cache_db_path))
+            cached = cache.get(file_path, "mood")
+            if cached is not None:
+                return {"file_path": file_path, "mood": cached, "status": "cached"}
+
         from vdj_manager.analysis.mood import MoodAnalyzer
 
         analyzer = MoodAnalyzer()
         mood_tag = analyzer.get_mood_tag(file_path)
         if mood_tag:
+            # Store in cache
+            if cache_db_path:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                cache = AnalysisCache(db_path=Path(cache_db_path))
+                cache.put(file_path, "mood", mood_tag)
             return {"file_path": file_path, "mood": mood_tag, "status": "ok"}
         return {"file_path": file_path, "mood": None, "status": "failed"}
     except Exception as e:
         return {"file_path": file_path, "mood": None, "status": f"error: {e}"}
 
 
-def _import_mik_single(file_path: str) -> dict:
+def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Import MIK tags for a single file in a subprocess.
 
     Returns:
         Dict with file_path, energy, key, and status.
     """
     try:
+        # Check cache first
+        if cache_db_path:
+            from vdj_manager.analysis.analysis_cache import AnalysisCache
+            cache = AnalysisCache(db_path=Path(cache_db_path))
+            cached = cache.get(file_path, "mik")
+            if cached is not None:
+                # cached format: "energy:key" e.g. "8:Am" or ":Am" or "8:"
+                parts = cached.split(":", 1)
+                energy = int(parts[0]) if parts[0] else None
+                key = parts[1] if len(parts) > 1 and parts[1] else None
+                if energy or key:
+                    return {
+                        "file_path": file_path,
+                        "energy": energy,
+                        "key": key,
+                        "status": "cached",
+                    }
+
         from vdj_manager.analysis.audio_features import MixedInKeyReader
 
         reader = MixedInKeyReader()
         mik_data = reader.read_tags(file_path)
         if mik_data.get("energy") or mik_data.get("key"):
+            # Store in cache
+            if cache_db_path:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                cache = AnalysisCache(db_path=Path(cache_db_path))
+                energy_str = str(mik_data.get("energy") or "")
+                key_str = mik_data.get("key") or ""
+                cache.put(file_path, "mik", f"{energy_str}:{key_str}")
             return {
                 "file_path": file_path,
                 "energy": mik_data.get("energy"),
@@ -88,21 +140,24 @@ class EnergyWorker(ProgressSimpleWorker):
         database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
+        cache_db_path: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
+        self._cache_db_path = cache_db_path
 
     def do_work(self) -> dict:
         """Analyze energy for all tracks in parallel.
 
         Returns:
-            Dict with analyzed count, failed count, and results list.
+            Dict with analyzed count, failed count, cached count, and results list.
         """
         analyzed = 0
         failed = 0
+        cached = 0
         results = []
         total = len(self._tracks)
 
@@ -110,7 +165,7 @@ class EnergyWorker(ProgressSimpleWorker):
 
         with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
             futures = {
-                executor.submit(_analyze_energy_single, fp): fp
+                executor.submit(_analyze_energy_single, fp, self._cache_db_path): fp
                 for fp in file_paths
             }
 
@@ -122,7 +177,13 @@ class EnergyWorker(ProgressSimpleWorker):
                 result = future.result()
                 results.append(result)
 
-                if result["status"] == "ok" and result["energy"] is not None:
+                if result["status"] == "cached" and result["energy"] is not None:
+                    self._database.update_song_tags(
+                        result["file_path"],
+                        Grouping=f"Energy {result['energy']}",
+                    )
+                    cached += 1
+                elif result["status"] == "ok" and result["energy"] is not None:
                     self._database.update_song_tags(
                         result["file_path"],
                         Grouping=f"Energy {result['energy']}",
@@ -131,12 +192,12 @@ class EnergyWorker(ProgressSimpleWorker):
                 else:
                     failed += 1
 
-                self.report_progress(analyzed + failed, total, result["file_path"])
+                self.report_progress(analyzed + failed + cached, total, result["file_path"])
 
-        if analyzed > 0:
+        if analyzed + cached > 0:
             self._database.save()
 
-        return {"analyzed": analyzed, "failed": failed, "results": results}
+        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
 
 class MIKImportWorker(ProgressSimpleWorker):
@@ -151,12 +212,14 @@ class MIKImportWorker(ProgressSimpleWorker):
         database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
+        cache_db_path: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
+        self._cache_db_path = cache_db_path
 
     def do_work(self) -> dict:
         """Import MIK tags for all tracks in parallel.
@@ -178,7 +241,7 @@ class MIKImportWorker(ProgressSimpleWorker):
 
         with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
             futures = {
-                executor.submit(_import_mik_single, fp): fp
+                executor.submit(_import_mik_single, fp, self._cache_db_path): fp
                 for fp in file_paths
             }
 
@@ -189,13 +252,13 @@ class MIKImportWorker(ProgressSimpleWorker):
 
                 result = future.result()
 
-                if result["status"] == "found":
+                if result["status"] in ("found", "cached"):
                     found += 1
                     updates = {}
                     if result.get("energy") and not existing_energy.get(result["file_path"]):
                         updates["Grouping"] = f"Energy {result['energy']}"
                     if result.get("key"):
-                        updates["Comment"] = result["key"]
+                        updates["Key"] = result["key"]
                     if updates:
                         self._database.update_song_tags(result["file_path"], **updates)
                         updated += 1
@@ -216,7 +279,7 @@ class MoodWorker(ProgressSimpleWorker):
     """Worker that analyzes mood/emotion for audio tracks in parallel.
 
     Uses MoodAnalyzer (requires essentia-tensorflow) with ProcessPoolExecutor
-    to classify audio mood and updates the database Comment field.
+    to classify audio mood and stores results in the User2 hashtag field.
     """
 
     def __init__(
@@ -224,18 +287,20 @@ class MoodWorker(ProgressSimpleWorker):
         database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
+        cache_db_path: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
+        self._cache_db_path = cache_db_path
 
     def do_work(self) -> dict:
         """Analyze mood for all tracks in parallel.
 
         Returns:
-            Dict with analyzed count, failed count, and results list.
+            Dict with analyzed count, failed count, cached count, and results list.
         """
         # Check availability before spawning workers
         from vdj_manager.analysis.mood import MoodAnalyzer
@@ -245,12 +310,14 @@ class MoodWorker(ProgressSimpleWorker):
             return {
                 "analyzed": 0,
                 "failed": 0,
+                "cached": 0,
                 "results": [],
                 "error": "essentia-tensorflow is not installed",
             }
 
         analyzed = 0
         failed = 0
+        cached = 0
         results = []
         total = len(self._tracks)
 
@@ -258,7 +325,7 @@ class MoodWorker(ProgressSimpleWorker):
 
         with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
             futures = {
-                executor.submit(_analyze_mood_single, fp): fp
+                executor.submit(_analyze_mood_single, fp, self._cache_db_path): fp
                 for fp in file_paths
             }
 
@@ -270,17 +337,28 @@ class MoodWorker(ProgressSimpleWorker):
                 result = future.result()
                 results.append(result)
 
-                if result["status"] == "ok" and result.get("mood"):
+                if result.get("mood") and result["status"] in ("ok", "cached"):
+                    mood_hashtag = f"#{result['mood']}"
+                    # Append mood hashtag to existing User2 value
+                    song = self._database.get_song(result["file_path"])
+                    existing = (song.tags.user2 or "") if song and song.tags else ""
+                    if mood_hashtag not in existing.split():
+                        new_user2 = f"{existing} {mood_hashtag}".strip()
+                    else:
+                        new_user2 = existing
                     self._database.update_song_tags(
-                        result["file_path"], Comment=result["mood"]
+                        result["file_path"], User2=new_user2
                     )
-                    analyzed += 1
+                    if result["status"] == "cached":
+                        cached += 1
+                    else:
+                        analyzed += 1
                 else:
                     failed += 1
 
-                self.report_progress(analyzed + failed, total, result["file_path"])
+                self.report_progress(analyzed + failed + cached, total, result["file_path"])
 
-        if analyzed > 0:
+        if analyzed + cached > 0:
             self._database.save()
 
-        return {"analyzed": analyzed, "failed": failed, "results": results}
+        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
