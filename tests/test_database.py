@@ -9,35 +9,36 @@ from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType
 
 
-SAMPLE_DB_XML = """<?xml version="1.0" encoding="utf-8"?>
-<VirtualDJ_Database Version="8">
- <Song FilePath="/path/to/track1.mp3" FileSize="5000000">
-  <Tags Author="Artist One" Title="Track One" Genre="Dance" Grouping="Energy 7" />
-  <Infos SongLength="180.5" Bitrate="320" />
-  <Scan Bpm="0.5" Key="Am" Volume="1.0" />
-  <Poi Type="cue" Pos="0.5" Num="1" Name="Intro" />
-  <Poi Type="cue" Pos="30.0" Num="2" Name="Drop" />
-  <Poi Type="beatgrid" Pos="0.0" Bpm="0.5" />
- </Song>
- <Song FilePath="/path/to/track2.mp3" FileSize="4000000">
-  <Tags Author="Artist Two" Title="Track Two" />
-  <Scan Bpm="0.4" Key="Cm" />
- </Song>
- <Song FilePath="D:/Windows/track3.mp3" FileSize="3000000">
-  <Tags Author="Artist Three" Title="Track Three" />
- </Song>
- <Song FilePath="netsearch://spotify/track123" FileSize="0">
-  <Tags Title="Streaming Track" />
- </Song>
-</VirtualDJ_Database>
-"""
+SAMPLE_DB_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+    '<VirtualDJ_Database Version="8">\r\n'
+    ' <Song FilePath="/path/to/track1.mp3" FileSize="5000000">\r\n'
+    '  <Tags Author="Artist One" Title="Track One" Genre="Dance" Grouping="Energy 7" />\r\n'
+    '  <Infos SongLength="180.5" Bitrate="320" />\r\n'
+    '  <Scan Bpm="0.5" Key="Am" Volume="1.0" />\r\n'
+    '  <Poi Type="cue" Pos="0.5" Num="1" Name="Intro" />\r\n'
+    '  <Poi Type="cue" Pos="30.0" Num="2" Name="Drop" />\r\n'
+    '  <Poi Type="beatgrid" Pos="0.0" Bpm="0.5" />\r\n'
+    ' </Song>\r\n'
+    ' <Song FilePath="/path/to/track2.mp3" FileSize="4000000">\r\n'
+    '  <Tags Author="Artist Two" Title="Track Two" />\r\n'
+    '  <Scan Bpm="0.4" Key="Cm" />\r\n'
+    ' </Song>\r\n'
+    ' <Song FilePath="D:/Windows/track3.mp3" FileSize="3000000">\r\n'
+    '  <Tags Author="Artist Three" Title="Track Three" />\r\n'
+    ' </Song>\r\n'
+    ' <Song FilePath="netsearch://spotify/track123" FileSize="0">\r\n'
+    '  <Tags Title="Streaming Track" />\r\n'
+    ' </Song>\r\n'
+    '</VirtualDJ_Database>\r\n'
+)
 
 
 @pytest.fixture
 def temp_db_file():
     """Create a temporary database file for testing."""
-    with NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as f:
-        f.write(SAMPLE_DB_XML)
+    with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+        f.write(SAMPLE_DB_XML.encode("utf-8"))
         f.flush()
         yield Path(f.name)
     Path(f.name).unlink(missing_ok=True)
@@ -189,36 +190,101 @@ class TestVDJDatabase:
 class TestVDJDatabaseSaveFormat:
     """Tests for VDJ database save format compatibility.
 
-    VirtualDJ uses standard lxml output format:
-    - Single quotes in XML declaration (lxml default)
-    - Unix line endings (LF)
-    - UTF-8 encoding
-
-    These tests verify the save() method produces valid XML output.
+    VirtualDJ database format (verified from actual VDJ-created files):
+    - Double quotes in XML declaration
+    - UTF-8 encoding (uppercase)
+    - CRLF line endings
+    - Space before /> in self-closing tags
+    - Apostrophes as &apos; entities in attribute values
+    - Trailing CRLF after root element
     """
 
-    def test_save_produces_valid_xml_declaration(self, temp_db_file):
-        """Test that saved XML has a valid XML declaration."""
+    def test_save_produces_double_quote_declaration(self, temp_db_file):
+        """Saved XML declaration must use double quotes."""
         db = VDJDatabase(temp_db_file)
         db.load()
         db.save()
 
-        # Read and verify format
-        with open(temp_db_file, "rb") as f:
-            content = f.read()
+        content = temp_db_file.read_bytes()
+        assert content.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
 
-        xml_str = content.decode("UTF-8")
-        # Should start with XML declaration (single quotes are lxml default)
-        assert xml_str.startswith("<?xml version=")
-        assert "encoding=" in xml_str[:100]
+    def test_save_uses_crlf_line_endings(self, temp_db_file):
+        """Saved file must use CRLF line endings."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        content = temp_db_file.read_bytes()
+        # Every LF should be preceded by CR
+        lf_count = content.count(b"\n")
+        crlf_count = content.count(b"\r\n")
+        assert lf_count == crlf_count
+        assert lf_count > 0
+
+    def test_save_has_space_before_self_closing(self, temp_db_file):
+        """Self-closing tags must have space before />."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        content = temp_db_file.read_text(encoding="utf-8")
+        # All /> should be preceded by a space
+        assert "/>" in content
+        import re
+        no_space = re.findall(r'[^ ]/>',  content)
+        assert no_space == [], f"Found '/>' without preceding space: {no_space}"
+
+    def test_save_ends_with_crlf(self, temp_db_file):
+        """File must end with CRLF."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        content = temp_db_file.read_bytes()
+        assert content.endswith(b"\r\n")
+
+    def test_save_round_trip_byte_identical(self, temp_db_file):
+        """Save should produce byte-identical output for unmodified database."""
+        original = temp_db_file.read_bytes()
+
+        db = VDJDatabase(temp_db_file)
+        db.load()
+        db.save()
+
+        saved = temp_db_file.read_bytes()
+        assert original == saved
+
+    def test_save_preserves_apostrophe_entities(self):
+        """Apostrophes in attribute values must be saved as &apos;."""
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+            '<VirtualDJ_Database Version="8">\r\n'
+            ' <Song FilePath="/path/to/it&apos;s a track.mp3" FileSize="100">\r\n'
+            '  <Tags Author="Rock&apos;n Roll" Title="Test" />\r\n'
+            ' </Song>\r\n'
+            '</VirtualDJ_Database>\r\n'
+        )
+        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+            f.write(xml.encode("utf-8"))
+            tmp = Path(f.name)
+        try:
+            db = VDJDatabase(tmp)
+            db.load()
+            db.save()
+
+            content = tmp.read_bytes().decode("utf-8")
+            assert "&apos;" in content
+            assert "it&apos;s a track" in content
+            assert "Rock&apos;n Roll" in content
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def test_save_produces_valid_xml(self, temp_db_file):
-        """Test that saved XML can be parsed back."""
+        """Saved XML can be parsed back successfully."""
         db = VDJDatabase(temp_db_file)
         db.load()
         db.save()
 
-        # Should be able to reload the saved file
         db2 = VDJDatabase(temp_db_file)
         db2.load()
 
@@ -226,15 +292,13 @@ class TestVDJDatabaseSaveFormat:
         assert len(db2.songs) == len(db.songs)
 
     def test_save_preserves_data_after_modification(self, temp_db_file):
-        """Test that data is preserved after modifying and saving."""
+        """Data is preserved after modifying and saving."""
         db = VDJDatabase(temp_db_file)
         db.load()
 
-        # Make a modification
         db.update_song_tags("/path/to/track1.mp3", Grouping="Energy 9")
         db.save()
 
-        # Reload and verify
         db2 = VDJDatabase(temp_db_file)
         db2.load()
 

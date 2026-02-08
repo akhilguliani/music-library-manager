@@ -1,5 +1,6 @@
 """VirtualDJ database XML parser and writer using lxml."""
 
+import re
 from pathlib import Path
 from typing import Optional, Iterator
 from lxml import etree
@@ -347,23 +348,54 @@ class VDJDatabase:
     def save(self, output_path: Optional[Path] = None) -> None:
         """Save the database to file.
 
-        VDJ database format:
-        - Single quotes in XML declaration (lxml default)
-        - Unix line endings (LF)
-        - UTF-8 encoding
+        VDJ database format (verified from actual VDJ-created files):
+        - Double quotes in XML declaration
+        - UTF-8 encoding (uppercase)
+        - CRLF line endings
+        - Space before /> in self-closing tags
+        - Apostrophes as &apos; entities in attribute values
+        - Trailing CRLF after root element
         """
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
         path = output_path or self.db_path
 
-        # Use lxml's tree.write() which preserves the format VDJ expects
-        self._tree.write(
-            str(path),
+        # lxml produces single quotes and no space before />, so we post-process
+        xml_bytes = etree.tostring(
+            self._tree,
             encoding="UTF-8",
             xml_declaration=True,
             pretty_print=False,
         )
+
+        xml_str = xml_bytes.decode("utf-8")
+
+        # Fix XML declaration: single quotes → double quotes
+        xml_str = xml_str.replace(
+            "<?xml version='1.0' encoding='UTF-8'?>",
+            '<?xml version="1.0" encoding="UTF-8"?>',
+        )
+
+        # Restore &apos; entities in attribute values.
+        # lxml unescapes &apos; on parse and outputs raw ' (valid XML but
+        # differs from VDJ's format). Re-escape apostrophes inside
+        # double-quoted attribute values only.
+        def _escape_apos_in_attrs(match: re.Match) -> str:
+            return match.group(0).replace("'", "&apos;")
+        xml_str = re.sub(r'"[^"]*\'[^"]*"', _escape_apos_in_attrs, xml_str)
+
+        # Add space before /> in self-closing tags (VDJ format)
+        xml_str = xml_str.replace("/>", " />")
+
+        # Convert LF to CRLF
+        xml_str = xml_str.replace("\r\n", "\n").replace("\n", "\r\n")
+
+        # Ensure trailing CRLF
+        if not xml_str.endswith("\r\n"):
+            xml_str += "\r\n"
+
+        path.write_bytes(xml_str.encode("utf-8"))
 
     def merge_from(self, other: "VDJDatabase", prefer_other: bool = True) -> dict:
         """Merge songs from another database into this one.
