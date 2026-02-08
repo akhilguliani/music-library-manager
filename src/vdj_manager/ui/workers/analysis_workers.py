@@ -1,19 +1,23 @@
-"""Workers for audio analysis operations with parallel processing."""
+"""Workers for audio analysis operations with parallel processing.
+
+Supports pause/resume/cancel via PausableAnalysisWorker base class,
+which processes futures in batches and pauses between them.
+"""
 
 import contextlib
 import gc
 import multiprocessing
 import os
 import sys
+import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QMutex, QWaitCondition, QThread, Signal
 
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
-from vdj_manager.ui.workers.base_worker import ProgressSimpleWorker
 
 # Save to disk every N results to avoid losing work on crash
 _SAVE_INTERVAL = 25
@@ -33,15 +37,21 @@ def _suppress_stderr():
     Python's sys.stderr.
 
     Uses try/finally to guarantee fd cleanup even if the body raises.
+    Tracks devnull fd separately to prevent leaks if os.dup() fails
+    after os.open() succeeds.
     """
     old_stderr = None
+    devnull = None
     try:
         devnull = os.open(os.devnull, os.O_WRONLY)
         old_stderr = os.dup(2)
         os.dup2(devnull, 2)
         os.close(devnull)
+        devnull = None  # fd2 now points to /dev/null; devnull fd is closed
     except OSError:
         # If redirection setup fails, clean up and run without suppression
+        if devnull is not None:
+            os.close(devnull)
         if old_stderr is not None:
             os.close(old_stderr)
         old_stderr = None
@@ -86,8 +96,19 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
         return {"file_path": file_path, "format": fmt, "energy": None, "status": f"error: {e}"}
 
 
-def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> dict:
+def _analyze_mood_single(
+    file_path: str,
+    cache_db_path: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
+    lastfm_api_key: str | None = None,
+    enable_online: bool = False,
+) -> dict:
     """Analyze mood for a single file in a subprocess.
+
+    When enable_online is True and artist+title are available, tries
+    online lookup (Last.fm -> MusicBrainz) before falling back to
+    local essentia analysis.
 
     Returns:
         Dict with file_path, format, mood (str|None), and status.
@@ -102,6 +123,21 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
             if cached is not None:
                 return {"file_path": file_path, "format": fmt, "mood": cached, "status": "cached"}
 
+        # Try online lookup first
+        if enable_online and artist and title:
+            from vdj_manager.analysis.online_mood import lookup_online_mood
+            mood, source = lookup_online_mood(artist, title, lastfm_api_key)
+            if mood:
+                if cache is not None:
+                    cache.put(file_path, "mood", mood)
+                return {
+                    "file_path": file_path,
+                    "format": fmt,
+                    "mood": mood,
+                    "status": f"ok ({source})",
+                }
+
+        # Fall back to local essentia analysis
         from vdj_manager.analysis.mood import MoodAnalyzer
 
         analyzer = MoodAnalyzer()
@@ -112,7 +148,7 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
         if mood_tag:
             if cache is not None:
                 cache.put(file_path, "mood", mood_tag)
-            return {"file_path": file_path, "format": fmt, "mood": mood_tag, "status": "ok"}
+            return {"file_path": file_path, "format": fmt, "mood": mood_tag, "status": "ok (local)"}
         return {"file_path": file_path, "format": fmt, "mood": None, "status": "failed"}
     except Exception as e:
         return {"file_path": file_path, "format": fmt, "mood": None, "status": f"error: {e}"}
@@ -167,17 +203,125 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
 
 
 # ------------------------------------------------------------------
+# Pausable analysis worker base
+# ------------------------------------------------------------------
+
+class PausableAnalysisWorker(QThread):
+    """Base class for analysis workers with pause/resume/cancel.
+
+    Extends QThread directly with pause/resume threading primitives.
+    Compatible with ProgressWidget.connect_worker() via matching signals.
+
+    Signals:
+        progress: (current, total, percent) for ProgressWidget.
+        result_ready: (dict) streamed per-result for ConfigurableResultsTable.
+        status_changed: (str) for ProgressWidget status tracking.
+        finished_work: (object) result dict on completion.
+        error: (str) error message.
+    """
+
+    progress = Signal(int, int, float)  # current, total, percent
+    result_ready = Signal(dict)  # per-file result dict
+    status_changed = Signal(str)  # status string
+    finished_work = Signal(object)  # result dict
+    error = Signal(str)  # error message
+
+    def __init__(self, parent: Any = None) -> None:
+        super().__init__(parent)
+        self._mutex = QMutex()
+        self._pause_condition = QWaitCondition()
+        self._is_paused = False
+        self._is_cancelled = False
+
+    @property
+    def is_paused(self) -> bool:
+        return self._is_paused
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._is_cancelled
+
+    def pause(self) -> None:
+        """Request pause after current item."""
+        self._mutex.lock()
+        try:
+            self._is_paused = True
+            self.status_changed.emit("paused")
+        finally:
+            self._mutex.unlock()
+
+    def resume(self) -> None:
+        """Resume from pause."""
+        self._mutex.lock()
+        try:
+            self._is_paused = False
+            self.status_changed.emit("running")
+            self._pause_condition.wakeAll()
+        finally:
+            self._mutex.unlock()
+
+    def cancel(self) -> None:
+        """Request cancellation."""
+        self._mutex.lock()
+        try:
+            self._is_cancelled = True
+            self._is_paused = False
+            self.status_changed.emit("cancelled")
+            self._pause_condition.wakeAll()
+        finally:
+            self._mutex.unlock()
+
+    def _wait_if_paused(self) -> bool:
+        """Block while paused, return False if cancelled."""
+        self._mutex.lock()
+        try:
+            while self._is_paused and not self._is_cancelled:
+                self._pause_condition.wait(self._mutex)
+            return not self._is_cancelled
+        finally:
+            self._mutex.unlock()
+
+    def _check_cancelled(self) -> bool:
+        """Non-blocking cancel check."""
+        self._mutex.lock()
+        try:
+            return self._is_cancelled
+        finally:
+            self._mutex.unlock()
+
+    def _emit_progress(self, current: int, total: int) -> None:
+        """Emit progress signal with percent."""
+        percent = (current / total * 100) if total > 0 else 0.0
+        self.progress.emit(current, total, percent)
+
+    def do_work(self) -> dict:
+        """Override in subclass."""
+        raise NotImplementedError
+
+    def run(self) -> None:
+        """Execute do_work with status signals."""
+        try:
+            self.status_changed.emit("running")
+            result = self.do_work()
+            if not self._is_cancelled:
+                self.status_changed.emit("completed")
+            self.finished_work.emit(result)
+        except Exception as e:
+            self.status_changed.emit("failed")
+            self.error.emit(str(e))
+
+
+# ------------------------------------------------------------------
 # Worker classes
 # ------------------------------------------------------------------
 
-class EnergyWorker(ProgressSimpleWorker):
+class EnergyWorker(PausableAnalysisWorker):
     """Worker that analyzes energy levels for audio tracks in parallel.
 
     Uses ProcessPoolExecutor to analyze multiple files simultaneously,
     streaming results to the GUI and saving periodically.
+    Supports pause/resume/cancel between batches.
     """
-
-    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -194,11 +338,7 @@ class EnergyWorker(ProgressSimpleWorker):
         self._cache_db_path = cache_db_path
 
     def do_work(self) -> dict:
-        """Analyze energy for all tracks in parallel.
-
-        Returns:
-            Dict with analyzed count, failed count, cached count, and results list.
-        """
+        """Analyze energy for all tracks in parallel."""
         analyzed = 0
         failed = 0
         cached = 0
@@ -208,58 +348,63 @@ class EnergyWorker(ProgressSimpleWorker):
 
         file_paths = [t.file_path for t in self._tracks]
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
-            futures = {
-                executor.submit(_analyze_energy_single, fp, self._cache_db_path): fp
-                for fp in file_paths
-            }
+        # Process in batches for pause/resume support
+        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+            if not self._wait_if_paused():
+                break
 
-            for future in as_completed(futures):
-                if self.is_cancelled:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
+            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
 
-                result = future.result()
-                results.append(result)
+            with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+                futures = {
+                    executor.submit(_analyze_energy_single, fp, self._cache_db_path): fp
+                    for fp in batch
+                }
 
-                if result["status"] == "cached" and result["energy"] is not None:
-                    self._database.update_song_tags(
-                        result["file_path"],
-                        Grouping=str(result["energy"]),
-                    )
-                    cached += 1
-                    unsaved += 1
-                elif result["status"] == "ok" and result["energy"] is not None:
-                    self._database.update_song_tags(
-                        result["file_path"],
-                        Grouping=str(result["energy"]),
-                    )
-                    analyzed += 1
-                    unsaved += 1
-                else:
-                    failed += 1
+                for future in as_completed(futures):
+                    if self._check_cancelled():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        if unsaved > 0:
+                            self._database.save()
+                        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
-                self.result_ready.emit(result)
-                self.report_progress(analyzed + failed + cached, total, result["file_path"])
+                    result = future.result()
+                    results.append(result)
 
-                if unsaved >= _SAVE_INTERVAL:
-                    self._database.save()
-                    unsaved = 0
+                    if result["status"] == "cached" and result["energy"] is not None:
+                        self._database.update_song_tags(
+                            result["file_path"],
+                            Grouping=str(result["energy"]),
+                        )
+                        cached += 1
+                        unsaved += 1
+                    elif result["status"] == "ok" and result["energy"] is not None:
+                        self._database.update_song_tags(
+                            result["file_path"],
+                            Grouping=str(result["energy"]),
+                        )
+                        analyzed += 1
+                        unsaved += 1
+                    else:
+                        failed += 1
 
-        if unsaved > 0:
-            self._database.save()
+                    self.result_ready.emit(result)
+                    self._emit_progress(analyzed + failed + cached, total)
+
+            # Save after each batch
+            if unsaved > 0:
+                self._database.save()
+                unsaved = 0
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
 
-class MIKImportWorker(ProgressSimpleWorker):
+class MIKImportWorker(PausableAnalysisWorker):
     """Worker that imports Mixed In Key tags from audio files in parallel.
 
     Reads MIK energy and key data from file tags using ProcessPoolExecutor
-    and updates the VDJ database.
+    and updates the VDJ database. Supports pause/resume/cancel.
     """
-
-    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -276,11 +421,7 @@ class MIKImportWorker(ProgressSimpleWorker):
         self._cache_db_path = cache_db_path
 
     def do_work(self) -> dict:
-        """Import MIK tags for all tracks in parallel.
-
-        Returns:
-            Dict with found count, updated count, and results list.
-        """
+        """Import MIK tags for all tracks in parallel."""
         found = 0
         updated = 0
         results = []
@@ -294,56 +435,59 @@ class MIKImportWorker(ProgressSimpleWorker):
 
         file_paths = [t.file_path for t in self._tracks]
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
-            futures = {
-                executor.submit(_import_mik_single, fp, self._cache_db_path): fp
-                for fp in file_paths
-            }
+        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+            if not self._wait_if_paused():
+                break
 
-            for future in as_completed(futures):
-                if self.is_cancelled:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
+            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
 
-                result = future.result()
+            with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+                futures = {
+                    executor.submit(_import_mik_single, fp, self._cache_db_path): fp
+                    for fp in batch
+                }
 
-                if result["status"] in ("found", "cached"):
-                    found += 1
-                    updates = {}
-                    if result.get("energy") and not existing_energy.get(result["file_path"]):
-                        updates["Grouping"] = str(result["energy"])
-                    if result.get("key"):
-                        updates["Key"] = result["key"]
-                    if updates:
-                        self._database.update_song_tags(result["file_path"], **updates)
-                        updated += 1
-                        unsaved += 1
-                        result["status"] = "updated"
-                    else:
-                        result["status"] = "exists"
+                for future in as_completed(futures):
+                    if self._check_cancelled():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        if unsaved > 0:
+                            self._database.save()
+                        return {"found": found, "updated": updated, "results": results}
 
-                results.append(result)
-                self.result_ready.emit(result)
-                self.report_progress(len(results), total, result["file_path"])
+                    result = future.result()
 
-                if unsaved >= _SAVE_INTERVAL:
-                    self._database.save()
-                    unsaved = 0
+                    if result["status"] in ("found", "cached"):
+                        found += 1
+                        updates = {}
+                        if result.get("energy") and not existing_energy.get(result["file_path"]):
+                            updates["Grouping"] = str(result["energy"])
+                        if result.get("key"):
+                            updates["Key"] = result["key"]
+                        if updates:
+                            self._database.update_song_tags(result["file_path"], **updates)
+                            updated += 1
+                            unsaved += 1
+                            result["status"] = "updated"
+                        else:
+                            result["status"] = "exists"
 
-        if unsaved > 0:
-            self._database.save()
+                    results.append(result)
+                    self.result_ready.emit(result)
+                    self._emit_progress(len(results), total)
+
+            if unsaved > 0:
+                self._database.save()
+                unsaved = 0
 
         return {"found": found, "updated": updated, "results": results}
 
 
-class MoodWorker(ProgressSimpleWorker):
+class MoodWorker(PausableAnalysisWorker):
     """Worker that analyzes mood/emotion for audio tracks in parallel.
 
-    Uses MoodAnalyzer (requires essentia-tensorflow) with ProcessPoolExecutor
-    to classify audio mood and stores results in the User2 hashtag field.
+    Supports online mood lookup (Last.fm / MusicBrainz) with fallback
+    to local essentia analysis. Supports pause/resume/cancel.
     """
-
-    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -351,6 +495,8 @@ class MoodWorker(ProgressSimpleWorker):
         tracks: list[Song],
         max_workers: int | None = None,
         cache_db_path: str | None = None,
+        enable_online: bool = False,
+        lastfm_api_key: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -358,25 +504,26 @@ class MoodWorker(ProgressSimpleWorker):
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
         self._cache_db_path = cache_db_path
+        self._enable_online = enable_online
+        self._lastfm_api_key = lastfm_api_key
 
     def do_work(self) -> dict:
-        """Analyze mood for all tracks in parallel.
+        """Analyze mood for all tracks in parallel."""
+        # When online is disabled, check essentia availability
+        if not self._enable_online:
+            from vdj_manager.analysis.mood import MoodAnalyzer
+            analyzer = MoodAnalyzer()
+            if not analyzer.is_available:
+                return {
+                    "analyzed": 0,
+                    "failed": 0,
+                    "cached": 0,
+                    "results": [],
+                    "error": "essentia-tensorflow is not installed",
+                }
 
-        Returns:
-            Dict with analyzed count, failed count, cached count, and results list.
-        """
-        # Check availability before spawning workers
-        from vdj_manager.analysis.mood import MoodAnalyzer
-
-        analyzer = MoodAnalyzer()
-        if not analyzer.is_available:
-            return {
-                "analyzed": 0,
-                "failed": 0,
-                "cached": 0,
-                "results": [],
-                "error": "essentia-tensorflow is not installed",
-            }
+        # Cap workers at 1 when online (rate limiting)
+        max_workers = 1 if self._enable_online else self._max_workers
 
         analyzed = 0
         failed = 0
@@ -385,50 +532,72 @@ class MoodWorker(ProgressSimpleWorker):
         total = len(self._tracks)
         unsaved = 0
 
+        # Build track lookup for artist/title metadata
+        track_info = {}
+        for t in self._tracks:
+            artist = (t.tags.author or "") if t.tags else ""
+            title = (t.tags.title or "") if t.tags else ""
+            track_info[t.file_path] = (artist, title)
+
         file_paths = [t.file_path for t in self._tracks]
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
-            futures = {
-                executor.submit(_analyze_mood_single, fp, self._cache_db_path): fp
-                for fp in file_paths
-            }
+        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+            if not self._wait_if_paused():
+                break
 
-            for future in as_completed(futures):
-                if self.is_cancelled:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
+            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
 
-                result = future.result()
-                results.append(result)
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = {}
+                for fp in batch:
+                    artist, title = track_info.get(fp, ("", ""))
+                    futures[executor.submit(
+                        _analyze_mood_single,
+                        fp,
+                        self._cache_db_path,
+                        artist=artist,
+                        title=title,
+                        lastfm_api_key=self._lastfm_api_key,
+                        enable_online=self._enable_online,
+                    )] = fp
 
-                if result.get("mood") and result["status"] in ("ok", "cached"):
-                    mood_hashtag = f"#{result['mood']}"
-                    # Append mood hashtag to existing User2 value
-                    song = self._database.get_song(result["file_path"])
-                    existing = (song.tags.user2 or "") if song and song.tags else ""
-                    if mood_hashtag not in existing.split():
-                        new_user2 = f"{existing} {mood_hashtag}".strip()
+                for future in as_completed(futures):
+                    if self._check_cancelled():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        if unsaved > 0:
+                            self._database.save()
+                        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
+
+                    result = future.result()
+                    results.append(result)
+
+                    status = result.get("status", "")
+                    if result.get("mood") and (
+                        status.startswith("ok") or status == "cached"
+                    ):
+                        mood_hashtag = f"#{result['mood']}"
+                        song = self._database.get_song(result["file_path"])
+                        existing = (song.tags.user2 or "") if song and song.tags else ""
+                        if mood_hashtag not in existing.split():
+                            new_user2 = f"{existing} {mood_hashtag}".strip()
+                        else:
+                            new_user2 = existing
+                        self._database.update_song_tags(
+                            result["file_path"], User2=new_user2
+                        )
+                        if status == "cached":
+                            cached += 1
+                        else:
+                            analyzed += 1
+                        unsaved += 1
                     else:
-                        new_user2 = existing
-                    self._database.update_song_tags(
-                        result["file_path"], User2=new_user2
-                    )
-                    if result["status"] == "cached":
-                        cached += 1
-                    else:
-                        analyzed += 1
-                    unsaved += 1
-                else:
-                    failed += 1
+                        failed += 1
 
-                self.result_ready.emit(result)
-                self.report_progress(analyzed + failed + cached, total, result["file_path"])
+                    self.result_ready.emit(result)
+                    self._emit_progress(analyzed + failed + cached, total)
 
-                if unsaved >= _SAVE_INTERVAL:
-                    self._database.save()
-                    unsaved = 0
-
-        if unsaved > 0:
-            self._database.save()
+            if unsaved > 0:
+                self._database.save()
+                unsaved = 0
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}

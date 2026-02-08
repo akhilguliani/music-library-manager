@@ -11,6 +11,29 @@ CHECKPOINT_DIR = Path.home() / ".vdj_manager/checkpoints"
 SERATO_LOCAL = Path.home() / "Music/_Serato_"
 SERATO_MYNVME = Path("/Volumes/MyNVMe/_Serato_")
 
+# Last.fm API key
+LASTFM_API_KEY_ENV = "LASTFM_API_KEY"
+LASTFM_API_KEY_FILE = Path.home() / ".vdj_manager/lastfm_api_key"
+
+
+def get_lastfm_api_key() -> Optional[str]:
+    """Get the Last.fm API key from environment variable or file.
+
+    Checks the LASTFM_API_KEY environment variable first, then falls
+    back to ~/.vdj_manager/lastfm_api_key file.
+
+    Returns:
+        API key string, or None if not configured.
+    """
+    import os
+
+    key = os.environ.get(LASTFM_API_KEY_ENV)
+    if key:
+        return key.strip()
+    if LASTFM_API_KEY_FILE.exists():
+        return LASTFM_API_KEY_FILE.read_text().strip() or None
+    return None
+
 # Audio file extensions
 AUDIO_EXTENSIONS = {
     ".mp3", ".m4a", ".aac", ".flac", ".wav", ".aiff", ".aif",

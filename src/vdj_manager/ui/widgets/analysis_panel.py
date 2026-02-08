@@ -19,8 +19,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
+from vdj_manager.config import get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
     EnergyWorker,
@@ -156,6 +158,11 @@ class AnalysisPanel(QWidget):
 
         layout.addLayout(controls_layout)
 
+        # Progress widget with pause/resume/cancel
+        self.energy_progress = ProgressWidget()
+        self.energy_progress.setVisible(False)
+        layout.addWidget(self.energy_progress)
+
         # Results table
         self.energy_results = ConfigurableResultsTable([
             {"name": "Track", "key": "file_path"},
@@ -193,6 +200,11 @@ class AnalysisPanel(QWidget):
 
         layout.addLayout(controls_layout)
 
+        # Progress widget with pause/resume/cancel
+        self.mik_progress = ProgressWidget()
+        self.mik_progress.setVisible(False)
+        layout.addWidget(self.mik_progress)
+
         # Results table
         self.mik_results = ConfigurableResultsTable([
             {"name": "Track", "key": "file_path"},
@@ -215,6 +227,23 @@ class AnalysisPanel(QWidget):
         self.mood_info_label.setStyleSheet("color: gray;")
         layout.addWidget(self.mood_info_label)
 
+        # Online mood controls
+        online_layout = QHBoxLayout()
+
+        self.mood_online_checkbox = QCheckBox("Enable online lookup (Last.fm / MusicBrainz)")
+        self.mood_online_checkbox.setChecked(True)
+        self.mood_online_checkbox.setToolTip(
+            "Fetch mood from online databases by artist+title before falling back to local analysis"
+        )
+        online_layout.addWidget(self.mood_online_checkbox)
+
+        self.mood_api_key_label = QLabel("")
+        self._update_api_key_label()
+        online_layout.addWidget(self.mood_api_key_label)
+
+        online_layout.addStretch()
+        layout.addLayout(online_layout)
+
         # Controls
         controls_layout = QHBoxLayout()
 
@@ -231,6 +260,11 @@ class AnalysisPanel(QWidget):
 
         layout.addLayout(controls_layout)
 
+        # Progress widget with pause/resume/cancel
+        self.mood_progress = ProgressWidget()
+        self.mood_progress.setVisible(False)
+        layout.addWidget(self.mood_progress)
+
         # Results table
         self.mood_results = ConfigurableResultsTable([
             {"name": "Track", "key": "file_path"},
@@ -241,6 +275,16 @@ class AnalysisPanel(QWidget):
         layout.addWidget(self.mood_results)
 
         self.sub_tabs.addTab(tab, "Mood")
+
+    def _update_api_key_label(self) -> None:
+        """Update the Last.fm API key status label."""
+        key = get_lastfm_api_key()
+        if key:
+            self.mood_api_key_label.setText("API key: configured")
+            self.mood_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+        else:
+            self.mood_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
+            self.mood_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
 
     def _update_track_info(self) -> None:
         """Update track info labels across all tabs."""
@@ -283,7 +327,7 @@ class AnalysisPanel(QWidget):
                 continue
             tracks.append(track)
 
-        # Duration filter (minutes → seconds); tracks without metadata are kept
+        # Duration filter (minutes -> seconds); tracks without metadata are kept
         max_duration = self.max_duration_spin.value() * 60
         if max_duration > 0:
             tracks = [
@@ -304,6 +348,10 @@ class AnalysisPanel(QWidget):
             if worker is not None and worker.isRunning():
                 return True
         return False
+
+    # ------------------------------------------------------------------
+    # Energy handlers
+    # ------------------------------------------------------------------
 
     def _on_energy_clicked(self, untagged_only: bool = False) -> None:
         """Handle energy analysis button click."""
@@ -338,11 +386,20 @@ class AnalysisPanel(QWidget):
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(self._on_energy_error)
         self._energy_worker.result_ready.connect(self.energy_results.add_result)
-        self._energy_worker.progress.connect(
-            lambda cur, tot, msg: self.energy_status.setText(
-                f"Analyzing... {cur}/{tot}"
-            )
+
+        # Set up progress widget
+        self.energy_progress.reset()
+        self.energy_progress.start(len(tracks))
+        self.energy_progress.setVisible(True)
+        self._energy_worker.progress.connect(self.energy_progress.update_progress)
+        self._energy_worker.status_changed.connect(self.energy_progress.on_status_changed)
+        self._energy_worker.finished_work.connect(
+            lambda _: self.energy_progress.on_finished(True, "Done")
         )
+        self.energy_progress.pause_requested.connect(self._energy_worker.pause)
+        self.energy_progress.resume_requested.connect(self._energy_worker.resume)
+        self.energy_progress.cancel_requested.connect(self._energy_worker.cancel)
+
         self._energy_worker.start()
 
     @staticmethod
@@ -388,6 +445,10 @@ class AnalysisPanel(QWidget):
         self.energy_untagged_btn.setEnabled(True)
         self.energy_status.setText(f"Error: {error}")
 
+    # ------------------------------------------------------------------
+    # MIK handlers
+    # ------------------------------------------------------------------
+
     def _on_mik_clicked(self) -> None:
         """Handle MIK import button click."""
         if self.is_running():
@@ -420,11 +481,20 @@ class AnalysisPanel(QWidget):
         self._mik_worker.finished_work.connect(self._on_mik_finished)
         self._mik_worker.error.connect(self._on_mik_error)
         self._mik_worker.result_ready.connect(self.mik_results.add_result)
-        self._mik_worker.progress.connect(
-            lambda cur, tot, msg: self.mik_status.setText(
-                f"Scanning... {cur}/{tot}"
-            )
+
+        # Set up progress widget
+        self.mik_progress.reset()
+        self.mik_progress.start(len(tracks))
+        self.mik_progress.setVisible(True)
+        self._mik_worker.progress.connect(self.mik_progress.update_progress)
+        self._mik_worker.status_changed.connect(self.mik_progress.on_status_changed)
+        self._mik_worker.finished_work.connect(
+            lambda _: self.mik_progress.on_finished(True, "Done")
         )
+        self.mik_progress.pause_requested.connect(self._mik_worker.pause)
+        self.mik_progress.resume_requested.connect(self._mik_worker.resume)
+        self.mik_progress.cancel_requested.connect(self._mik_worker.cancel)
+
         self._mik_worker.start()
 
     @Slot(object)
@@ -444,6 +514,10 @@ class AnalysisPanel(QWidget):
         """Handle MIK import error."""
         self.mik_scan_btn.setEnabled(True)
         self.mik_status.setText(f"Error: {error}")
+
+    # ------------------------------------------------------------------
+    # Mood handlers
+    # ------------------------------------------------------------------
 
     def _on_mood_clicked(self) -> None:
         """Handle mood analysis button click."""
@@ -469,19 +543,33 @@ class AnalysisPanel(QWidget):
         self.mood_status.setText("Analyzing...")
         self.mood_results.clear()
 
+        enable_online = self.mood_online_checkbox.isChecked()
+        lastfm_api_key = get_lastfm_api_key() if enable_online else None
+
         self._mood_worker = MoodWorker(
             self._database, tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=enable_online,
+            lastfm_api_key=lastfm_api_key,
         )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
         self._mood_worker.result_ready.connect(self.mood_results.add_result)
-        self._mood_worker.progress.connect(
-            lambda cur, tot, msg: self.mood_status.setText(
-                f"Analyzing... {cur}/{tot}"
-            )
+
+        # Set up progress widget
+        self.mood_progress.reset()
+        self.mood_progress.start(len(tracks))
+        self.mood_progress.setVisible(True)
+        self._mood_worker.progress.connect(self.mood_progress.update_progress)
+        self._mood_worker.status_changed.connect(self.mood_progress.on_status_changed)
+        self._mood_worker.finished_work.connect(
+            lambda _: self.mood_progress.on_finished(True, "Done")
         )
+        self.mood_progress.pause_requested.connect(self._mood_worker.pause)
+        self.mood_progress.resume_requested.connect(self._mood_worker.resume)
+        self.mood_progress.cancel_requested.connect(self._mood_worker.cancel)
+
         self._mood_worker.start()
 
     @Slot(object)

@@ -694,13 +694,125 @@ def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: 
 
 @analyze.command("mood")
 @click.option("--all", "analyze_all", is_flag=True, help="Analyze all tracks")
+@click.option("--untagged", is_flag=True, help="Only tracks without mood tags")
+@click.option("--online/--no-online", default=True, help="Enable online mood lookup (Last.fm/MusicBrainz)")
+@click.option("--lastfm-key", help="Last.fm API key (overrides env var)")
 @click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
 @click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def analyze_mood(analyze_all: bool, dry_run: bool, db_choice: str):
-    """Tag tracks with mood/emotion."""
-    console.print("[yellow]Mood analysis requires essentia-tensorflow[/yellow]")
-    console.print("Install with: pip install 'vdj-manager[mood]'")
+def analyze_mood(analyze_all: bool, untagged: bool, online: bool, lastfm_key: Optional[str], dry_run: bool, db_choice: str):
+    """Tag tracks with mood/emotion.
+
+    Uses online databases (Last.fm, MusicBrainz) when available, with
+    fallback to local essentia-tensorflow analysis.
+    """
+    from .config import get_lastfm_api_key
+
+    path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
+
+    if not path.exists():
+        console.print(f"[red]Database not found: {path}[/red]")
+        return
+
+    db = get_database(path)
+
+    # Resolve API key
+    api_key = lastfm_key or get_lastfm_api_key()
+    if online and api_key:
+        console.print("[cyan]Online mood lookup enabled (Last.fm + MusicBrainz)[/cyan]")
+    elif online:
+        console.print("[yellow]Online lookup enabled but no Last.fm API key set (MusicBrainz only)[/yellow]")
+        console.print("[dim]Set LASTFM_API_KEY env var or use --lastfm-key for Last.fm[/dim]")
+
+    # Check local essentia availability
+    local_available = False
+    try:
+        from .analysis.mood import MoodAnalyzer
+        analyzer = MoodAnalyzer()
+        local_available = analyzer.is_available
+    except ImportError:
+        pass
+
+    if not online and not local_available:
+        console.print("[red]Neither online lookup nor essentia-tensorflow is available.[/red]")
+        console.print("Install with: pip install 'vdj-manager[mood]' or pip install 'vdj-manager[online]'")
+        return
+
+    # Find tracks to analyze
+    to_analyze = []
+    for song in db.songs.values():
+        if song.is_windows_path or song.is_netsearch:
+            continue
+        if not Path(song.file_path).exists():
+            continue
+        if untagged and song.tags and song.tags.user2:
+            # Skip tracks that already have mood hashtags
+            if any(w.startswith("#") for w in (song.tags.user2 or "").split()):
+                continue
+        to_analyze.append(song)
+
+    if not to_analyze:
+        console.print("[green]No tracks to analyze[/green]")
+        return
+
+    console.print(f"Found [bold]{len(to_analyze)}[/bold] tracks to analyze")
+
+    if dry_run:
+        console.print("[yellow]Dry run - no analysis performed[/yellow]")
+        return
+
+    # Create backup
+    backup_mgr = BackupManager()
+    backup_mgr.create_backup(path, label="pre_mood")
+
+    analyzed = 0
+    failed = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress:
+        task = progress.add_task("Analyzing mood...", total=len(to_analyze))
+
+        for song in to_analyze:
+            try:
+                artist = (song.tags.author or "") if song.tags else ""
+                title = (song.tags.title or "") if song.tags else ""
+                mood = None
+                source = "none"
+
+                # Try online first
+                if online and artist and title:
+                    from .analysis.online_mood import lookup_online_mood
+                    mood, source = lookup_online_mood(artist, title, api_key)
+
+                # Fall back to local
+                if not mood and local_available:
+                    mood_tag = analyzer.get_mood_tag(song.file_path)
+                    if mood_tag:
+                        mood = mood_tag
+                        source = "local"
+
+                if mood:
+                    mood_hashtag = f"#{mood}"
+                    existing = (song.tags.user2 or "") if song and song.tags else ""
+                    if mood_hashtag not in existing.split():
+                        new_user2 = f"{existing} {mood_hashtag}".strip()
+                    else:
+                        new_user2 = existing
+                    db.update_song_tags(song.file_path, User2=new_user2)
+                    analyzed += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                console.print(f"[red]Error: {song.file_path}: {e}[/red]")
+                failed += 1
+            progress.advance(task)
+
+    db.save()
+    console.print(f"[green]✓[/green] Analyzed {analyzed} tracks ({failed} failed)")
 
 
 @analyze.command("import-mik")
