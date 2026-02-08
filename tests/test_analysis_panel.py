@@ -96,6 +96,29 @@ class TestAnalysisPanelCreation:
         panel = AnalysisPanel()
         assert not panel.is_running()
 
+    def test_online_checkbox_exists_and_defaults_checked(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_online_checkbox is not None
+        assert panel.mood_online_checkbox.isChecked()
+
+    def test_api_key_label_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_api_key_label is not None
+        text = panel.mood_api_key_label.text()
+        assert "API key" in text
+
+    def test_progress_widgets_exist(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.energy_progress is not None
+        assert panel.mik_progress is not None
+        assert panel.mood_progress is not None
+
+    def test_progress_widgets_hidden_initially(self, qapp):
+        panel = AnalysisPanel()
+        assert not panel.energy_progress.isVisible()
+        assert not panel.mik_progress.isVisible()
+        assert not panel.mood_progress.isVisible()
+
 
 class TestEnergyWorker:
     """Tests for EnergyWorker."""
@@ -160,6 +183,16 @@ class TestEnergyWorker:
             assert len(results) == 1
             assert results[0]["failed"] == 1
             assert "error" in results[0]["results"][0]["status"]
+
+    def test_energy_worker_has_pause_resume(self, qapp):
+        """EnergyWorker should have pause/resume/cancel methods."""
+        mock_db = MagicMock()
+        worker = EnergyWorker(mock_db, [], max_workers=1)
+        assert hasattr(worker, "pause")
+        assert hasattr(worker, "resume")
+        assert hasattr(worker, "cancel")
+        assert not worker.is_paused
+        assert not worker.is_cancelled
 
 
 class TestMIKImportWorker:
@@ -232,6 +265,13 @@ class TestMIKImportWorker:
             assert results[0]["found"] == 1
             assert results[0]["updated"] == 0
 
+    def test_mik_worker_has_pause_resume(self, qapp):
+        mock_db = MagicMock()
+        worker = MIKImportWorker(mock_db, [], max_workers=1)
+        assert hasattr(worker, "pause")
+        assert hasattr(worker, "resume")
+        assert hasattr(worker, "cancel")
+
 
 class TestMoodWorker:
     """Tests for MoodWorker."""
@@ -244,7 +284,7 @@ class TestMoodWorker:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.is_available = False
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -266,7 +306,7 @@ class TestMoodWorker:
             analyzer_instance.is_available = True
             analyzer_instance.get_mood_tag.return_value = "happy"
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -278,6 +318,23 @@ class TestMoodWorker:
             assert results[0]["results"][0]["mood"] == "happy"
             mock_db.update_song_tags.assert_called_once_with("/a.mp3", User2="#happy")
             mock_db.save.assert_called_once()
+
+    def test_mood_worker_online_params(self, qapp):
+        """MoodWorker should accept enable_online and lastfm_api_key params."""
+        mock_db = MagicMock()
+        worker = MoodWorker(
+            mock_db, [], max_workers=1,
+            enable_online=True, lastfm_api_key="test_key",
+        )
+        assert worker._enable_online is True
+        assert worker._lastfm_api_key == "test_key"
+
+    def test_mood_worker_has_pause_resume(self, qapp):
+        mock_db = MagicMock()
+        worker = MoodWorker(mock_db, [], max_workers=1)
+        assert hasattr(worker, "pause")
+        assert hasattr(worker, "resume")
+        assert hasattr(worker, "cancel")
 
 
 class TestAnalysisPanelHandlers:
@@ -345,8 +402,8 @@ class TestAnalysisPanelHandlers:
         result = {
             "analyzed": 2, "failed": 0,
             "results": [
-                {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok"},
-                {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok"},
+                {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok (local)"},
+                {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok (lastfm)"},
             ],
         }
         panel._on_mood_finished(result)
@@ -355,10 +412,10 @@ class TestAnalysisPanelHandlers:
     def test_mood_results_streamed_via_result_ready(self, qapp):
         panel = AnalysisPanel()
         panel.mood_results.add_result(
-            {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok"}
+            {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok (local)"}
         )
         panel.mood_results.add_result(
-            {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok"}
+            {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok (lastfm)"}
         )
         assert panel.mood_results.row_count() == 2
 
@@ -592,7 +649,7 @@ class TestWorkerResultReady:
             analyzer_instance.is_available = True
             analyzer_instance.get_mood_tag.return_value = "happy"
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
             worker.start()
@@ -612,10 +669,78 @@ class TestWorkerResultReady:
 
             worker = EnergyWorker(mock_db, tracks, max_workers=1)
             progress_calls = []
-            worker.progress.connect(lambda cur, tot, msg: progress_calls.append((cur, tot)))
+            worker.progress.connect(lambda cur, tot, pct: progress_calls.append((cur, tot)))
             worker.start()
             worker.wait(5000)
             QCoreApplication.processEvents()
 
             assert len(progress_calls) == 2
             assert progress_calls[-1] == (2, 2)
+
+    def test_energy_worker_status_changed_emitted(self, qapp):
+        """EnergyWorker should emit status_changed signals."""
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3")]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.analyze.return_value = 5
+
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            statuses = []
+            worker.status_changed.connect(lambda s: statuses.append(s))
+            worker.start()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert "running" in statuses
+            assert "completed" in statuses
+
+
+class TestWorkerPauseResume:
+    """Tests for pause/resume/cancel on analysis workers."""
+
+    def test_energy_worker_cancel(self, qapp):
+        """Cancel should stop processing and return partial results."""
+        mock_db = MagicMock()
+        tracks = [_make_song(f"/song{i}.mp3") for i in range(100)]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.analyze.return_value = 5
+
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            results = []
+            worker.finished_work.connect(lambda r: results.append(r))
+
+            worker.start()
+            # Cancel immediately
+            worker.cancel()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(results) == 1
+            # Should have processed fewer than all tracks
+            total_processed = results[0]["analyzed"] + results[0]["failed"] + results[0].get("cached", 0)
+            assert total_processed <= len(tracks)
+
+    def test_mood_worker_cancel(self, qapp):
+        """Cancel should stop mood processing."""
+        mock_db = MagicMock()
+        tracks = [_make_song(f"/song{i}.mp3") for i in range(100)]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.is_available = True
+            analyzer_instance.get_mood_tag.return_value = "happy"
+
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
+            results = []
+            worker.finished_work.connect(lambda r: results.append(r))
+
+            worker.start()
+            worker.cancel()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(results) == 1

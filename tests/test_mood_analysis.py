@@ -4,6 +4,7 @@ Tests cover:
 1. MoodAnalyzer class (backend unit tests)
 2. MoodWorker (worker thread behavior)
 3. AnalysisPanel mood handlers (GUI integration)
+4. Online mood integration in _analyze_mood_single
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,7 @@ from PySide6.QtCore import QCoreApplication
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.analysis.mood import MoodAnalyzer
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
-from vdj_manager.ui.workers.analysis_workers import MoodWorker
+from vdj_manager.ui.workers.analysis_workers import MoodWorker, _analyze_mood_single
 
 # Use ThreadPoolExecutor in tests so mocks are visible (ProcessPoolExecutor
 # spawns subprocesses that don't share the parent's mock patches).
@@ -177,6 +178,72 @@ class TestMoodAnalyzerInit:
 
 
 # =============================================================================
+# _analyze_mood_single with online params
+# =============================================================================
+
+
+class TestAnalyzeMoodSingleOnline:
+    """Tests for _analyze_mood_single with online lookup."""
+
+    def test_online_success_returns_source(self):
+        """Online lookup success should return status with source."""
+        with patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
+            mock_lookup.return_value = ("happy", "lastfm")
+            result = _analyze_mood_single(
+                "/a.mp3", artist="Artist", title="Title",
+                enable_online=True, lastfm_api_key="key",
+            )
+            assert result["mood"] == "happy"
+            assert result["status"] == "ok (lastfm)"
+
+    def test_online_fail_falls_back_to_local(self):
+        """Online failure should fall back to local essentia."""
+        with patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup, \
+             patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+            mock_lookup.return_value = (None, "none")
+            MockAnalyzer.return_value.get_mood_tag.return_value = "relaxed"
+            result = _analyze_mood_single(
+                "/a.mp3", artist="Artist", title="Title",
+                enable_online=True, lastfm_api_key="key",
+            )
+            assert result["mood"] == "relaxed"
+            assert result["status"] == "ok (local)"
+
+    def test_online_disabled_skips_lookup(self):
+        """When enable_online=False, should not call online lookup."""
+        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+            MockAnalyzer.return_value.get_mood_tag.return_value = "happy"
+            result = _analyze_mood_single(
+                "/a.mp3", artist="Artist", title="Title",
+                enable_online=False,
+            )
+            assert result["mood"] == "happy"
+            assert result["status"] == "ok (local)"
+
+    def test_no_artist_title_skips_online(self):
+        """Should skip online lookup when artist/title are empty."""
+        with patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+            MockAnalyzer.return_value.get_mood_tag.return_value = "sad"
+            result = _analyze_mood_single(
+                "/a.mp3", artist="", title="",
+                enable_online=True, lastfm_api_key="key",
+            )
+            assert result["mood"] == "sad"
+            assert result["status"] == "ok (local)"
+
+    def test_cache_hit_returns_cached(self):
+        """Cache hit should return 'cached' status regardless of online setting."""
+        with patch("vdj_manager.analysis.analysis_cache.AnalysisCache") as MockCache:
+            MockCache.return_value.get.return_value = "happy"
+            result = _analyze_mood_single(
+                "/a.mp3", cache_db_path="/tmp/cache.db",
+                enable_online=True, lastfm_api_key="key",
+            )
+            assert result["mood"] == "happy"
+            assert result["status"] == "cached"
+
+
+# =============================================================================
 # MoodWorker tests
 # =============================================================================
 
@@ -194,7 +261,7 @@ class TestMoodWorkerDetailed:
             instance.is_available = True
             instance.get_mood_tag.return_value = None
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -217,7 +284,7 @@ class TestMoodWorkerDetailed:
             instance.is_available = True
             instance.get_mood_tag.side_effect = RuntimeError("analysis crashed")
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -247,7 +314,7 @@ class TestMoodWorkerDetailed:
             instance.is_available = True
             instance.get_mood_tag.side_effect = ["happy", None, "aggressive"]
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -278,7 +345,7 @@ class TestMoodWorkerDetailed:
             instance.is_available = True
             instance.get_mood_tag.return_value = "relaxed"
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -297,7 +364,7 @@ class TestMoodWorkerDetailed:
             instance.is_available = True
             instance.get_mood_tag.return_value = None
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -316,7 +383,7 @@ class TestMoodWorkerDetailed:
             instance = MockAnalyzer.return_value
             instance.is_available = True
 
-            worker = MoodWorker(mock_db, [], max_workers=1)
+            worker = MoodWorker(mock_db, [], max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -328,6 +395,16 @@ class TestMoodWorkerDetailed:
             assert results[0]["failed"] == 0
             assert results[0]["results"] == []
             mock_db.save.assert_not_called()
+
+    def test_mood_worker_online_enabled(self, qapp):
+        """Worker should pass online params to _analyze_mood_single."""
+        mock_db = MagicMock()
+        worker = MoodWorker(
+            mock_db, [], max_workers=1,
+            enable_online=True, lastfm_api_key="test_key",
+        )
+        assert worker._enable_online is True
+        assert worker._lastfm_api_key == "test_key"
 
 
 # =============================================================================
@@ -381,7 +458,7 @@ class TestAnalysisPanelMoodHandlers:
         panel = AnalysisPanel()
         panel.mood_btn.setEnabled(False)
         result = {"analyzed": 1, "failed": 0, "results": [
-            {"file_path": "/a.mp3", "mood": "happy", "status": "ok"},
+            {"file_path": "/a.mp3", "mood": "happy", "status": "ok (local)"},
         ]}
         panel._on_mood_finished(result)
         assert panel.mood_btn.isEnabled()
@@ -402,8 +479,8 @@ class TestAnalysisPanelMoodHandlers:
         """Results are streamed via result_ready; finished updates status."""
         panel = AnalysisPanel()
         results_data = [
-            {"file_path": "/a.mp3", "mood": "happy", "status": "ok"},
-            {"file_path": "/b.mp3", "mood": "sad", "status": "ok"},
+            {"file_path": "/a.mp3", "mood": "happy", "status": "ok (local)"},
+            {"file_path": "/b.mp3", "mood": "sad", "status": "ok (lastfm)"},
             {"file_path": "/c.mp3", "mood": None, "status": "failed"},
         ]
         # Simulate streaming results (result_ready adds rows during processing)
@@ -422,7 +499,7 @@ class TestAnalysisPanelMoodHandlers:
         panel.database_changed.connect(lambda: signals.append(True))
 
         result = {"analyzed": 1, "failed": 0, "results": [
-            {"file_path": "/a.mp3", "mood": "relaxed", "status": "ok"},
+            {"file_path": "/a.mp3", "mood": "relaxed", "status": "ok (local)"},
         ]}
         panel._on_mood_finished(result)
         assert len(signals) == 1
@@ -470,3 +547,18 @@ class TestAnalysisPanelMoodHandlers:
         with patch.object(QMessageBox, "warning") as mock_warn:
             panel._on_mood_clicked()
             mock_warn.assert_called_once()
+
+    def test_online_checkbox_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_online_checkbox is not None
+        assert panel.mood_online_checkbox.isChecked()
+
+    def test_api_key_label_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_api_key_label is not None
+        assert "API key" in panel.mood_api_key_label.text()
+
+    def test_mood_progress_widget_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_progress is not None
+        assert not panel.mood_progress.isVisible()
