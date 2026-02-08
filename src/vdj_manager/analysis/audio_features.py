@@ -39,6 +39,10 @@ class AudioFeatureExtractor:
     def load_audio(self, file_path: str, offset: Optional[float] = None) -> tuple:
         """Load audio file.
 
+        Uses soundfile directly when possible to avoid librosa's audioread
+        fallback, which spawns ffmpeg subprocesses that leak file descriptors
+        in long-running ProcessPoolExecutor workers.
+
         Args:
             file_path: Path to audio file
             offset: Start position in seconds (None = auto-detect middle)
@@ -46,10 +50,36 @@ class AudioFeatureExtractor:
         Returns:
             Tuple of (audio samples, sample rate)
         """
-        # Get total duration
+        import soundfile as sf
+
+        # Try soundfile first (handles WAV, FLAC, OGG natively without
+        # spawning subprocesses). Fall back to librosa for MP3/M4A/etc.
+        try:
+            info = sf.info(file_path)
+            total_duration = info.duration
+
+            if offset is None:
+                offset = max(0, (total_duration - self.duration) / 2)
+
+            start_frame = int(offset * info.samplerate)
+            n_frames = int(min(self.duration, total_duration - offset) * info.samplerate)
+
+            data, sr = sf.read(file_path, start=start_frame, frames=n_frames,
+                               dtype="float32", always_2d=False)
+            # Convert to mono if stereo
+            if data.ndim > 1:
+                data = np.mean(data, axis=1)
+            # Resample if needed
+            if sr != self.sample_rate:
+                data = librosa.resample(data, orig_sr=sr, target_sr=self.sample_rate)
+                sr = self.sample_rate
+            return data, sr
+        except Exception:
+            pass
+
+        # Fallback to librosa (uses audioread for MP3, M4A, etc.)
         total_duration = librosa.get_duration(path=file_path)
 
-        # Start from middle of track for more representative analysis
         if offset is None:
             offset = max(0, (total_duration - self.duration) / 2)
 

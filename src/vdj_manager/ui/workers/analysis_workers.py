@@ -1,6 +1,7 @@
 """Workers for audio analysis operations with parallel processing."""
 
 import contextlib
+import gc
 import multiprocessing
 import os
 import sys
@@ -30,18 +31,26 @@ def _suppress_stderr():
     necessary because libraries like mpg123 write warnings about
     corrupted MPEG headers directly to stderr at the C level, bypassing
     Python's sys.stderr.
+
+    Uses try/finally to guarantee fd cleanup even if the body raises.
     """
+    old_stderr = None
     try:
         devnull = os.open(os.devnull, os.O_WRONLY)
         old_stderr = os.dup(2)
         os.dup2(devnull, 2)
         os.close(devnull)
-        yield
     except OSError:
-        yield  # If redirection fails, run without suppression
-    else:
-        os.dup2(old_stderr, 2)
-        os.close(old_stderr)
+        # If redirection setup fails, clean up and run without suppression
+        if old_stderr is not None:
+            os.close(old_stderr)
+        old_stderr = None
+    try:
+        yield
+    finally:
+        if old_stderr is not None:
+            os.dup2(old_stderr, 2)
+            os.close(old_stderr)
 
 
 def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> dict:
@@ -52,7 +61,7 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
     """
     fmt = Path(file_path).suffix.lower()
     try:
-        # Check cache first
+        cache = None
         if cache_db_path:
             from vdj_manager.analysis.analysis_cache import AnalysisCache
             cache = AnalysisCache(db_path=Path(cache_db_path))
@@ -65,11 +74,11 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
         analyzer = EnergyAnalyzer()
         with _suppress_stderr():
             energy = analyzer.analyze(file_path)
+        # Free librosa/audioread file handles before they accumulate
+        del analyzer
+        gc.collect()
         if energy is not None:
-            # Store in cache
-            if cache_db_path:
-                from vdj_manager.analysis.analysis_cache import AnalysisCache
-                cache = AnalysisCache(db_path=Path(cache_db_path))
+            if cache is not None:
                 cache.put(file_path, "energy", str(energy))
             return {"file_path": file_path, "format": fmt, "energy": energy, "status": "ok"}
         return {"file_path": file_path, "format": fmt, "energy": None, "status": "failed"}
@@ -85,7 +94,7 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
     """
     fmt = Path(file_path).suffix.lower()
     try:
-        # Check cache first
+        cache = None
         if cache_db_path:
             from vdj_manager.analysis.analysis_cache import AnalysisCache
             cache = AnalysisCache(db_path=Path(cache_db_path))
@@ -98,11 +107,10 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
         analyzer = MoodAnalyzer()
         with _suppress_stderr():
             mood_tag = analyzer.get_mood_tag(file_path)
+        del analyzer
+        gc.collect()
         if mood_tag:
-            # Store in cache
-            if cache_db_path:
-                from vdj_manager.analysis.analysis_cache import AnalysisCache
-                cache = AnalysisCache(db_path=Path(cache_db_path))
+            if cache is not None:
                 cache.put(file_path, "mood", mood_tag)
             return {"file_path": file_path, "format": fmt, "mood": mood_tag, "status": "ok"}
         return {"file_path": file_path, "format": fmt, "mood": None, "status": "failed"}
@@ -118,7 +126,7 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
     """
     fmt = Path(file_path).suffix.lower()
     try:
-        # Check cache first
+        cache = None
         if cache_db_path:
             from vdj_manager.analysis.analysis_cache import AnalysisCache
             cache = AnalysisCache(db_path=Path(cache_db_path))
@@ -142,10 +150,7 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
         reader = MixedInKeyReader()
         mik_data = reader.read_tags(file_path)
         if mik_data.get("energy") or mik_data.get("key"):
-            # Store in cache
-            if cache_db_path:
-                from vdj_manager.analysis.analysis_cache import AnalysisCache
-                cache = AnalysisCache(db_path=Path(cache_db_path))
+            if cache is not None:
                 energy_str = str(mik_data.get("energy") or "")
                 key_str = mik_data.get("key") or ""
                 cache.put(file_path, "mik", f"{energy_str}:{key_str}")

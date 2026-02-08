@@ -6,6 +6,7 @@ by (file_path, analysis_type) and automatically invalidated when the
 file's mtime or size changes on disk.
 """
 
+import contextlib
 import os
 import sqlite3
 from datetime import datetime
@@ -51,12 +52,25 @@ class AnalysisCache:
         with self._connect() as conn:
             conn.execute(_SCHEMA)
 
-    def _connect(self) -> sqlite3.Connection:
-        """Open a connection with WAL mode for concurrent-read safety."""
+    @contextlib.contextmanager
+    def _connect(self):
+        """Open a connection with WAL mode, auto-close on exit.
+
+        Using a contextmanager ensures the connection is always closed,
+        preventing file descriptor leaks in long-running ProcessPoolExecutor
+        workers that process thousands of files.
+        """
         conn = sqlite3.connect(str(self.db_path), timeout=5)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     # ------------------------------------------------------------------
     # Public API
