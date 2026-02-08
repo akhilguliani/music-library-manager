@@ -13,10 +13,11 @@ VDJ Manager is a CLI and desktop GUI application for managing VirtualDJ music li
 pip install -e .                    # Standard install
 pip install -e '.[dev]'             # With dev dependencies (pytest, black, ruff, mypy)
 pip install -e '.[mood]'            # Optional: AI mood analysis (essentia-tensorflow)
+pip install -e '.[online]'          # Optional: Online mood lookup (pylast, musicbrainzngs)
 pip install -e '.[serato]'          # Optional: Serato export support
 
 # Testing
-pytest tests/ -v                    # Run all tests (477 tests)
+pytest tests/ -v                    # Run all tests (527 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -46,7 +47,7 @@ vdj_manager/
 │   ├── models.py       # Pydantic models (Song, Tags, Infos, Scan, Poi)
 │   └── backup.py       # Backup management
 ├── files/              # File operations (scanner, validator, path_remapper, duplicates)
-├── analysis/           # Audio analysis (energy classification, mood detection)
+├── analysis/           # Audio analysis (energy, mood, online mood via Last.fm/MusicBrainz)
 ├── normalize/          # LUFS loudness normalization via ffmpeg
 ├── export/             # Serato format conversion
 └── ui/                 # PySide6 desktop application
@@ -83,8 +84,11 @@ vdj_manager/
 **GUI Architecture (5 tabs):**
 - Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
 - `PausableWorker` for long operations with pause/resume (QMutex/QWaitCondition)
-- `SimpleWorker`/`ProgressSimpleWorker` for quick operations (backup, clean, analysis)
+- `PausableAnalysisWorker` for analysis workers with pause/resume/cancel and ProcessPoolExecutor batching
+- `SimpleWorker`/`ProgressSimpleWorker` for quick operations (backup, clean)
 - Analysis workers stream results via `result_ready = Signal(dict)` for real-time GUI updates
+- Analysis panel uses `ProgressWidget` for pause/resume/cancel controls on all 3 sub-tabs
+- Online mood enrichment: Last.fm → MusicBrainz → local essentia fallback chain
 - Checkpoint system saves state at batch boundaries for task recovery
 - All destructive operations auto-backup the database first
 - Qt signals require event loop pumping in tests: `QCoreApplication.processEvents()`
@@ -96,7 +100,8 @@ vdj_manager/
 ├── backups/            # Timestamped database backups
 ├── checkpoints/        # JSON task checkpoints for pause/resume
 ├── measurements.db     # SQLite cache for loudness measurements
-└── analysis.db         # SQLite cache for energy/mood/MIK results
+├── analysis.db         # SQLite cache for energy/mood/MIK results
+└── lastfm_api_key      # Optional: Last.fm API key (alternative to LASTFM_API_KEY env var)
 
 ~/Library/Application Support/VirtualDJ/database.xml  # Primary database (macOS)
 /Volumes/MyNVMe/VirtualDJ/database.xml                # Secondary database (external drive)
