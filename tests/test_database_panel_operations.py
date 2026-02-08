@@ -321,3 +321,57 @@ class TestDatabasePanelTagEditing:
         panel = DatabasePanel()
         panel._on_tag_save_clicked()
         # Should not crash
+
+
+class TestDatabasePanelOperationLog:
+    """Tests for operation log."""
+
+    def test_operation_log_exists(self, qapp):
+        panel = DatabasePanel()
+        assert panel.operation_log is not None
+
+    def test_log_operation_adds_entry(self, qapp):
+        panel = DatabasePanel()
+        panel._log_operation("Test operation")
+        assert panel.operation_log.count() == 1
+        assert "Test operation" in panel.operation_log.item(0).text()
+
+    def test_log_operation_prepends(self, qapp):
+        panel = DatabasePanel()
+        panel._log_operation("First")
+        panel._log_operation("Second")
+        assert panel.operation_log.count() == 2
+        assert "Second" in panel.operation_log.item(0).text()
+        assert "First" in panel.operation_log.item(1).text()
+
+    def test_log_operation_max_20(self, qapp):
+        panel = DatabasePanel()
+        for i in range(25):
+            panel._log_operation(f"Operation {i}")
+        assert panel.operation_log.count() == 20
+
+    def test_backup_logs_operation(self, qapp):
+        panel = DatabasePanel()
+        panel._on_backup_finished(Path("/backups/db_backup.xml"))
+        assert panel.operation_log.count() == 1
+        assert "Backup" in panel.operation_log.item(0).text()
+
+    def test_clean_logs_operation(self, qapp):
+        panel = DatabasePanel()
+        panel._database = MagicMock()
+        panel._database.iter_songs.return_value = iter([])
+        panel._database.get_stats.return_value = None
+        panel._on_clean_finished(5)
+        assert panel.operation_log.count() == 1
+        assert "Cleaned 5" in panel.operation_log.item(0).text()
+
+    def test_validate_logs_operation(self, qapp):
+        panel = DatabasePanel()
+        report = {
+            "total": 10, "audio_valid": 8, "audio_missing": 2,
+            "non_audio": 0, "windows_paths": 0, "netsearch": 0,
+        }
+        with patch.object(QMessageBox, "information"):
+            panel._on_validate_finished(report)
+        assert panel.operation_log.count() == 1
+        assert "Validation" in panel.operation_log.item(0).text()

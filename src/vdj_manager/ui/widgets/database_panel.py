@@ -1,5 +1,6 @@
 """Database status panel with track list and statistics."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QLineEdit,
+    QListWidget,
     QSpinBox,
     QSplitter,
 )
@@ -127,10 +129,19 @@ class DatabasePanel(QWidget):
         tag_group = self._create_tag_edit_group()
         splitter.addWidget(tag_group)
 
+        # Operation log
+        log_group = QGroupBox("Operation Log")
+        log_layout = QVBoxLayout(log_group)
+        self.operation_log = QListWidget()
+        self.operation_log.setMaximumHeight(120)
+        log_layout.addWidget(self.operation_log)
+        splitter.addWidget(log_group)
+
         # Set stretch factors (give more space to tracks)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 4)
         splitter.setStretchFactor(2, 1)
+        splitter.setStretchFactor(3, 1)
 
         layout.addWidget(splitter)
 
@@ -314,6 +325,7 @@ class DatabasePanel(QWidget):
 
             self.status_label.setText(f"Loaded {len(result.tracks)} tracks")
             self.status_label.setStyleSheet("color: green;")
+            self._log_operation(f"Loaded database with {len(result.tracks)} tracks")
 
             # Enable action buttons
             self.backup_btn.setEnabled(True)
@@ -511,10 +523,23 @@ class DatabasePanel(QWidget):
 
         self.status_label.setText(f"Tags saved for {track.display_name}")
         self.status_label.setStyleSheet("color: green;")
+        self._log_operation(f"Tags saved for {track.display_name}")
 
         # Refresh track list
         self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
+
+    def _log_operation(self, message: str) -> None:
+        """Add a timestamped entry to the operation log.
+
+        Args:
+            message: Operation description.
+        """
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.operation_log.insertItem(0, f"[{timestamp}] {message}")
+        # Keep only last 20 entries
+        while self.operation_log.count() > 20:
+            self.operation_log.takeItem(self.operation_log.count() - 1)
 
     def _on_backup_clicked(self) -> None:
         """Handle backup button click."""
@@ -540,6 +565,7 @@ class DatabasePanel(QWidget):
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup created: {Path(backup_path).name}")
         self.status_label.setStyleSheet("color: green;")
+        self._log_operation(f"Backup created: {Path(backup_path).name}")
 
     @Slot(str)
     def _on_backup_error(self, error: str) -> None:
@@ -602,6 +628,7 @@ class DatabasePanel(QWidget):
         QMessageBox.information(
             self, "Validation Results", "\n".join(detail_lines)
         )
+        self._log_operation(summary)
 
     @Slot(str)
     def _on_validate_error(self, error: str) -> None:
@@ -672,6 +699,7 @@ class DatabasePanel(QWidget):
         self.clean_btn.setEnabled(True)
         self.status_label.setText(f"Cleaned {removed_count} entries")
         self.status_label.setStyleSheet("color: green;")
+        self._log_operation(f"Cleaned {removed_count} invalid entries")
 
         # Refresh tracks
         if self._database is not None:
