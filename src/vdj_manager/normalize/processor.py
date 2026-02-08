@@ -28,13 +28,32 @@ def _measure_single_file(args: tuple) -> NormalizationResult:
 
     Args:
         args: Tuple of (file_path, target_lufs, ffmpeg_path)
+              or (file_path, target_lufs, ffmpeg_path, cache_db_path)
 
     Returns:
         NormalizationResult with measurement data
     """
-    file_path, target_lufs, ffmpeg_path = args
+    if len(args) == 4:
+        file_path, target_lufs, ffmpeg_path, cache_db_path = args
+    else:
+        file_path, target_lufs, ffmpeg_path = args
+        cache_db_path = None
 
     try:
+        # Check cache first
+        if cache_db_path:
+            from .measurement_cache import MeasurementCache
+
+            cache = MeasurementCache(db_path=Path(cache_db_path))
+            cached = cache.get(file_path, target_lufs)
+            if cached is not None:
+                return NormalizationResult(
+                    file_path=file_path,
+                    success=True,
+                    current_lufs=cached["integrated_lufs"],
+                    gain_db=cached["gain_db"],
+                )
+
         measurer = LoudnessMeasurer(ffmpeg_path)
         lufs = measurer.measure(file_path)
 
@@ -46,6 +65,16 @@ def _measure_single_file(args: tuple) -> NormalizationResult:
             )
 
         gain = target_lufs - lufs
+
+        # Write to cache
+        if cache_db_path:
+            from .measurement_cache import MeasurementCache
+
+            cache = MeasurementCache(db_path=Path(cache_db_path))
+            cache.put(file_path, target_lufs, {
+                "integrated_lufs": lufs,
+                "gain_db": round(gain, 2),
+            })
 
         return NormalizationResult(
             file_path=file_path,
@@ -66,11 +95,16 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
 
     Args:
         args: Tuple of (file_path, target_lufs, ffmpeg_path, backup)
+              or (file_path, target_lufs, ffmpeg_path, backup, cache_db_path)
 
     Returns:
         NormalizationResult
     """
-    file_path, target_lufs, ffmpeg_path, backup = args
+    if len(args) == 5:
+        file_path, target_lufs, ffmpeg_path, backup, cache_db_path = args
+    else:
+        file_path, target_lufs, ffmpeg_path, backup = args
+        cache_db_path = None
 
     try:
         input_path = Path(file_path)
@@ -83,8 +117,23 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
 
         measurer = LoudnessMeasurer(ffmpeg_path)
 
-        # First pass: measure
-        measurements = measurer.measure_detailed(file_path)
+        # First pass: measure (check cache for detailed metrics)
+        measurements = None
+        if cache_db_path:
+            from .measurement_cache import MeasurementCache
+
+            cache = MeasurementCache(db_path=Path(cache_db_path))
+            cached = cache.get(file_path, target_lufs)
+            if cached is not None and cached.get("true_peak") is not None:
+                measurements = {
+                    "integrated": cached["integrated_lufs"],
+                    "true_peak": cached["true_peak"],
+                    "lra": cached["lra"],
+                    "threshold": cached["threshold"],
+                }
+
+        if measurements is None:
+            measurements = measurer.measure_detailed(file_path)
         if not measurements:
             return NormalizationResult(
                 file_path=file_path,

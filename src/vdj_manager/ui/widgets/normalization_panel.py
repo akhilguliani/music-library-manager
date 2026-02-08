@@ -25,6 +25,7 @@ from PySide6.QtCore import Qt, Signal, Slot
 from vdj_manager.config import DEFAULT_LUFS_TARGET, LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.normalize.measurement_cache import MeasurementCache
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
@@ -65,6 +66,7 @@ class NormalizationPanel(QWidget):
         self._worker: NormalizationWorker | None = None
         self._apply_worker: ApplyNormalizationWorker | None = None
         self._checkpoint_manager = CheckpointManager()
+        self._measurement_cache = MeasurementCache()
         self._task_state: TaskState | None = None
 
         self._setup_ui()
@@ -193,7 +195,12 @@ class NormalizationPanel(QWidget):
 
         button_layout.addStretch()
 
-        # Apply options
+        # Options
+        self.use_cache_check = QCheckBox("Use cache")
+        self.use_cache_check.setChecked(True)
+        self.use_cache_check.setToolTip("Skip files that have already been measured")
+        button_layout.addWidget(self.use_cache_check)
+
         self.destructive_check = QCheckBox("Destructive")
         self.destructive_check.setToolTip("Modify files in-place (non-destructive uses ReplayGain tags)")
         button_layout.addWidget(self.destructive_check)
@@ -277,13 +284,15 @@ class NormalizationPanel(QWidget):
             },
         )
 
-        # Create worker with parallel processing
+        # Create worker with parallel processing and optional cache
+        cache = self._measurement_cache if self.use_cache_check.isChecked() else None
         self._worker = NormalizationWorker(
             self._task_state,
             target_lufs=self.lufs_spin.value(),
             checkpoint_manager=self._checkpoint_manager,
             batch_size=self.batch_spin.value(),
             max_workers=self.workers_spin.value(),
+            measurement_cache=cache,
         )
 
         # Connect signals
@@ -339,12 +348,14 @@ class NormalizationPanel(QWidget):
         default_workers = max(1, multiprocessing.cpu_count() - 1)
 
         # Create worker with existing state and parallel processing
+        cache = self._measurement_cache if self.use_cache_check.isChecked() else None
         self._worker = NormalizationWorker(
             task_state,
             target_lufs=task_state.config.get("target_lufs", DEFAULT_LUFS_TARGET),
             checkpoint_manager=self._checkpoint_manager,
             batch_size=task_state.config.get("batch_size", 50),
             max_workers=task_state.config.get("max_workers", default_workers),
+            measurement_cache=cache,
         )
 
         # Connect signals
@@ -416,12 +427,15 @@ class NormalizationPanel(QWidget):
             },
         )
 
+        cache = self._measurement_cache if self.use_cache_check.isChecked() else None
         self._apply_worker = ApplyNormalizationWorker(
             task_state,
             target_lufs=self.lufs_spin.value(),
             destructive=self.destructive_check.isChecked(),
             checkpoint_manager=self._checkpoint_manager,
             batch_size=self.batch_spin.value(),
+            max_workers=self.workers_spin.value(),
+            measurement_cache=cache,
         )
 
         self.progress_widget.connect_worker(self._apply_worker)
