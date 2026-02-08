@@ -284,7 +284,7 @@ class AnalysisPanel(QWidget):
             List of Song objects.
         """
         audio_extensions = {
-            ".mp3", ".m4a", ".aac", ".flac", ".wav",
+            ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav",
             ".aiff", ".aif", ".ogg", ".opus",
         }
         tracks = []
@@ -353,6 +353,12 @@ class AnalysisPanel(QWidget):
         )
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(self._on_energy_error)
+        self._energy_worker.result_ready.connect(self.energy_results.add_result)
+        self._energy_worker.progress.connect(
+            lambda cur, tot, msg: self.energy_status.setText(
+                f"Analyzing... {cur}/{tot}"
+            )
+        )
         self._energy_worker.start()
 
     @Slot(object)
@@ -370,10 +376,7 @@ class AnalysisPanel(QWidget):
         parts.append(f"{failed} failed")
         self.energy_status.setText(f"Done: {', '.join(parts)}")
 
-        for r in result["results"]:
-            self.energy_results.add_result(r)
-
-        if analyzed > 0:
+        if analyzed + cached > 0:
             self.database_changed.emit()
 
     @Slot(str)
@@ -414,6 +417,12 @@ class AnalysisPanel(QWidget):
         )
         self._mik_worker.finished_work.connect(self._on_mik_finished)
         self._mik_worker.error.connect(self._on_mik_error)
+        self._mik_worker.result_ready.connect(self.mik_results.add_result)
+        self._mik_worker.progress.connect(
+            lambda cur, tot, msg: self.mik_status.setText(
+                f"Scanning... {cur}/{tot}"
+            )
+        )
         self._mik_worker.start()
 
     @Slot(object)
@@ -424,9 +433,6 @@ class AnalysisPanel(QWidget):
         found = result["found"]
         updated = result["updated"]
         self.mik_status.setText(f"Done: {found} found, {updated} updated")
-
-        for r in result["results"]:
-            self.mik_results.add_result(r)
 
         if updated > 0:
             self.database_changed.emit()
@@ -468,6 +474,12 @@ class AnalysisPanel(QWidget):
         )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
+        self._mood_worker.result_ready.connect(self.mood_results.add_result)
+        self._mood_worker.progress.connect(
+            lambda cur, tot, msg: self.mood_status.setText(
+                f"Analyzing... {cur}/{tot}"
+            )
+        )
         self._mood_worker.start()
 
     @Slot(object)
@@ -488,10 +500,7 @@ class AnalysisPanel(QWidget):
         parts.append(f"{failed} failed")
         self.mood_status.setText(f"Done: {', '.join(parts)}")
 
-        for r in result["results"]:
-            self.mood_results.add_result(r)
-
-        if analyzed > 0:
+        if analyzed + cached > 0:
             self.database_changed.emit()
 
     @Slot(str)

@@ -283,7 +283,7 @@ class TestMoodWorker:
 class TestAnalysisPanelHandlers:
     """Tests for AnalysisPanel event handlers."""
 
-    def test_energy_finished_populates_results(self, qapp):
+    def test_energy_finished_shows_status(self, qapp):
         panel = AnalysisPanel()
         mock_db = MagicMock()
         panel.set_database(mock_db, [_make_song("/a.mp3")])
@@ -295,6 +295,14 @@ class TestAnalysisPanelHandlers:
         panel._on_energy_finished(result)
 
         assert "1 analyzed" in panel.energy_status.text()
+
+    def test_energy_results_streamed_via_result_ready(self, qapp):
+        """Results are added to table via result_ready signal, not finished handler."""
+        panel = AnalysisPanel()
+        # Simulate streaming a result
+        panel.energy_results.add_result(
+            {"file_path": "/a.mp3", "energy": 7, "status": "ok"}
+        )
         assert panel.energy_results.row_count() == 1
 
     def test_energy_error_shows_message(self, qapp):
@@ -306,7 +314,7 @@ class TestAnalysisPanelHandlers:
         assert "Error" in panel.energy_status.text()
         assert panel.energy_all_btn.isEnabled()
 
-    def test_mik_finished_populates_results(self, qapp):
+    def test_mik_finished_shows_status(self, qapp):
         panel = AnalysisPanel()
         mock_db = MagicMock()
         panel.set_database(mock_db, [_make_song("/a.mp3")])
@@ -318,6 +326,12 @@ class TestAnalysisPanelHandlers:
         panel._on_mik_finished(result)
 
         assert "1 found" in panel.mik_status.text()
+
+    def test_mik_results_streamed_via_result_ready(self, qapp):
+        panel = AnalysisPanel()
+        panel.mik_results.add_result(
+            {"file_path": "/a.mp3", "energy": 8, "key": "Am", "status": "updated"}
+        )
         assert panel.mik_results.row_count() == 1
 
     def test_mood_finished_with_error(self, qapp):
@@ -337,6 +351,15 @@ class TestAnalysisPanelHandlers:
         }
         panel._on_mood_finished(result)
         assert "2 analyzed" in panel.mood_status.text()
+
+    def test_mood_results_streamed_via_result_ready(self, qapp):
+        panel = AnalysisPanel()
+        panel.mood_results.add_result(
+            {"file_path": "/a.mp3", "mood": "happy", "status": "ok"}
+        )
+        panel.mood_results.add_result(
+            {"file_path": "/b.mp3", "mood": "sad", "status": "ok"}
+        )
         assert panel.mood_results.row_count() == 2
 
     def test_database_changed_signal_emitted(self, qapp):
@@ -433,3 +456,130 @@ class TestAnalysisPanelLimits:
         assert len(result) == 2
         assert result[0].file_path == "/a.mp3"
         assert result[1].file_path == "/b.mp3"
+
+
+class TestAudioFormatSupport:
+    """Tests for audio format filtering."""
+
+    def test_mp4_extension_supported(self, qapp):
+        """MP4 audio files should be included in analysis."""
+        panel = AnalysisPanel()
+        tracks = [
+            _make_song("/song.mp3"),
+            _make_song("/song.mp4"),
+            _make_song("/song.m4a"),
+            _make_song("/song.flac"),
+            _make_song("/song.wav"),
+            _make_song("/song.aac"),
+        ]
+        panel._tracks = tracks
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        extensions = {t.extension for t in result}
+        assert ".mp4" in extensions
+        assert ".mp3" in extensions
+        assert ".m4a" in extensions
+        assert ".flac" in extensions
+        assert ".wav" in extensions
+        assert ".aac" in extensions
+        assert len(result) == 6
+
+    def test_non_audio_extensions_excluded(self, qapp):
+        panel = AnalysisPanel()
+        tracks = [
+            _make_song("/song.mp3"),
+            _make_song("/song.txt"),
+            _make_song("/song.jpg"),
+        ]
+        panel._tracks = tracks
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            result = panel._get_audio_tracks()
+
+        assert len(result) == 1
+        assert result[0].extension == ".mp3"
+
+
+class TestWorkerResultReady:
+    """Tests for result_ready signal streaming."""
+
+    def test_energy_worker_emits_result_ready(self, qapp):
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.analyze.return_value = 7
+
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            streamed = []
+            worker.result_ready.connect(lambda r: streamed.append(r))
+            worker.start()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(streamed) == 2
+            assert all(r["energy"] == 7 for r in streamed)
+
+    def test_mik_worker_emits_result_ready(self, qapp):
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3")]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+            reader_instance = MockReader.return_value
+            reader_instance.read_tags.return_value = {
+                "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
+            }
+
+            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
+            streamed = []
+            worker.result_ready.connect(lambda r: streamed.append(r))
+            worker.start()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(streamed) == 1
+            assert streamed[0]["status"] == "updated"
+
+    def test_mood_worker_emits_result_ready(self, qapp):
+        mock_db = MagicMock()
+        song = _make_song("/a.mp3")
+        mock_db.get_song.return_value = song
+        tracks = [song]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.is_available = True
+            analyzer_instance.get_mood_tag.return_value = "happy"
+
+            worker = MoodWorker(mock_db, tracks, max_workers=1)
+            streamed = []
+            worker.result_ready.connect(lambda r: streamed.append(r))
+            worker.start()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(streamed) == 1
+            assert streamed[0]["mood"] == "happy"
+
+    def test_energy_worker_progress_emitted(self, qapp):
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
+
+        with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            analyzer_instance = MockAnalyzer.return_value
+            analyzer_instance.analyze.return_value = 5
+
+            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            progress_calls = []
+            worker.progress.connect(lambda cur, tot, msg: progress_calls.append((cur, tot)))
+            worker.start()
+            worker.wait(5000)
+            QCoreApplication.processEvents()
+
+            assert len(progress_calls) == 2
+            assert progress_calls[-1] == (2, 2)

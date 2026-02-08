@@ -124,32 +124,35 @@ class TestDatabaseToAnalysisFlow:
         assert panel.mik_scan_btn.isEnabled()
 
     def test_energy_results_update_panel(self, qapp):
+        """Results are streamed via result_ready; finished handler updates status."""
         panel = AnalysisPanel()
-        result = {
-            "analyzed": 2, "failed": 0,
-            "results": [
-                {"file_path": "/a.mp3", "energy": 7, "status": "ok"},
-                {"file_path": "/b.mp3", "energy": 3, "status": "ok"},
-            ],
-        }
+        results_data = [
+            {"file_path": "/a.mp3", "energy": 7, "status": "ok"},
+            {"file_path": "/b.mp3", "energy": 3, "status": "ok"},
+        ]
+        # Simulate streaming results (result_ready signal adds rows during processing)
+        for r in results_data:
+            panel.energy_results.add_result(r)
+
         signals = []
         panel.database_changed.connect(lambda: signals.append(True))
 
-        panel._on_energy_finished(result)
+        panel._on_energy_finished({"analyzed": 2, "failed": 0, "results": results_data})
 
         assert panel.energy_results.row_count() == 2
         assert len(signals) == 1
 
     def test_mik_results_update_panel(self, qapp):
+        """Results are streamed via result_ready; finished handler updates status."""
         panel = AnalysisPanel()
-        result = {
-            "found": 1, "updated": 1,
-            "results": [{"file_path": "/a.mp3", "energy": 5, "key": "Am", "status": "updated"}],
-        }
+        result_item = {"file_path": "/a.mp3", "energy": 5, "key": "Am", "status": "updated"}
+        # Simulate streaming
+        panel.mik_results.add_result(result_item)
+
         signals = []
         panel.database_changed.connect(lambda: signals.append(True))
 
-        panel._on_mik_finished(result)
+        panel._on_mik_finished({"found": 1, "updated": 1, "results": [result_item]})
 
         assert panel.mik_results.row_count() == 1
         assert len(signals) == 1

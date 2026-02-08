@@ -399,15 +399,18 @@ class TestAnalysisPanelMoodHandlers:
         assert panel.mood_results.row_count() == 0
 
     def test_mood_finished_populates_results_table(self, qapp):
+        """Results are streamed via result_ready; finished updates status."""
         panel = AnalysisPanel()
-        result = {
-            "analyzed": 2, "failed": 1, "results": [
-                {"file_path": "/a.mp3", "mood": "happy", "status": "ok"},
-                {"file_path": "/b.mp3", "mood": "sad", "status": "ok"},
-                {"file_path": "/c.mp3", "mood": None, "status": "failed"},
-            ],
-        }
-        panel._on_mood_finished(result)
+        results_data = [
+            {"file_path": "/a.mp3", "mood": "happy", "status": "ok"},
+            {"file_path": "/b.mp3", "mood": "sad", "status": "ok"},
+            {"file_path": "/c.mp3", "mood": None, "status": "failed"},
+        ]
+        # Simulate streaming results (result_ready adds rows during processing)
+        for r in results_data:
+            panel.mood_results.add_result(r)
+
+        panel._on_mood_finished({"analyzed": 2, "failed": 1, "results": results_data})
         assert panel.mood_results.row_count() == 3
         assert "2 analyzed" in panel.mood_status.text()
         assert "1 failed" in panel.mood_status.text()

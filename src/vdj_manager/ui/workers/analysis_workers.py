@@ -1,18 +1,48 @@
 """Workers for audio analysis operations with parallel processing."""
 
+import contextlib
 import multiprocessing
+import os
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+
+from PySide6.QtCore import Signal
 
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.workers.base_worker import ProgressSimpleWorker
 
+# Save to disk every N results to avoid losing work on crash
+_SAVE_INTERVAL = 25
+
 
 # ------------------------------------------------------------------
 # Top-level worker functions (required for ProcessPoolExecutor pickling)
 # ------------------------------------------------------------------
+
+@contextlib.contextmanager
+def _suppress_stderr():
+    """Suppress C-level stderr output (e.g. mpg123 decoder warnings).
+
+    Redirects file descriptor 2 to /dev/null temporarily. This is
+    necessary because libraries like mpg123 write warnings about
+    corrupted MPEG headers directly to stderr at the C level, bypassing
+    Python's sys.stderr.
+    """
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        old_stderr = os.dup(2)
+        os.dup2(devnull, 2)
+        os.close(devnull)
+        yield
+    except OSError:
+        yield  # If redirection fails, run without suppression
+    else:
+        os.dup2(old_stderr, 2)
+        os.close(old_stderr)
+
 
 def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Analyze energy for a single file in a subprocess.
@@ -32,7 +62,8 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
         from vdj_manager.analysis.energy import EnergyAnalyzer
 
         analyzer = EnergyAnalyzer()
-        energy = analyzer.analyze(file_path)
+        with _suppress_stderr():
+            energy = analyzer.analyze(file_path)
         if energy is not None:
             # Store in cache
             if cache_db_path:
@@ -63,7 +94,8 @@ def _analyze_mood_single(file_path: str, cache_db_path: str | None = None) -> di
         from vdj_manager.analysis.mood import MoodAnalyzer
 
         analyzer = MoodAnalyzer()
-        mood_tag = analyzer.get_mood_tag(file_path)
+        with _suppress_stderr():
+            mood_tag = analyzer.get_mood_tag(file_path)
         if mood_tag:
             # Store in cache
             if cache_db_path:
@@ -132,8 +164,10 @@ class EnergyWorker(ProgressSimpleWorker):
     """Worker that analyzes energy levels for audio tracks in parallel.
 
     Uses ProcessPoolExecutor to analyze multiple files simultaneously,
-    then batch-writes results to the database.
+    streaming results to the GUI and saving periodically.
     """
+
+    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -160,6 +194,7 @@ class EnergyWorker(ProgressSimpleWorker):
         cached = 0
         results = []
         total = len(self._tracks)
+        unsaved = 0
 
         file_paths = [t.file_path for t in self._tracks]
 
@@ -183,18 +218,25 @@ class EnergyWorker(ProgressSimpleWorker):
                         Grouping=f"Energy {result['energy']}",
                     )
                     cached += 1
+                    unsaved += 1
                 elif result["status"] == "ok" and result["energy"] is not None:
                     self._database.update_song_tags(
                         result["file_path"],
                         Grouping=f"Energy {result['energy']}",
                     )
                     analyzed += 1
+                    unsaved += 1
                 else:
                     failed += 1
 
+                self.result_ready.emit(result)
                 self.report_progress(analyzed + failed + cached, total, result["file_path"])
 
-        if analyzed + cached > 0:
+                if unsaved >= _SAVE_INTERVAL:
+                    self._database.save()
+                    unsaved = 0
+
+        if unsaved > 0:
             self._database.save()
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
@@ -206,6 +248,8 @@ class MIKImportWorker(ProgressSimpleWorker):
     Reads MIK energy and key data from file tags using ProcessPoolExecutor
     and updates the VDJ database.
     """
+
+    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -231,6 +275,7 @@ class MIKImportWorker(ProgressSimpleWorker):
         updated = 0
         results = []
         total = len(self._tracks)
+        unsaved = 0
 
         # Build a lookup for existing energy tags
         existing_energy = {
@@ -262,14 +307,20 @@ class MIKImportWorker(ProgressSimpleWorker):
                     if updates:
                         self._database.update_song_tags(result["file_path"], **updates)
                         updated += 1
+                        unsaved += 1
                         result["status"] = "updated"
                     else:
                         result["status"] = "exists"
 
                 results.append(result)
+                self.result_ready.emit(result)
                 self.report_progress(len(results), total, result["file_path"])
 
-        if updated > 0:
+                if unsaved >= _SAVE_INTERVAL:
+                    self._database.save()
+                    unsaved = 0
+
+        if unsaved > 0:
             self._database.save()
 
         return {"found": found, "updated": updated, "results": results}
@@ -281,6 +332,8 @@ class MoodWorker(ProgressSimpleWorker):
     Uses MoodAnalyzer (requires essentia-tensorflow) with ProcessPoolExecutor
     to classify audio mood and stores results in the User2 hashtag field.
     """
+
+    result_ready = Signal(dict)
 
     def __init__(
         self,
@@ -320,6 +373,7 @@ class MoodWorker(ProgressSimpleWorker):
         cached = 0
         results = []
         total = len(self._tracks)
+        unsaved = 0
 
         file_paths = [t.file_path for t in self._tracks]
 
@@ -353,12 +407,18 @@ class MoodWorker(ProgressSimpleWorker):
                         cached += 1
                     else:
                         analyzed += 1
+                    unsaved += 1
                 else:
                     failed += 1
 
+                self.result_ready.emit(result)
                 self.report_progress(analyzed + failed + cached, total, result["file_path"])
 
-        if analyzed + cached > 0:
+                if unsaved >= _SAVE_INTERVAL:
+                    self._database.save()
+                    unsaved = 0
+
+        if unsaved > 0:
             self._database.save()
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
