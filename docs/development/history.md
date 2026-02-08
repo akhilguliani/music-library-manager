@@ -393,77 +393,6 @@ class TrackTableModel(QAbstractTableModel):
 - User can review failures after completion
 - Failed files tracked in checkpoint for retry
 
-## Commit History
-
-```
-20d2b1f Add performance optimizations across 6 modules with 39 new tests
-0bad51b Remove tracked __pycache__ files and update .gitignore
-19251fe Update development history with corrected database format findings
-6b039d4 Fix database save to use lxml default format (revert incorrect fix)
-7366d5b Add parallel processing to GUI normalization worker
-b8df4ed Add comprehensive development documentation
-7c374df Fix backup mtime to reflect creation time, not source mtime
-111760d Update documentation with desktop app guide
-7c2fc01 Add comprehensive UI tests
-15ac5de Add tests for VDJ database save format compatibility
-12e013c Add main window, app entry point, and resume dialog
-cae38e5 Add normalization panel with full workflow
-6281a01 Add normalization worker with checkpoint support
-93030d6 Add progress widget with pause/resume controls
-2676e81 Add database panel with track table and virtual scrolling
-5f30fa8 Add pausable worker base class with Qt signals
-76c4390 Add task state management and checkpoint persistence
-8cb9a6f Add PySide6 dependency and GUI entry point
-34825db Fix VDJ database save to preserve expected format
-1dcc128 Add MkDocs documentation and comprehensive README
-c37f228 Add comprehensive unit tests
-29a76f3 Add parallel processing for loudness normalization
-261642b Initial commit: VDJ Manager v0.1.0
-```
-
-## Test Coverage
-
-Final test count: **240 tests passing**
-
-| Module | Tests |
-|--------|-------|
-| test_backup.py | 10 |
-| test_checkpoint_manager.py | 20 |
-| test_database.py | 15 |
-| test_mapper.py | 6 |
-| test_models.py | 14 |
-| test_normalization.py | 8 |
-| test_normalization_panel.py | 14 |
-| test_normalization_worker.py | 11 |
-| test_path_remapper.py | 9 |
-| test_pausable_worker.py | 16 |
-| test_performance_fixes.py | 39 |
-| test_progress_widget.py | 20 |
-| test_resume_dialog.py | 17 |
-| test_track_model.py | 16 |
-| test_ui_app.py | 13 |
-| test_validator.py | 10 |
-
-## Lessons Learned
-
-1. **Examine actual working files before fixing format issues** - We incorrectly assumed VDJ needed double quotes and CRLF, but examining actual VDJ database files showed lxml defaults were correct. Always `xxd` or hex-dump working files first.
-
-2. **Test with real consumer software** - Unit tests passing doesn't mean the software works. Always verify with the actual application (VirtualDJ in this case).
-
-3. **Don't over-engineer** - The simplest solution (lxml's default output) was correct. Adding "fixes" for assumed requirements introduced bugs.
-
-4. **File metadata preservation is tricky** - `shutil.copy2` preserving mtime caused unexpected sorting issues.
-
-5. **Qt testing requires event loop awareness** - Signals won't be received without processing events.
-
-6. **Batch boundaries are natural pause points** - Designing for interruptibility from the start makes pause/resume straightforward.
-
-7. **Checkpoint early, checkpoint often** - JSON checkpoints are cheap and provide crash recovery for free.
-
-8. **Separate bugfix commits** - Each bug fix should be its own commit with a corresponding test case for traceability.
-
-9. **When a fix doesn't work, question the hypothesis** - If the "fix" doesn't solve the problem, the root cause analysis was probably wrong.
-
 ### Phase 3: Performance Review & Optimization (February 2026)
 
 #### Motivation
@@ -564,24 +493,256 @@ Also merged extension counting into `categorize_entries()` (via `collect_extensi
 | TestValidatorExtensionOptimization | 6 | Fix 6: single extraction, report extension counts |
 | TestFfmpegVerificationCache | 5 | Fix 7: single verify, cache miss on new path |
 
-Final test count: **240 tests passing** (199 existing + 39 new + 2 newly collected)
+Test count after Phase 3: **240 tests passing** (199 existing + 39 new + 2 newly collected)
 
-#### Lessons Learned
+---
+
+### Phase 4: Full GUI Completion (February 2026)
+
+All 17 CLI commands now have GUI equivalents across 5 tabs:
+
+| Tab | Features |
+|-----|----------|
+| Database | Load/browse, backup/validate/clean, tag editing, operation log |
+| Normalization | Measure/apply LUFS, CSV export, parallel processing, pause/resume |
+| Files | 5 sub-tabs: scan, import, remove, remap, duplicates |
+| Analysis | 3 sub-tabs: energy, MIK import, mood |
+| Export | Serato export with playlist/crate browser |
+
+**Key additions:**
+- `ConfigurableResultsTable` widget with dynamic columns via `columns: list[dict]`
+- Database panel tag editing (energy, key, comment) with inline save
+- Operation history log (last 20 operations)
+- GUI integration tests in `tests/test_gui_integration.py`
+
+---
+
+### Phase 5: Analysis Streaming, Caching & Format Fixes (February 2026)
+
+#### Persistent Caches (SQLite)
+
+Two SQLite caches prevent redundant work across sessions:
+
+| Cache | Location | Purpose |
+|-------|----------|---------|
+| `MeasurementCache` | `~/.vdj_manager/measurements.db` | LUFS loudness measurements |
+| `AnalysisCache` | `~/.vdj_manager/analysis.db` | Energy, mood, MIK results |
+
+Both use mtime + file_size for invalidation — if a file changes, cached results are discarded.
+
+#### Real-Time Streaming Results
+
+Analysis workers now emit `result_ready = Signal(dict)` per-file during processing, with results appearing in the GUI table immediately rather than all at once when finished. Database saves happen every 25 results for crash resilience.
+
+#### Tag Storage Format Changes
+
+| Tag | Field | Old Format | New Format |
+|-----|-------|-----------|------------|
+| Energy | `Tags/@Grouping` | `"Energy 7"` | `"7"` (plain number) |
+| Mood | `Tags/@User2` | N/A | `"#happy"` (hashtags) |
+| MIK Key | `Tags/@Key` | — | `"Am"` |
+| MIK Energy | `Tags/@Grouping` | `"Energy 7"` | `"7"` |
+
+The energy parser handles both plain number and legacy "Energy N" format for backward compatibility.
+
+#### Additional Fixes
+
+- **VDJ database format**: Apostrophe preservation (`&apos;` entities), space before `/>` in self-closing tags
+- **Parallel analysis**: ProcessPoolExecutor with top-level picklable functions
+- **mpg123 stderr suppression**: `_suppress_stderr()` context manager redirects fd 2 to `/dev/null`
+- **.mp4 format support**: Added to audio_extensions for analysis
+
+---
+
+### Bug #6: Flaky Qt Segfaults in Full Test Suite
+
+**Symptoms:**
+- Running `pytest tests/ -v` intermittently crashed with SIGBUS (exit code 139)
+- Individual test files always passed in isolation
+- Crashes most frequent in `test_files_panel.py` and `test_mood_analysis.py`
+
+**Root Cause:**
+Two interacting issues:
+1. **macOS fork() after Qt**: Qt creates internal threads; `fork()` on macOS copies the parent's thread state in a broken state, causing segfaults in child processes
+2. **Cross-test Qt state pollution**: Workers started in earlier tests left behind queued signals and C++ objects; `processEvents()` in later tests delivered signals to deleted objects
+
+**Fix (commit 75c1610):**
+Created `tests/conftest.py` with:
+1. `pytest_configure`: Sets `multiprocessing.set_start_method("spawn", force=True)` on macOS
+2. `_qt_cleanup` autouse fixture: Calls `processEvents()` + `gc.collect()` after every test
+
+**Result:** 464 tests pass consistently across 3+ consecutive full-suite runs with zero segfaults.
+
+**Lesson learned:** On macOS, always use `spawn` (not `fork`) when combining multiprocessing with Qt. Clean up Qt state between tests to prevent signal delivery to dead objects.
+
+---
+
+### Phase 6: GUI Readability & Results Visibility (February 2026)
+
+#### Motivation
+
+After running energy analysis on FLAC files, the GUI provided insufficient diagnostic information — raw file paths were truncated, there was no way to distinguish file formats, status had no color coding, and the results table wasn't sortable. Additionally, the GUI panels were dense with deep nesting, cramped sections, and no visual hierarchy.
+
+#### Results Table Improvements (`ConfigurableResultsTable`)
+
+| Feature | Before | After |
+|---------|--------|-------|
+| File paths | Raw full path (truncated) | Filename only, full path on hover tooltip |
+| Status display | Plain text, all same color | Color-coded: green (ok/cached), red (errors), orange (failed) |
+| Error details | Not visible | Full error message in tooltip on hover |
+| Sorting | Not supported | Click any column header to sort |
+| Row count | Not shown | Live "N results" label below table |
+| File format | Not shown | "Fmt" column showing `.mp3`, `.flac`, etc. |
+| Failure summary | Not shown | Status bar breakdown: "3 failed (.flac: 2, .wav: 1)" |
+
+#### Database Panel Layout Improvements
+
+| Component | Before | After |
+|-----------|--------|-------|
+| Header | Source/Load in one row, Backup/Validate/Clean in separate row | All controls merged into single compact row |
+| Statistics | 6-row vertical form in splitter | Single-line inline summary above splitter |
+| Tag editor | Always visible (wastes space) | Hidden by default, appears when a track is selected |
+| Operation log | 120px max height | 150px max height |
+| Splitter | 4 sections (stats, tracks, tags, log) | 3 sections (tracks, tags, log) |
+
+#### Main Window
+
+- Minimum size increased from 900x600 to 1000x700 for better breathing room
+
+#### Test Coverage
+
+13 new tests added across 3 test files:
+
+| Test Class | Tests | Covers |
+|------------|-------|--------|
+| ConfigurableResultsTable (new tests) | 8 | filename display, color coding, sorting, row count |
+| TestFormatColumnAndFailureSummary | 5 | format column in all 3 tabs, failure summary |
+| Integration tests (updated) | — | format key in streamed result dicts |
+
+Test count: **477 tests passing** (464 + 13 new)
+
+---
+
+## Commit History
+
+```
+75c1610 Write energy as plain number, fix flaky Qt test segfaults
+aaf5462 Stream analysis results to GUI in real-time with periodic saves
+f94a05d Fix flaky bus error in normalization worker tests
+a1b8676 Add comprehensive tests for AnalysisCache
+02e0d59 Add persistent analysis cache with SQLite storage
+2d0ae57 Move mood to User2 hashtags, MIK key to Key field, allow 20 max workers
+0851952 Fix entity preservation in database save for large VDJ databases
+839d660 Fix database save to match VDJ format exactly
+51b2575 Add track count limit and max duration filter to analysis panel
+0e57bac Add parallel processing to analysis workers with ProcessPoolExecutor
+45a802e Integrate measurement cache into normalization workers and panel
+97f5071 Add SQLite-backed measurement cache for LUFS results
+803bdad Add comprehensive mood analysis tests across all layers
+8ebabe2 Update CLAUDE.md with GUI architecture and 380 test count
+e92897a Add operation history log and GUI integration tests
+53fe19d Add Serato export panel with crate management
+9cc3b3c Add analysis panel (energy, mood, MIK import) and tag editing
+0e26013 Add apply normalization, CSV export, and limit option to GUI
+50a7e61 Add file management panel with scan, import, remove, remap, duplicates
+2ad4e42 Add database validation and clean operations to GUI
+20d2b1f Add performance optimizations across 6 modules with 39 new tests
+0bad51b Remove tracked __pycache__ files and update .gitignore
+19251fe Update development history with corrected database format findings
+6b039d4 Fix database save to use lxml default format (revert incorrect fix)
+7366d5b Add parallel processing to GUI normalization worker
+b8df4ed Add comprehensive development documentation
+7c374df Fix backup mtime to reflect creation time, not source mtime
+111760d Update documentation with desktop app guide
+7c2fc01 Add comprehensive UI tests
+15ac5de Add tests for VDJ database save format compatibility
+12e013c Add main window, app entry point, and resume dialog
+cae38e5 Add normalization panel with full workflow
+6281a01 Add normalization worker with checkpoint support
+93030d6 Add progress widget with pause/resume controls
+2676e81 Add database panel with track table and virtual scrolling
+5f30fa8 Add pausable worker base class with Qt signals
+76c4390 Add task state management and checkpoint persistence
+8cb9a6f Add PySide6 dependency and GUI entry point
+34825db Fix VDJ database save to preserve expected format
+1dcc128 Add MkDocs documentation and comprehensive README
+c37f228 Add comprehensive unit tests
+29a76f3 Add parallel processing for loudness normalization
+261642b Initial commit: VDJ Manager v0.1.0
+```
+
+## Test Coverage
+
+Final test count: **477 tests passing**
+
+| Module | Tests |
+|--------|-------|
+| test_analysis_cache.py | 7 |
+| test_analysis_panel.py | 41 |
+| test_backup.py | 10 |
+| test_checkpoint_manager.py | 20 |
+| test_database.py | 15 |
+| test_database_panel_operations.py | 20 |
+| test_export_panel.py | 14 |
+| test_files_panel.py | 27 |
+| test_gui_integration.py | 17 |
+| test_mapper.py | 6 |
+| test_measurement_cache.py | 8 |
+| test_models.py | 14 |
+| test_mood_analysis.py | 17 |
+| test_normalization.py | 8 |
+| test_normalization_panel.py | 14 |
+| test_normalization_panel_enhanced.py | 14 |
+| test_normalization_worker.py | 11 |
+| test_operation_panel.py | 8 |
+| test_path_remapper.py | 9 |
+| test_pausable_worker.py | 16 |
+| test_performance_fixes.py | 39 |
+| test_progress_widget.py | 20 |
+| test_results_table.py | 20 |
+| test_resume_dialog.py | 17 |
+| test_track_model.py | 16 |
+| test_ui_app.py | 13 |
+| test_validator.py | 10 |
+
+## Lessons Learned
+
+1. **Examine actual working files before fixing format issues** - We incorrectly assumed VDJ needed double quotes and CRLF, but examining actual VDJ database files showed lxml defaults were correct. Always `xxd` or hex-dump working files first.
+
+2. **Test with real consumer software** - Unit tests passing doesn't mean the software works. Always verify with the actual application (VirtualDJ in this case).
+
+3. **Don't over-engineer** - The simplest solution (lxml's default output) was correct. Adding "fixes" for assumed requirements introduced bugs.
+
+4. **File metadata preservation is tricky** - `shutil.copy2` preserving mtime caused unexpected sorting issues.
+
+5. **Qt testing requires event loop awareness** - Signals won't be received without processing events.
+
+6. **Batch boundaries are natural pause points** - Designing for interruptibility from the start makes pause/resume straightforward.
+
+7. **Checkpoint early, checkpoint often** - JSON checkpoints are cheap and provide crash recovery for free.
+
+8. **Separate bugfix commits** - Each bug fix should be its own commit with a corresponding test case for traceability.
+
+9. **When a fix doesn't work, question the hypothesis** - If the "fix" doesn't solve the problem, the root cause analysis was probably wrong.
 
 10. **Build indexes during parsing** — When XML elements need both model-level and element-level access, build both maps in a single parse pass.
 
 11. **Cache derived data, invalidate on mutation** — Sorted prefix lists, ffmpeg verification results, etc. should be computed once and invalidated explicitly when inputs change.
 
-12. **Profile before optimizing** — The O(n²) merge was the most impactful fix but wouldn't have been obvious without reading the code carefully. Always trace the full call path.
+12. **Profile before optimizing** — The O(n²) merge was the most impactful fix but wouldn't have been obvious without reading the code carefully.
 
 13. **0 is not None** — Using `0` as a default return value for measurements where `0` is valid (LUFS, BPM) silently hides errors. Use `None` to represent "no data".
 
----
+14. **On macOS, use `spawn` not `fork` with Qt** — `fork()` after Qt threads causes segfaults due to broken inherited thread state. Always `set_start_method("spawn")`.
+
+15. **Clean up Qt state between tests** — Autouse fixture with `processEvents()` + `gc.collect()` prevents cross-test signal delivery to dead C++ objects.
+
+16. **Stream results, don't batch them** — Emitting per-file signals gives users immediate feedback and makes the UI feel responsive even for long operations.
 
 ## Future Improvements
 
-1. **Analysis Panel** - Energy level and mood classification
-2. **Serato Export UI** - Visual crate selection and export
-3. **Batch Editing** - Select multiple tracks, edit tags in bulk
-4. **Cloud Backup** - Optional backup to cloud storage
-5. **Diff View** - Show changes before saving database
+1. **Batch Editing** - Select multiple tracks, edit tags in bulk
+2. **Cloud Backup** - Optional backup to cloud storage
+3. **Diff View** - Show changes before saving database
+4. **Waveform Preview** - Visual waveform display for tracks
+5. **Smart Playlists** - Auto-generate playlists by energy/mood/key

@@ -16,7 +16,7 @@ pip install -e '.[mood]'            # Optional: AI mood analysis (essentia-tenso
 pip install -e '.[serato]'          # Optional: Serato export support
 
 # Testing
-pytest tests/ -v                    # Run all tests (380 tests)
+pytest tests/ -v                    # Run all tests (477 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -70,7 +70,9 @@ vdj_manager/
 
 **VDJ Database Format:**
 - XML with lxml parsing; BPM stored as seconds-per-beat (0.5 = 120 BPM)
-- Energy stored in `Tags/@Grouping` (e.g., "Energy 7")
+- Energy stored in `Tags/@Grouping` as plain number (e.g., "7"); parser also handles legacy "Energy 7" format
+- Mood stored in `Tags/@User2` as hashtags (e.g., "#happy")
+- MIK key imported to `Tags/@Key`, MIK energy to `Tags/@Grouping`
 - Use lxml's default output format (single quotes in XML declaration, LF line endings)
 - `_filepath_to_elem` dict provides O(1) XML element lookups (built during `load()`)
 
@@ -81,7 +83,8 @@ vdj_manager/
 **GUI Architecture (5 tabs):**
 - Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
 - `PausableWorker` for long operations with pause/resume (QMutex/QWaitCondition)
-- `SimpleWorker` for quick operations (backup, clean, tag update)
+- `SimpleWorker`/`ProgressSimpleWorker` for quick operations (backup, clean, analysis)
+- Analysis workers stream results via `result_ready = Signal(dict)` for real-time GUI updates
 - Checkpoint system saves state at batch boundaries for task recovery
 - All destructive operations auto-backup the database first
 - Qt signals require event loop pumping in tests: `QCoreApplication.processEvents()`
@@ -91,7 +94,9 @@ vdj_manager/
 ```
 ~/.vdj_manager/
 ├── backups/            # Timestamped database backups
-└── checkpoints/        # JSON task checkpoints for pause/resume
+├── checkpoints/        # JSON task checkpoints for pause/resume
+├── measurements.db     # SQLite cache for loudness measurements
+└── analysis.db         # SQLite cache for energy/mood/MIK results
 
 ~/Library/Application Support/VirtualDJ/database.xml  # Primary database (macOS)
 /Volumes/MyNVMe/VirtualDJ/database.xml                # Secondary database (external drive)
@@ -99,9 +104,10 @@ vdj_manager/
 
 ## Testing Notes
 
-- Fixtures are defined per test file (module-scoped `qapp` fixture for Qt tests)
+- `tests/conftest.py` has shared fixtures: `pytest_configure` (sets `multiprocessing.set_start_method("spawn")` on macOS) and `_qt_cleanup` (autouse fixture running `processEvents()` + `gc.collect()` after each test)
+- Module-scoped `qapp` fixture in individual test files for Qt tests
 - Qt tests need explicit event loop pumping between signal emissions
-- Performance fix tests in `tests/test_performance_fixes.py`
-- GUI integration tests in `tests/test_gui_integration.py`
+- Analysis workers stream results — tests must simulate streaming via `result_ready` before calling `_on_*_finished`
 - Workers with lazy imports need patching at the source module (e.g., `vdj_manager.analysis.energy.EnergyAnalyzer`)
+- ProcessPoolExecutor tests: patch with ThreadPoolExecutor so mocks are visible in same process
 - Each bug fix should have a corresponding test case

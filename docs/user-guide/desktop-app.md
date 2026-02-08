@@ -15,10 +15,11 @@ vdj-manager-gui
 
 The Database tab provides:
 
-- **Database Selection**: Choose between Local, MyNVMe, or a custom database file
-- **Statistics Display**: View track counts, audio files, energy tags, cue points
-- **Track Browser**: Virtual-scrolling table supporting 18k+ tracks
-- **Search/Filter**: Quick filter to find tracks by title, artist, genre
+- **Merged Header**: Source selection, Load, Backup, Validate, and Clean buttons all in one compact row
+- **Compact Statistics**: Inline summary bar showing track/audio/energy/cues counts at a glance
+- **Track Browser**: Virtual-scrolling table supporting 18k+ tracks with search/filter
+- **Tag Editor**: Collapsible tag editing panel (hidden until a track is selected) for energy, key, and comment fields
+- **Operation Log**: Timestamped history of the last 20 operations
 
 ### Normalization Panel
 
@@ -31,13 +32,40 @@ The Normalization tab offers:
 - **Pause/Resume**: Pause long operations and resume later
 - **Results Table**: View LUFS values and gain adjustments per track
 
+### Files Panel
+
+The Files tab provides 5 sub-tabs:
+
+- **Scan**: Preview audio files in a directory before importing
+- **Import**: Add new files to the VDJ database
+- **Remove**: Remove missing or invalid entries
+- **Remap**: Convert Windows paths to macOS paths with prefix detection
+- **Duplicates**: Find duplicate entries by filename, metadata, or file hash
+
 ### Analysis Panel
 
-The Analysis tab will support:
+The Analysis tab provides 3 sub-tabs with real-time streaming results:
 
-- Energy level analysis (1-10)
-- Mood classification
-- Mixed In Key tag import
+- **Energy**: Analyze tracks for energy levels (1-10), stored in `Grouping` field as a plain number
+- **MIK Import**: Import Mixed In Key tags (key → `Key` field, energy → `Grouping` field)
+- **Mood**: AI-powered mood classification (requires essentia-tensorflow), stored in `User2` as hashtags
+
+Results stream to the table in real-time as each file is analyzed, with:
+
+- **Format column**: Shows file extension (e.g., `.mp3`, `.flac`) for each result
+- **Color-coded status**: Green for success/cached, red for errors (with tooltip details), orange for failures
+- **Sortable columns**: Click any column header to sort results
+- **Failure summary**: Status bar shows format breakdown on failures (e.g., "3 failed (.flac: 2, .wav: 1)")
+- **Row count**: Live result count displayed below the table
+
+A persistent SQLite cache (`~/.vdj_manager/analysis.db`) avoids re-analyzing unchanged files across sessions.
+
+### Export Panel
+
+The Export tab supports:
+
+- **Serato Export**: Export cue points, beatgrid, and metadata to Serato DJ format
+- **Playlist/Crate Browser**: Browse and select VDJ playlists for export as Serato crates
 
 ## Pause and Resume
 
@@ -75,7 +103,9 @@ When incomplete tasks exist, a dialog appears on startup:
 |----------|--------|
 | Ctrl+1 | Switch to Database tab |
 | Ctrl+2 | Switch to Normalization tab |
-| Ctrl+3 | Switch to Analysis tab |
+| Ctrl+3 | Switch to Files tab |
+| Ctrl+4 | Switch to Analysis tab |
+| Ctrl+5 | Switch to Export tab |
 | Ctrl+O | Open database file |
 | Ctrl+Q | Quit application |
 
@@ -128,16 +158,22 @@ The desktop UI is built with a clean separation of concerns:
 ```
 ui/
 ├── app.py              # QApplication entry point
-├── main_window.py      # Main window with tabs
+├── main_window.py      # Main window with 5 tabs
 ├── widgets/
-│   ├── database_panel.py      # Database browser
-│   ├── normalization_panel.py # Normalization controls
+│   ├── database_panel.py      # DB load, stats, track browser, tag editing, log
+│   ├── normalization_panel.py # Measure, apply, CSV export, limit
+│   ├── files_panel.py         # 5 sub-tabs: scan, import, remove, remap, dupes
+│   ├── analysis_panel.py      # 3 sub-tabs: energy, MIK import, mood
+│   ├── export_panel.py        # Serato export, playlist/crate browser
 │   ├── progress_widget.py     # Progress + pause/resume
-│   └── results_table.py       # Results display
+│   └── results_table.py       # ConfigurableResultsTable with dynamic columns
 ├── workers/
-│   ├── base_worker.py         # PausableWorker base class
-│   ├── database_worker.py     # Async database loading
-│   └── normalization_worker.py # Parallel measurement
+│   ├── base_worker.py         # PausableWorker, SimpleWorker, ProgressSimpleWorker
+│   ├── database_worker.py     # Load, backup, validate, clean workers
+│   ├── normalization_worker.py # Parallel measurement with caching
+│   ├── file_workers.py        # Scan, import, remove, remap, duplicate workers
+│   ├── analysis_workers.py    # Energy, mood, MIK workers (streaming results)
+│   └── export_workers.py      # Serato export & crate workers
 ├── models/
 │   ├── track_model.py         # QAbstractTableModel for tracks
 │   └── task_state.py          # Checkpoint state dataclass
@@ -149,13 +185,14 @@ ui/
 
 Workers communicate with the UI through Qt signals:
 
-- `progress(current, total, percent)`: Progress updates
-- `result_ready(path, result_dict)`: Individual results
+- `progress(current, total, message)`: Progress updates
+- `result_ready(dict)`: Individual streaming results (analysis workers)
 - `batch_complete(batch_num, total_batches)`: Batch completion
 - `status_changed(status)`: Status changes (running, paused, etc.)
-- `finished_work(success, message)`: Task completion
+- `finished_work(result)`: Task completion
+- `error(message)`: Error reporting
 
-This allows the UI to remain responsive during long operations.
+Analysis workers stream results in real-time via `result_ready`, so users see results appear immediately as each file is processed. The database is saved periodically (every 25 results) for crash resilience.
 
 ## Troubleshooting
 

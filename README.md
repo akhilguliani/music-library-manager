@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-477%20passed-brightgreen.svg)]()
 
 A powerful Python tool for managing VirtualDJ music libraries, with both CLI and desktop GUI interfaces.
 
@@ -11,10 +11,11 @@ A powerful Python tool for managing VirtualDJ music libraries, with both CLI and
 - **Database Management** - Clean up invalid entries, validate files, create backups
 - **Path Remapping** - Convert Windows paths (D:/, E:/) to macOS paths
 - **Duplicate Detection** - Find duplicates by filename, metadata, or file hash
-- **Audio Analysis** - Import Mixed In Key tags, calculate energy levels (1-10)
+- **Audio Analysis** - Import Mixed In Key tags, calculate energy levels (1-10), AI mood classification
 - **Loudness Normalization** - LUFS-based normalization with parallel processing
 - **Serato Export** - Export cue points, beatgrid, and metadata to Serato DJ
-- **Desktop GUI** - Visual interface with progress tracking and pause/resume capability
+- **Desktop GUI** - Visual interface with real-time streaming results, progress tracking, and pause/resume
+- **Persistent Caching** - SQLite caches for measurements and analysis results across sessions
 
 ## Installation
 
@@ -119,10 +120,11 @@ vdj-manager-gui
 ```
 
 Features:
+- **5 tabs**: Database, Normalization, Files, Analysis, Export
 - Database browser with virtual scrolling (18k+ tracks)
-- Real-time progress display
-- Pause/Resume long operations
-- Automatic checkpointing for recovery after interruption
+- Real-time streaming results for energy, mood, and MIK analysis
+- Pause/Resume long operations with automatic checkpointing
+- Persistent SQLite caching avoids redundant analysis
 
 ## Database Locations
 
@@ -131,6 +133,8 @@ Features:
 | Local | `~/Library/Application Support/VirtualDJ/database.xml` |
 | MyNVMe | `/Volumes/MyNVMe/VirtualDJ/database.xml` |
 | Backups | `~/.vdj_manager/backups/` |
+| Measurement Cache | `~/.vdj_manager/measurements.db` |
+| Analysis Cache | `~/.vdj_manager/analysis.db` |
 
 ## How It Works
 
@@ -140,7 +144,7 @@ VirtualDJ stores library data in XML:
 
 ```xml
 <Song FilePath="/path/to/track.mp3" FileSize="5000000">
-  <Tags Author="Artist" Title="Track" Grouping="Energy 7" />
+  <Tags Author="Artist" Title="Track" Grouping="7" User2="#happy" />
   <Infos SongLength="180.5" Bitrate="320" />
   <Scan Bpm="0.5" Key="Am" Volume="1.0" />
   <Poi Type="cue" Pos="30.0" Num="1" Name="Drop" />
@@ -149,12 +153,17 @@ VirtualDJ stores library data in XML:
 
 **BPM Note:** VDJ stores BPM as seconds per beat (e.g., `0.5` = 120 BPM).
 
-### Energy Levels
+### Tag Storage
 
-Energy is stored in the `Grouping` field:
-- Format: `Energy X` where X is 1-10
-- Calculated from tempo, RMS energy, and spectral centroid
-- Can also import from Mixed In Key tags
+| Tag | VDJ Field | Format | Example |
+|-----|-----------|--------|---------|
+| Energy | `Tags/@Grouping` | Plain number (1-10) | `"7"` |
+| Mood | `Tags/@User2` | Hashtags | `"#happy"` |
+| Key | `Tags/@Key` (via MIK import) | Musical key | `"Am"` |
+
+- Energy calculated from tempo, RMS energy, and spectral centroid
+- Mood classified via AI (Essentia-TensorFlow)
+- Key and energy can be imported from Mixed In Key tags
 
 ### Normalization
 

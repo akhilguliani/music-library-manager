@@ -70,6 +70,27 @@ Override via CLI:
 vdj-manager normalize apply -16 --workers 4
 ```
 
+## Persistent Caches
+
+VDJ Manager uses SQLite caches to avoid redundant work across sessions:
+
+| Cache | Location | Purpose |
+|-------|----------|---------|
+| Measurement Cache | `~/.vdj_manager/measurements.db` | LUFS loudness measurements |
+| Analysis Cache | `~/.vdj_manager/analysis.db` | Energy, mood, MIK analysis results |
+
+Both caches use file mtime + size for invalidation. If a file is modified, its cached results are automatically discarded.
+
+## Tag Storage Format
+
+| Tag | VDJ Field | Format | Example |
+|-----|-----------|--------|---------|
+| Energy | `Tags/@Grouping` | Plain number (1-10) | `"7"` |
+| Mood | `Tags/@User2` | Hashtags | `"#happy"` |
+| Key | `Tags/@Key` | Musical key notation | `"Am"` |
+
+The energy parser also supports the legacy `"Energy 7"` format for backward compatibility with older databases.
+
 ## Energy Analysis Weights
 
 Energy level calculation uses weighted audio features:

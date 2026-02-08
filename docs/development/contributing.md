@@ -221,7 +221,7 @@ Understanding VDJ's XML format is crucial for contributions:
 <?xml version="1.0" encoding="UTF-8"?>
 <VirtualDJ_Database Version="8">
   <Song FilePath="/path/to/track.mp3" FileSize="5000000">
-    <Tags Author="Artist" Title="Track" Grouping="Energy 7" />
+    <Tags Author="Artist" Title="Track" Grouping="7" User2="#happy" />
     <Infos SongLength="180.5" Bitrate="320" />
     <Scan Bpm="0.5" Key="Am" Volume="1.0" />
     <Poi Type="cue" Pos="30.0" Num="1" Name="Drop" />
@@ -237,8 +237,12 @@ VDJ is sensitive to XML formatting:
 |--------|-----------------|
 | XML Declaration | Double quotes: `<?xml version="1.0"...?>` |
 | Line Endings | CRLF (`\r\n`) on all platforms |
+| Self-closing tags | Space before `/>`: `<Tags ... />` |
+| Apostrophes | `&apos;` entities (must re-escape after lxml) |
 | Encoding | UTF-8 |
 | BPM Storage | Seconds per beat (0.5 = 120 BPM) |
+| Energy | Plain number in `Grouping` (e.g., `"7"`) |
+| Mood | Hashtags in `User2` (e.g., `"#happy"`) |
 
 ### BPM Conversion
 

@@ -56,22 +56,34 @@ pytest tests/ -n auto
 
 ```
 tests/
-├── conftest.py              # Shared fixtures
-├── test_backup.py           # BackupManager tests
-├── test_checkpoint_manager.py # Checkpoint persistence tests
-├── test_database.py         # VDJ database parser tests
-├── test_mapper.py           # VDJ→Serato mapping tests
-├── test_models.py           # Pydantic model tests
-├── test_normalization.py    # LUFS measurement tests
-├── test_normalization_panel.py # UI panel tests
-├── test_normalization_worker.py # Worker thread tests
-├── test_path_remapper.py    # Path conversion tests
-├── test_pausable_worker.py  # Base worker tests
-├── test_progress_widget.py  # Progress UI tests
-├── test_resume_dialog.py    # Resume dialog tests
-├── test_track_model.py      # Qt model tests
-├── test_ui_app.py           # Main window tests
-└── test_validator.py        # File validation tests
+├── conftest.py                       # Shared fixtures (macOS spawn, Qt cleanup)
+├── test_analysis_cache.py            # AnalysisCache (SQLite) tests
+├── test_analysis_panel.py            # Analysis panel + worker tests
+├── test_backup.py                    # BackupManager tests
+├── test_checkpoint_manager.py        # Checkpoint persistence tests
+├── test_database.py                  # VDJ database parser tests
+├── test_database_panel_operations.py # Database panel ops (backup/validate/clean/tags)
+├── test_export_panel.py              # Serato export panel tests
+├── test_files_panel.py               # Files panel (scan/import/remove/remap/dupes)
+├── test_gui_integration.py           # Cross-panel integration tests
+├── test_mapper.py                    # VDJ→Serato mapping tests
+├── test_measurement_cache.py         # MeasurementCache (SQLite) tests
+├── test_models.py                    # Pydantic model tests
+├── test_mood_analysis.py             # Mood classification tests
+├── test_normalization.py             # LUFS measurement tests
+├── test_normalization_panel.py       # Normalization UI panel tests
+├── test_normalization_panel_enhanced.py # Enhanced normalization tests
+├── test_normalization_worker.py      # Worker thread tests
+├── test_operation_panel.py           # Operation panel tests
+├── test_path_remapper.py             # Path conversion tests
+├── test_pausable_worker.py           # Base worker tests
+├── test_performance_fixes.py         # Performance optimization tests (39 tests)
+├── test_progress_widget.py           # Progress UI tests
+├── test_results_table.py             # ConfigurableResultsTable tests
+├── test_resume_dialog.py             # Resume dialog tests
+├── test_track_model.py               # Qt model tests
+├── test_ui_app.py                    # Main window tests
+└── test_validator.py                 # File validation tests
 ```
 
 ### Test Organization
@@ -240,23 +252,48 @@ def test_start_enables_pause_button(self, qapp):
     assert not widget.start_button.isEnabled()
 ```
 
-### QApplication Fixture
+### Shared Test Fixtures (conftest.py)
 
-Tests requiring Qt need a QApplication:
+`tests/conftest.py` provides two critical shared fixtures:
 
 ```python
-@pytest.fixture(scope="session")
+def pytest_configure(config):
+    """Set multiprocessing start method to 'spawn' for macOS Qt compatibility.
+
+    On macOS, fork() after Qt threads are created causes segfaults because
+    forked processes inherit the parent's thread state in a broken state.
+    """
+    if sys.platform == "darwin":
+        import multiprocessing
+        multiprocessing.set_start_method("spawn", force=True)
+
+
+@pytest.fixture(autouse=True)
+def _qt_cleanup():
+    """Clean up Qt state after each test to prevent cross-test segfaults."""
+    yield
+    # Process pending Qt events and force garbage collection
+    app = QCoreApplication.instance()
+    if app is not None:
+        app.processEvents()
+    gc.collect()
+```
+
+### QApplication Fixture
+
+Individual test files create module-scoped QApplication fixtures:
+
+```python
+@pytest.fixture(scope="module")
 def qapp():
-    """Create QApplication for the test session."""
+    """Create QApplication for the test module."""
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
 
-    yield app
-
-    # Don't quit - other tests may need it
+    return app
 ```
 
 ## Testing Patterns
@@ -352,7 +389,7 @@ def test_save_and_reload_preserves_data(self, temp_db_file):
     db.load()
 
     # Modify data
-    db.update_song_tags("/path/to/track.mp3", Grouping="Energy 10")
+    db.update_song_tags("/path/to/track.mp3", Grouping="10")
 
     # Save
     db.save()
@@ -363,7 +400,7 @@ def test_save_and_reload_preserves_data(self, temp_db_file):
 
     # Verify data preserved
     song = db2.get_song("/path/to/track.mp3")
-    assert song.tags.grouping == "Energy 10"
+    assert song.tags.grouping == "10"
 ```
 
 ## Test Data
@@ -374,7 +411,7 @@ def test_save_and_reload_preserves_data(self, temp_db_file):
 SAMPLE_DB_XML = """<?xml version="1.0" encoding="utf-8"?>
 <VirtualDJ_Database Version="8">
  <Song FilePath="/path/to/track1.mp3" FileSize="5000000">
-  <Tags Author="Artist One" Title="Track One" Genre="Dance" Grouping="Energy 7" />
+  <Tags Author="Artist One" Title="Track One" Genre="Dance" Grouping="7" />
   <Infos SongLength="180.5" Bitrate="320" />
   <Scan Bpm="0.5" Key="Am" Volume="1.0" />
   <Poi Type="cue" Pos="0.5" Num="1" Name="Intro" />
@@ -482,4 +519,4 @@ def test_something_qt(self, qapp):
 | ui/workers/ | 80%+ |
 | ui/widgets/ | 70%+ |
 
-Current coverage: **199 tests passing**
+Current coverage: **477 tests passing**
