@@ -16,7 +16,7 @@ pip install -e '.[mood]'            # Optional: AI mood analysis (essentia-tenso
 pip install -e '.[serato]'          # Optional: Serato export support
 
 # Testing
-pytest tests/ -v                    # Run all tests (240 tests)
+pytest tests/ -v                    # Run all tests (380 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -51,8 +51,19 @@ vdj_manager/
 ├── export/             # Serato format conversion
 └── ui/                 # PySide6 desktop application
     ├── workers/        # QThread-based workers with pause/resume
+    │   ├── base_worker.py         # PausableWorker, SimpleWorker, ProgressSimpleWorker
+    │   ├── normalization_worker.py # Measure & apply loudness normalization
+    │   ├── database_worker.py     # Load, backup, validate, clean workers
+    │   ├── file_workers.py        # Scan, import, remove, remap, duplicate workers
+    │   ├── analysis_workers.py    # Energy, mood, MIK import workers
+    │   └── export_workers.py      # Serato export & crate workers
     ├── state/          # Checkpoint persistence for task recovery
-    └── widgets/        # Qt widgets for database browsing, normalization
+    └── widgets/        # Qt widgets
+        ├── database_panel.py      # DB load, stats, track browser, tag editing, operation log
+        ├── normalization_panel.py # Measure, apply, CSV export, limit
+        ├── files_panel.py         # 5 sub-tabs: scan, import, remove, remap, duplicates
+        ├── analysis_panel.py      # 3 sub-tabs: energy, MIK import, mood
+        └── export_panel.py        # Serato export, playlist/crate browser
 ```
 
 ### Key Patterns
@@ -67,9 +78,12 @@ vdj_manager/
 - Use `alias` for XML attribute names, `populate_by_name=True`
 - `computed_field` for derived values like `energy_level`
 
-**GUI Threading:**
-- `PausableWorker` base class provides pause/resume with QMutex/QWaitCondition
+**GUI Architecture (5 tabs):**
+- Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
+- `PausableWorker` for long operations with pause/resume (QMutex/QWaitCondition)
+- `SimpleWorker` for quick operations (backup, clean, tag update)
 - Checkpoint system saves state at batch boundaries for task recovery
+- All destructive operations auto-backup the database first
 - Qt signals require event loop pumping in tests: `QCoreApplication.processEvents()`
 
 ## Configuration Paths
@@ -85,7 +99,9 @@ vdj_manager/
 
 ## Testing Notes
 
-- No conftest.py — fixtures are defined per test file
+- Fixtures are defined per test file (module-scoped `qapp` fixture for Qt tests)
 - Qt tests need explicit event loop pumping between signal emissions
 - Performance fix tests in `tests/test_performance_fixes.py`
+- GUI integration tests in `tests/test_gui_integration.py`
+- Workers with lazy imports need patching at the source module (e.g., `vdj_manager.analysis.energy.EnergyAnalyzer`)
 - Each bug fix should have a corresponding test case
