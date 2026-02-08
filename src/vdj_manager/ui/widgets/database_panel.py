@@ -499,7 +499,7 @@ class DatabasePanel(QWidget):
 
         energy_val = self.tag_energy_spin.value()
         if energy_val > 0:
-            updates["Grouping"] = f"Energy {energy_val}"
+            updates["Grouping"] = str(energy_val)
         elif track.energy is not None:
             updates["Grouping"] = None
 

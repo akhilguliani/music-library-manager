@@ -56,7 +56,7 @@ class TestVDJToSeratoMapper:
         mapper = VDJToSeratoMapper()
         song = Song(
             FilePath="/path/track.mp3",
-            tags=Tags(Author="Artist", Title="Title", Grouping="Energy 7"),
+            tags=Tags(Author="Artist", Title="Title", Grouping="7"),
             scan=Scan(Bpm=0.5, Key="Am"),
         )
 

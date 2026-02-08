@@ -215,14 +215,14 @@ class EnergyWorker(ProgressSimpleWorker):
                 if result["status"] == "cached" and result["energy"] is not None:
                     self._database.update_song_tags(
                         result["file_path"],
-                        Grouping=f"Energy {result['energy']}",
+                        Grouping=str(result["energy"]),
                     )
                     cached += 1
                     unsaved += 1
                 elif result["status"] == "ok" and result["energy"] is not None:
                     self._database.update_song_tags(
                         result["file_path"],
-                        Grouping=f"Energy {result['energy']}",
+                        Grouping=str(result["energy"]),
                     )
                     analyzed += 1
                     unsaved += 1
@@ -301,7 +301,7 @@ class MIKImportWorker(ProgressSimpleWorker):
                     found += 1
                     updates = {}
                     if result.get("energy") and not existing_energy.get(result["file_path"]):
-                        updates["Grouping"] = f"Energy {result['energy']}"
+                        updates["Grouping"] = str(result["energy"])
                     if result.get("key"):
                         updates["Key"] = result["key"]
                     if updates:

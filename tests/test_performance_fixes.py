@@ -105,18 +105,18 @@ class TestDatabaseElementIndex:
         db = VDJDatabase(temp_db_file)
         db.load()
 
-        result = db.update_song_tags("/path/to/track1.mp3", Grouping="Energy 8")
+        result = db.update_song_tags("/path/to/track1.mp3", Grouping="8")
         assert result is True
 
         song = db.get_song("/path/to/track1.mp3")
-        assert song.tags.grouping == "Energy 8"
+        assert song.tags.grouping == "8"
 
     def test_update_tags_nonexistent_returns_false(self, temp_db_file):
         """Verify update returns False for missing song."""
         db = VDJDatabase(temp_db_file)
         db.load()
 
-        result = db.update_song_tags("/nonexistent.mp3", Grouping="Energy 1")
+        result = db.update_song_tags("/nonexistent.mp3", Grouping="1")
         assert result is False
 
     def test_update_scan_uses_index(self, temp_db_file):
@@ -175,7 +175,7 @@ class TestDatabaseElementIndex:
         """Verify index is rebuilt correctly after save/reload."""
         db = VDJDatabase(temp_db_file)
         db.load()
-        db.update_song_tags("/path/to/track0.mp3", Grouping="Energy 10")
+        db.update_song_tags("/path/to/track0.mp3", Grouping="10")
         db.save()
 
         db2 = VDJDatabase(temp_db_file)
@@ -183,7 +183,7 @@ class TestDatabaseElementIndex:
 
         assert len(db2._filepath_to_elem) == len(db2.songs)
         song = db2.get_song("/path/to/track0.mp3")
-        assert song.tags.grouping == "Energy 10"
+        assert song.tags.grouping == "10"
 
     def test_large_db_lookup_performance(self, large_db_file):
         """Verify O(1) lookups on a 1000-song database are fast."""
@@ -194,7 +194,7 @@ class TestDatabaseElementIndex:
         # Time 100 update operations
         start = time.perf_counter()
         for i in range(100):
-            db.update_song_tags(f"/path/to/track{i}.mp3", Grouping=f"Energy {(i % 10) + 1}")
+            db.update_song_tags(f"/path/to/track{i}.mp3", Grouping=str((i % 10) + 1))
         elapsed = time.perf_counter() - start
 
         # Should be well under 1 second for 100 O(1) operations

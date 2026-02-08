@@ -27,7 +27,7 @@ def qapp():
 
 
 def _make_song(path: str, energy: int | None = None) -> Song:
-    grouping = f"Energy {energy}" if energy is not None else None
+    grouping = str(energy) if energy is not None else None
     return Song(file_path=path, tags=Tags(author="Artist", title="Title", grouping=grouping))
 
 

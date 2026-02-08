@@ -34,7 +34,7 @@ def sample_tracks():
                 author="Artist One",
                 title="Track One",
                 genre="Dance",
-                grouping="Energy 7",
+                grouping="7",
             ),
             infos=Infos(song_length=180.5, bitrate=320),
             scan=Scan(bpm=0.5, key="Am"),
@@ -46,7 +46,7 @@ def sample_tracks():
                 author="Artist Two",
                 title="Track Two",
                 genre="House",
-                grouping="Energy 5",
+                grouping="5",
             ),
             infos=Infos(song_length=240.0, bitrate=256),
             scan=Scan(bpm=0.4615, key="Cm"),  # ~130 BPM

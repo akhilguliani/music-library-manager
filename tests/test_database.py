@@ -115,11 +115,12 @@ class TestVDJDatabase:
         db = VDJDatabase(temp_db_file)
         db.load()
 
-        result = db.update_song_tags("/path/to/track2.mp3", Grouping="Energy 5")
+        result = db.update_song_tags("/path/to/track2.mp3", Grouping="5")
         assert result
 
         song = db.get_song("/path/to/track2.mp3")
-        assert song.tags.grouping == "Energy 5"
+        assert song.tags.grouping == "5"
+        assert song.energy == 5
 
     def test_remap_path(self, temp_db_file):
         """Test path remapping."""
@@ -168,7 +169,7 @@ class TestVDJDatabase:
         db.load()
 
         # Make changes
-        db.update_song_tags("/path/to/track1.mp3", Grouping="Energy 10")
+        db.update_song_tags("/path/to/track1.mp3", Grouping="10")
         db.save()
 
         # Reload
@@ -176,7 +177,8 @@ class TestVDJDatabase:
         db2.load()
 
         song = db2.get_song("/path/to/track1.mp3")
-        assert song.tags.grouping == "Energy 10"
+        assert song.tags.grouping == "10"
+        assert song.energy == 10
 
     def test_iter_songs(self, temp_db_file):
         """Test iterating over songs."""
@@ -296,14 +298,15 @@ class TestVDJDatabaseSaveFormat:
         db = VDJDatabase(temp_db_file)
         db.load()
 
-        db.update_song_tags("/path/to/track1.mp3", Grouping="Energy 9")
+        db.update_song_tags("/path/to/track1.mp3", Grouping="9")
         db.save()
 
         db2 = VDJDatabase(temp_db_file)
         db2.load()
 
         song = db2.get_song("/path/to/track1.mp3")
-        assert song.tags.grouping == "Energy 9"
+        assert song.tags.grouping == "9"
+        assert song.energy == 9
 
 
 class TestVDJDatabaseFileNotFound:

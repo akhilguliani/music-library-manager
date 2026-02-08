@@ -53,24 +53,28 @@ class Tags(BaseModel):
     @computed_field
     @property
     def energy_level(self) -> Optional[int]:
-        """Extract energy level from Grouping field (e.g., 'Energy 7' -> 7)."""
+        """Extract energy level from Grouping field.
+
+        Supports both plain number format ("7") and legacy "Energy 7" format.
+        """
         if not self.grouping:
             return None
-        grouping_lower = self.grouping.lower()
+        text = self.grouping.strip()
+        # Plain number format (preferred)
+        if text.isdigit():
+            val = int(text)
+            if 1 <= val <= 10:
+                return val
+        # Legacy "Energy N" format
+        grouping_lower = text.lower()
         if "energy" in grouping_lower:
-            parts = self.grouping.split()
+            parts = text.split()
             for i, part in enumerate(parts):
                 if part.lower() == "energy" and i + 1 < len(parts):
                     try:
                         return int(parts[i + 1])
                     except ValueError:
                         pass
-            # Try direct number after "energy"
-            for part in parts:
-                if part.isdigit():
-                    val = int(part)
-                    if 1 <= val <= 10:
-                        return val
         return None
 
 

@@ -257,7 +257,7 @@ class TestDatabasePanelTagEditing:
         panel = DatabasePanel()
         track = Song(
             file_path="/music/test.mp3",
-            tags=Tags(author="Artist", title="Title", grouping="Energy 7", key="Am", comment="Mood: happy"),
+            tags=Tags(author="Artist", title="Title", grouping="7", key="Am", comment="Mood: happy"),
         )
         panel._populate_tag_fields(track)
 
@@ -292,7 +292,7 @@ class TestDatabasePanelTagEditing:
 
         mock_db.update_song_tags.assert_called_once_with(
             "/music/test.mp3",
-            Grouping="Energy 5",
+            Grouping="5",
             Key="Cm",
             Comment="energetic",
         )
@@ -307,7 +307,7 @@ class TestDatabasePanelTagEditing:
 
         track = Song(
             file_path="/music/test.mp3",
-            tags=Tags(grouping="Energy 7"),
+            tags=Tags(grouping="7"),
         )
         panel._populate_tag_fields(track)
         panel.tag_energy_spin.setValue(0)  # Clear energy

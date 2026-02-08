@@ -5,8 +5,19 @@ from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType, DatabaseStat
 
 
 class TestTags:
-    def test_energy_extraction_from_grouping(self):
-        """Test energy level extraction from Grouping field."""
+    def test_energy_extraction_plain_number(self):
+        """Test energy level extraction from plain number format."""
+        tags = Tags(Grouping="7")
+        assert tags.energy_level == 7
+
+        tags = Tags(Grouping="10")
+        assert tags.energy_level == 10
+
+        tags = Tags(Grouping="1")
+        assert tags.energy_level == 1
+
+    def test_energy_extraction_legacy_format(self):
+        """Test energy level extraction from legacy 'Energy N' format."""
         tags = Tags(Grouping="Energy 7")
         assert tags.energy_level == 7
 
@@ -27,6 +38,14 @@ class TestTags:
     def test_energy_extraction_invalid_value(self):
         """Test with invalid energy value."""
         tags = Tags(Grouping="Energy abc")
+        assert tags.energy_level is None
+
+    def test_energy_extraction_out_of_range(self):
+        """Test plain number out of 1-10 range."""
+        tags = Tags(Grouping="0")
+        assert tags.energy_level is None
+
+        tags = Tags(Grouping="11")
         assert tags.energy_level is None
 
 

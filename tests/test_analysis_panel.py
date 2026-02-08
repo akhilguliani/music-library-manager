@@ -32,7 +32,7 @@ def qapp():
 
 
 def _make_song(path: str, energy: int | None = None, key: str | None = None) -> Song:
-    grouping = f"Energy {energy}" if energy is not None else None
+    grouping = str(energy) if energy is not None else None
     return Song(file_path=path, tags=Tags(grouping=grouping, key=key))
 
 
@@ -119,7 +119,7 @@ class TestEnergyWorker:
             assert results[0]["analyzed"] == 1
             assert results[0]["failed"] == 0
             assert results[0]["results"][0]["energy"] == 7
-            mock_db.update_song_tags.assert_called_once_with("/a.mp3", Grouping="Energy 7")
+            mock_db.update_song_tags.assert_called_once_with("/a.mp3", Grouping="7")
             mock_db.save.assert_called_once()
 
     def test_energy_worker_failure(self, qapp):

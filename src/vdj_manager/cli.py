@@ -682,7 +682,7 @@ def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: 
             try:
                 energy = analyzer.analyze(song.file_path)
                 if energy is not None:
-                    db.update_song_tags(song.file_path, Grouping=f"Energy {energy}")
+                    db.update_song_tags(song.file_path, Grouping=str(energy))
                     analyzed += 1
             except Exception as e:
                 console.print(f"[red]Error analyzing {song.file_path}: {e}[/red]")
@@ -755,7 +755,7 @@ def analyze_import_mik(dry_run: bool, db_choice: str):
                     if not dry_run:
                         updates = {}
                         if mik_data.get("energy") and not song.energy:
-                            updates["Grouping"] = f"Energy {mik_data['energy']}"
+                            updates["Grouping"] = str(mik_data["energy"])
                         if mik_data.get("key"):
                             updates["Key"] = mik_data["key"]
                         if updates:
@@ -810,7 +810,7 @@ def tag_set(file_path: str, tag_type: str, value: str, db_choice: str):
             energy = int(value)
             if not 1 <= energy <= 10:
                 raise ValueError()
-            db.update_song_tags(file_path, Grouping=f"Energy {energy}")
+            db.update_song_tags(file_path, Grouping=str(energy))
         except ValueError:
             console.print("[red]Energy must be 1-10[/red]")
             return
