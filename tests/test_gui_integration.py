@@ -60,14 +60,14 @@ class TestMainWindowIntegration:
         # Export panel gets database
         assert window.export_panel._database is mock_db
 
-    def test_tab_count_is_five(self, qapp):
+    def test_tab_count_is_six(self, qapp):
         window = MainWindow()
-        assert window.tab_widget.count() == 5
+        assert window.tab_widget.count() == 6
 
     def test_tab_names_correct(self, qapp):
         window = MainWindow()
-        names = [window.tab_widget.tabText(i) for i in range(5)]
-        assert names == ["Database", "Normalization", "Files", "Analysis", "Export"]
+        names = [window.tab_widget.tabText(i) for i in range(6)]
+        assert names == ["Database", "Normalization", "Files", "Analysis", "Export", "Player"]
 
     def test_status_bar_shows_track_selection(self, qapp):
         window = MainWindow()

@@ -3,27 +3,26 @@
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 
+from vdj_manager.player.bridge import PlaybackBridge
+from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
 from vdj_manager.ui.widgets.export_panel import ExportPanel
 from vdj_manager.ui.widgets.files_panel import FilesPanel
+from vdj_manager.ui.widgets.mini_player import MiniPlayer
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 
 
 class MainWindow(QMainWindow):
-    """Main application window with tabbed interface."""
+    """Main application window with tabbed interface and mini player."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the main window.
-
-        Args:
-            parent: Optional parent widget.
-        """
         super().__init__(parent)
 
         self.setWindowTitle("VDJ Manager")
@@ -34,25 +33,48 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
 
     def _setup_ui(self) -> None:
-        """Set up the main UI layout with tabs."""
-        # Create the central tab widget
+        """Set up the main UI layout with tabs and mini player."""
+        # Create PlaybackBridge (shared across all panels)
+        self._playback_bridge = PlaybackBridge(self)
+        vlc_available = self._playback_bridge.initialize()
+
+        # Central container: tabs + mini player at bottom
+        central = QWidget()
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+
+        # Tab widget
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
         self.tab_widget.setDocumentMode(True)
-        self.setCentralWidget(self.tab_widget)
+        central_layout.addWidget(self.tab_widget, stretch=1)
 
-        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
+        # Mini player at bottom
+        self.mini_player = MiniPlayer(self._playback_bridge)
+        self.mini_player.expand_requested.connect(
+            lambda: self.tab_widget.setCurrentIndex(5)
+        )
+        if not vlc_available:
+            self.mini_player.set_vlc_unavailable()
+        central_layout.addWidget(self.mini_player)
+
+        self.setCentralWidget(central)
+
+        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4), Player(5)
         self._create_database_tab()
         self._create_normalization_tab()
         self._create_files_tab()
         self._create_analysis_tab()
         self._create_export_tab()
+        self._create_player_tab()
 
     def _create_database_tab(self) -> None:
         """Create the database overview tab."""
         self.database_panel = DatabasePanel()
         self.database_panel.database_loaded.connect(self._on_database_loaded)
         self.database_panel.track_selected.connect(self._on_track_selected)
+        self.database_panel.track_double_clicked.connect(self._on_track_play_requested)
 
         self.tab_widget.addTab(self.database_panel, "Database")
 
@@ -76,6 +98,14 @@ class MainWindow(QMainWindow):
         self.export_panel = ExportPanel()
         self.tab_widget.addTab(self.export_panel, "Export")
 
+    def _create_player_tab(self) -> None:
+        """Create the player tab (placeholder until Commit 5)."""
+        from PySide6.QtWidgets import QLabel
+
+        self.player_panel = QLabel("Full player — coming in next commit")
+        self.player_panel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tab_widget.addTab(self.player_panel, "Player")
+
     def _setup_menu_bar(self) -> None:
         """Set up the application menu bar."""
         menu_bar = self.menuBar()
@@ -98,30 +128,37 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = menu_bar.addMenu("&View")
 
-        database_tab_action = QAction("&Database", self)
-        database_tab_action.setShortcut(QKeySequence("Ctrl+1"))
-        database_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
-        view_menu.addAction(database_tab_action)
+        tab_names = [
+            ("&Database", "Ctrl+1", 0),
+            ("&Normalization", "Ctrl+2", 1),
+            ("&Files", "Ctrl+3", 2),
+            ("&Analysis", "Ctrl+4", 3),
+            ("&Export", "Ctrl+5", 4),
+            ("&Player", "Ctrl+6", 5),
+        ]
+        for name, shortcut, idx in tab_names:
+            action = QAction(name, self)
+            action.setShortcut(QKeySequence(shortcut))
+            action.triggered.connect(lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i))
+            view_menu.addAction(action)
 
-        normalize_tab_action = QAction("&Normalization", self)
-        normalize_tab_action.setShortcut(QKeySequence("Ctrl+2"))
-        normalize_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
-        view_menu.addAction(normalize_tab_action)
+        # Playback menu
+        playback_menu = menu_bar.addMenu("&Playback")
 
-        files_tab_action = QAction("&Files", self)
-        files_tab_action.setShortcut(QKeySequence("Ctrl+3"))
-        files_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
-        view_menu.addAction(files_tab_action)
+        play_action = QAction("Play/Pause", self)
+        play_action.setShortcut(QKeySequence("Space"))
+        play_action.triggered.connect(self._playback_bridge.toggle_play_pause)
+        playback_menu.addAction(play_action)
 
-        analysis_tab_action = QAction("&Analysis", self)
-        analysis_tab_action.setShortcut(QKeySequence("Ctrl+4"))
-        analysis_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
-        view_menu.addAction(analysis_tab_action)
+        next_action = QAction("Next Track", self)
+        next_action.setShortcut(QKeySequence("Ctrl+Right"))
+        next_action.triggered.connect(self._playback_bridge.next_track)
+        playback_menu.addAction(next_action)
 
-        export_tab_action = QAction("&Export", self)
-        export_tab_action.setShortcut(QKeySequence("Ctrl+5"))
-        export_tab_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
-        view_menu.addAction(export_tab_action)
+        prev_action = QAction("Previous Track", self)
+        prev_action.setShortcut(QKeySequence("Ctrl+Left"))
+        prev_action.triggered.connect(self._playback_bridge.previous_track)
+        playback_menu.addAction(prev_action)
 
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
@@ -138,7 +175,6 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_open_database(self) -> None:
         """Handle opening a database file."""
-        # Will be implemented with file dialog
         self.statusBar().showMessage("Open database not yet implemented")
 
     @Slot(object)
@@ -150,7 +186,6 @@ class MainWindow(QMainWindow):
 
         # Update all panels with database
         self.normalization_panel.set_database(database, tracks)
-        # Files, Analysis, Export panels will get set_database when they're real panels
         for panel in (self.files_panel, self.analysis_panel, self.export_panel):
             if hasattr(panel, "set_database"):
                 panel.set_database(database)
@@ -159,6 +194,12 @@ class MainWindow(QMainWindow):
     def _on_track_selected(self, track) -> None:
         """Handle track selection event."""
         self.statusBar().showMessage(f"Selected: {track.display_name}")
+
+    @Slot(object)
+    def _on_track_play_requested(self, song) -> None:
+        """Handle double-click on track — start playing."""
+        track_info = TrackInfo.from_song(song)
+        self._playback_bridge.play_track(track_info)
 
     @Slot()
     def _on_about(self) -> None:
@@ -171,8 +212,14 @@ class MainWindow(QMainWindow):
             "VDJ Manager Desktop\n\n"
             "A desktop application for managing your VirtualDJ library.\n\n"
             "Features:\n"
+            "- Audio playback with VLC\n"
             "- Audio loudness normalization\n"
             "- Energy and mood analysis\n"
             "- Library organization\n\n"
-            "Version 0.1.0",
+            "Version 0.2.0",
         )
+
+    def closeEvent(self, event) -> None:
+        """Clean up player resources on close."""
+        self._playback_bridge.shutdown()
+        super().closeEvent(event)

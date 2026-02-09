@@ -83,16 +83,15 @@ class TestMainWindow:
         assert min_size.height() >= 600
 
     def test_main_window_has_tab_widget(self, main_window):
-        """Test that main window has a central tab widget."""
+        """Test that main window has a tab widget inside the central container."""
         from PySide6.QtWidgets import QTabWidget
 
-        central = main_window.centralWidget()
-        assert isinstance(central, QTabWidget)
+        assert isinstance(main_window.tab_widget, QTabWidget)
 
-    def test_main_window_has_five_tabs(self, main_window):
-        """Test that main window has all five tabs."""
+    def test_main_window_has_six_tabs(self, main_window):
+        """Test that main window has all six tabs."""
         tab_widget = main_window.tab_widget
-        assert tab_widget.count() == 5
+        assert tab_widget.count() == 6
 
         # Check tab names
         assert tab_widget.tabText(0) == "Database"
@@ -100,6 +99,7 @@ class TestMainWindow:
         assert tab_widget.tabText(2) == "Files"
         assert tab_widget.tabText(3) == "Analysis"
         assert tab_widget.tabText(4) == "Export"
+        assert tab_widget.tabText(5) == "Player"
 
     def test_main_window_has_menu_bar(self, main_window):
         """Test that main window has a menu bar."""

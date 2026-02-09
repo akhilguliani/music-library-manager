@@ -50,10 +50,12 @@ class DatabasePanel(QWidget):
     Signals:
         database_loaded: Emitted when a database is loaded (VDJDatabase)
         track_selected: Emitted when a track is selected (Song)
+        track_double_clicked: Emitted when a track is double-clicked (Song)
     """
 
     database_loaded = Signal(object)  # VDJDatabase
     track_selected = Signal(object)  # Song
+    track_double_clicked = Signal(object)  # Song
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the database panel.
@@ -215,6 +217,7 @@ class DatabasePanel(QWidget):
         self.track_table.selectionModel().currentRowChanged.connect(
             self._on_track_selected
         )
+        self.track_table.doubleClicked.connect(self._on_track_double_clicked)
 
         layout.addWidget(self.track_table)
 
@@ -381,6 +384,14 @@ class DatabasePanel(QWidget):
         if track:
             self._populate_tag_fields(track)
             self.track_selected.emit(track)
+
+    @Slot()
+    def _on_track_double_clicked(self, index) -> None:
+        """Handle track double-click for playback."""
+        source_index = self.proxy_model.mapToSource(index)
+        track = self.track_model.get_track(source_index.row())
+        if track:
+            self.track_double_clicked.emit(track)
 
     def get_selected_track(self) -> Song | None:
         """Get the currently selected track.
