@@ -136,6 +136,120 @@ class TestClearAndStats:
         assert s["db_size_bytes"] > 0
 
 
+class TestInvalidateByType:
+    """Tests for invalidate_by_type and invalidate_by_type_prefix."""
+
+    def test_invalidate_by_type_removes_matching(self, cache, audio_file):
+        cache.put(audio_file, "mood:heuristic", "happy")
+        cache.put(audio_file, "mood:mtg-jamendo", "calm,relaxing")
+        cache.put(audio_file, "energy", "7")
+
+        removed = cache.invalidate_by_type("mood:heuristic")
+
+        assert removed == 1
+        assert cache.get(audio_file, "mood:heuristic") is None
+        assert cache.get(audio_file, "mood:mtg-jamendo") == "calm,relaxing"
+        assert cache.get(audio_file, "energy") == "7"
+
+    def test_invalidate_by_type_returns_zero_on_no_match(self, cache, audio_file):
+        cache.put(audio_file, "energy", "7")
+        assert cache.invalidate_by_type("mood:heuristic") == 0
+
+    def test_invalidate_by_type_prefix_removes_all_matching(self, cache, audio_file):
+        cache.put(audio_file, "mood:heuristic", "happy")
+        cache.put(audio_file, "mood:mtg-jamendo", "calm,relaxing")
+        cache.put(audio_file, "energy", "7")
+
+        removed = cache.invalidate_by_type_prefix("mood:")
+
+        assert removed == 2
+        assert cache.get(audio_file, "mood:heuristic") is None
+        assert cache.get(audio_file, "mood:mtg-jamendo") is None
+        assert cache.get(audio_file, "energy") == "7"
+
+    def test_invalidate_by_type_prefix_no_match(self, cache, audio_file):
+        cache.put(audio_file, "energy", "7")
+        assert cache.invalidate_by_type_prefix("mood:") == 0
+
+    def test_invalidate_by_type_multiple_files(self, cache, tmp_path):
+        f1 = tmp_path / "a.mp3"
+        f2 = tmp_path / "b.mp3"
+        f1.write_bytes(b"\x00" * 512)
+        f2.write_bytes(b"\x00" * 512)
+
+        cache.put(str(f1), "mood:heuristic", "happy")
+        cache.put(str(f2), "mood:heuristic", "sad")
+        cache.put(str(f1), "energy", "5")
+
+        removed = cache.invalidate_by_type("mood:heuristic")
+
+        assert removed == 2
+        assert cache.get(str(f1), "energy") == "5"
+
+
+class TestLegacyMigration:
+    """Tests for legacy 'mood' -> 'mood:heuristic' migration."""
+
+    def test_migrates_legacy_mood_key(self, tmp_path):
+        """Legacy 'mood' entries are migrated to 'mood:heuristic' on init."""
+        import sqlite3
+
+        db_path = tmp_path / "migration_test.db"
+
+        # Create a database with the old schema and insert legacy data
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE analysis_results (
+                file_path      TEXT    NOT NULL,
+                analysis_type  TEXT    NOT NULL,
+                mtime          REAL    NOT NULL,
+                file_size      INTEGER NOT NULL,
+                result_value   TEXT,
+                analyzed_at    TEXT    NOT NULL,
+                PRIMARY KEY (file_path, analysis_type)
+            )
+        """)
+
+        # Create a real file so stat works
+        audio = tmp_path / "song.mp3"
+        audio.write_bytes(b"\x00" * 100)
+        stat = audio.stat()
+
+        conn.execute(
+            "INSERT INTO analysis_results VALUES (?, ?, ?, ?, ?, ?)",
+            (str(audio), "mood", stat.st_mtime, stat.st_size, "happy", "2025-01-01"),
+        )
+        conn.execute(
+            "INSERT INTO analysis_results VALUES (?, ?, ?, ?, ?, ?)",
+            (str(audio), "energy", stat.st_mtime, stat.st_size, "7", "2025-01-01"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Now open with AnalysisCache which triggers migration
+        cache = AnalysisCache(db_path=db_path)
+
+        # Old "mood" key should not exist
+        assert cache.get(str(audio), "mood") is None
+        # Should be accessible via new key
+        assert cache.get(str(audio), "mood:heuristic") == "happy"
+        # Energy should be untouched
+        assert cache.get(str(audio), "energy") == "7"
+
+    def test_migration_is_idempotent(self, tmp_path):
+        """Running migration twice doesn't cause errors."""
+        db_path = tmp_path / "idem_test.db"
+        cache1 = AnalysisCache(db_path=db_path)
+
+        audio = tmp_path / "song.mp3"
+        audio.write_bytes(b"\x00" * 100)
+        cache1.put(str(audio), "mood:heuristic", "happy")
+
+        # Re-init (simulates restart) — migration runs again
+        cache2 = AnalysisCache(db_path=db_path)
+        assert cache2.get(str(audio), "mood:heuristic") == "happy"
+
+
 class TestMultipleFiles:
     """Cache handles multiple files independently."""
 

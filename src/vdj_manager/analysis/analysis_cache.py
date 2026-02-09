@@ -48,9 +48,17 @@ class AnalysisCache:
         self._init_db()
 
     def _init_db(self) -> None:
-        """Create the analysis_results table if it doesn't exist."""
+        """Create the analysis_results table if it doesn't exist.
+
+        Also runs one-time migrations (e.g. renaming legacy cache keys).
+        """
         with self._connect() as conn:
             conn.execute(_SCHEMA)
+            # Migrate legacy "mood" keys to "mood:heuristic"
+            conn.execute(
+                "UPDATE analysis_results SET analysis_type = 'mood:heuristic' "
+                "WHERE analysis_type = 'mood'"
+            )
 
     @contextlib.contextmanager
     def _connect(self):
@@ -178,6 +186,42 @@ class AnalysisCache:
                 "DELETE FROM analysis_results WHERE file_path = ?",
                 (file_path,),
             )
+
+    def invalidate_by_type(self, analysis_type: str) -> int:
+        """Remove all cached entries for a specific analysis type.
+
+        Args:
+            analysis_type: Exact type to invalidate (e.g. "mood:heuristic").
+
+        Returns:
+            Number of entries removed.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM analysis_results WHERE analysis_type = ?",
+                (analysis_type,),
+            )
+            return cursor.rowcount
+
+    def invalidate_by_type_prefix(self, prefix: str) -> int:
+        """Remove all cached entries whose type starts with prefix.
+
+        Useful for invalidating all mood results regardless of model:
+        ``invalidate_by_type_prefix("mood:")`` removes both
+        ``mood:heuristic`` and ``mood:mtg-jamendo``.
+
+        Args:
+            prefix: Type prefix to match (e.g. "mood:").
+
+        Returns:
+            Number of entries removed.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM analysis_results WHERE analysis_type LIKE ?",
+                (prefix + "%",),
+            )
+            return cursor.rowcount
 
     def clear(self) -> None:
         """Remove all cached analysis results."""
