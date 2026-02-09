@@ -1,5 +1,7 @@
 """Configuration management for VDJ Manager."""
 
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +10,7 @@ LOCAL_VDJ_DB = Path.home() / "Library/Application Support/VirtualDJ/database.xml
 MYNVME_VDJ_DB = Path("/Volumes/MyNVMe/VirtualDJ/database.xml")
 BACKUP_DIR = Path.home() / ".vdj_manager/backups"
 CHECKPOINT_DIR = Path.home() / ".vdj_manager/checkpoints"
+LOG_DIR = Path.home() / ".vdj_manager/logs"
 SERATO_LOCAL = Path.home() / "Music/_Serato_"
 SERATO_MYNVME = Path("/Volumes/MyNVMe/_Serato_")
 
@@ -98,6 +101,49 @@ class Config:
         """Create backup directory if it doesn't exist."""
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         return self.backup_dir
+
+
+def setup_logging(verbose: bool = False) -> None:
+    """Configure centralized logging with console and file handlers.
+
+    Sets up the ``vdj_manager`` logger namespace with a rotating file
+    handler (``~/.vdj_manager/logs/vdj_manager.log``) and a console
+    handler. All child loggers (e.g. ``vdj_manager.analysis.energy``)
+    inherit these handlers automatically.
+
+    Args:
+        verbose: If True, set console level to DEBUG; otherwise INFO.
+                 The file handler always captures DEBUG.
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+
+    root = logging.getLogger("vdj_manager")
+    root.setLevel(logging.DEBUG)
+
+    # Avoid duplicate handlers on repeated calls
+    if root.handlers:
+        return
+
+    log_format = "%(asctime)s %(name)s %(levelname)s %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # Console handler
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    console.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+    root.addHandler(console)
+
+    # Rotating file handler: 5 MB max, keep 3 backups
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        LOG_DIR / "vdj_manager.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+    root.addHandler(file_handler)
 
 
 # Global config instance

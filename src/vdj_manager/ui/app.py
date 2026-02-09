@@ -1,5 +1,6 @@
 """VDJ Manager Desktop Application entry point."""
 
+import os
 import sys
 from typing import Optional
 
@@ -44,6 +45,9 @@ def main() -> int:
     Returns:
         Exit code from the application.
     """
+    from vdj_manager.config import setup_logging
+    setup_logging(verbose=bool(os.environ.get("VDJ_VERBOSE")))
+
     app = create_application()
 
     window = MainWindow()

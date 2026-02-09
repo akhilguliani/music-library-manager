@@ -40,9 +40,12 @@ def format_size(size_bytes: int) -> str:
 
 @click.group()
 @click.version_option(version="0.1.0")
-def cli():
+@click.option("--verbose", "-v", is_flag=True, envvar="VDJ_VERBOSE",
+              help="Enable debug logging to console and log file.")
+def cli(verbose: bool):
     """VirtualDJ Library Manager - organize, analyze, and normalize your DJ music library."""
-    pass
+    from .config import setup_logging
+    setup_logging(verbose=verbose)
 
 
 # ============================================================================
