@@ -1,7 +1,10 @@
 """Album art extraction from audio file tags using mutagen."""
 
+import logging
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def extract_album_art(file_path: str) -> Optional[bytes]:
@@ -45,6 +48,6 @@ def extract_album_art(file_path: str) -> Optional[bytes]:
                 return pic.data
 
     except Exception:
-        pass
+        logger.debug("Could not extract album art from %s", file_path)
 
     return None

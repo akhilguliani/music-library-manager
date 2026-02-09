@@ -1,9 +1,12 @@
 """LUFS loudness measurement using ffmpeg."""
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class LoudnessMeasurer:
@@ -73,8 +76,10 @@ class LoudnessMeasurer:
             return self._parse_loudnorm_output(stderr)
 
         except subprocess.TimeoutExpired:
+            logger.warning("ffmpeg timed out measuring %s", file_path)
             return None
-        except Exception:
+        except Exception as e:
+            logger.error("Failed to measure loudness for %s: %s", file_path, e)
             return None
 
     @staticmethod
@@ -166,8 +171,8 @@ class LoudnessMeasurer:
                     "threshold": float(data.get("input_thresh", 0)),
                 }
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to get detailed measurement for %s: %s", file_path, e)
 
         return None
 

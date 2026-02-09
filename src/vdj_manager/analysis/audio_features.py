@@ -1,7 +1,10 @@
 """Audio feature extraction and Mixed In Key tag reader."""
 
+import logging
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     import librosa
@@ -74,8 +77,8 @@ class AudioFeatureExtractor:
                 data = librosa.resample(data, orig_sr=sr, target_sr=self.sample_rate)
                 sr = self.sample_rate
             return data, sr
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("soundfile failed for %s, falling back to librosa: %s", file_path, e)
 
         # Fallback to librosa (uses audioread for MP3, M4A, etc.)
         total_duration = librosa.get_duration(path=file_path)
@@ -187,8 +190,8 @@ class MixedInKeyReader:
             else:
                 # Try generic mutagen
                 result = self._read_generic_tags(file_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read tags from %s: %s", file_path, e)
 
         return result
 
@@ -231,8 +234,8 @@ class MixedInKeyReader:
                     except ValueError:
                         pass
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read MP3 tags from %s: %s", file_path, e)
 
         return result
 
@@ -267,8 +270,8 @@ class MixedInKeyReader:
                     except (ValueError, IndexError):
                         pass
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read MP4 tags from %s: %s", file_path, e)
 
         return result
 
@@ -301,8 +304,8 @@ class MixedInKeyReader:
                     except ValueError:
                         pass
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read FLAC tags from %s: %s", file_path, e)
 
         return result
 
@@ -318,8 +321,8 @@ class MixedInKeyReader:
             for key, value in audio.items():
                 result["raw_tags"][key] = str(value[0]) if value else ""
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read tags from %s: %s", file_path, e)
 
         return result
 

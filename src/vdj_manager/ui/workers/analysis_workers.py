@@ -231,8 +231,8 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
                 "status": "found",
             }
         return {"file_path": file_path, "format": fmt, "energy": None, "key": None, "status": "none"}
-    except Exception:
-        return {"file_path": file_path, "format": fmt, "status": "error"}
+    except Exception as e:
+        return {"file_path": file_path, "format": fmt, "energy": None, "key": None, "status": f"error: {e}"}
 
 
 # ------------------------------------------------------------------

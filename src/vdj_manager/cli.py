@@ -1,8 +1,11 @@
 """Command-line interface for VDJ Manager."""
 
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import click
 from rich.console import Console
@@ -904,8 +907,8 @@ def analyze_import_mik(dry_run: bool, db_choice: str):
                             updates["Key"] = mik_data["key"]
                         if updates:
                             db.update_song_tags(song.file_path, **updates)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to read MIK tags from %s: %s", song.file_path, e)
             progress.advance(task)
 
     if not dry_run and found > 0:

@@ -4,6 +4,7 @@ This module has ZERO Qt dependencies. It can be wrapped by FastAPI
 for a web frontend or used directly from tests.
 """
 
+import logging
 import random
 import threading
 import time
@@ -11,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from vdj_manager.core.models import Song
@@ -512,7 +515,7 @@ class PlaybackEngine:
                 try:
                     cb(self._current_track)
                 except Exception:
-                    pass
+                    logger.warning("track_finished callback error", exc_info=True)
 
         # Handle repeat mode
         if self._repeat_mode == "one" and self._current_track:
@@ -574,25 +577,25 @@ class PlaybackEngine:
             try:
                 cb(self._state)
             except Exception:
-                pass
+                logger.warning("state_change callback error", exc_info=True)
 
     def _fire_track_callbacks(self) -> None:
         for cb in self._on_track_change:
             try:
                 cb(self._current_track)
             except Exception:
-                pass
+                logger.warning("track_change callback error", exc_info=True)
 
     def _fire_position_callbacks(self) -> None:
         for cb in self._on_position_change:
             try:
                 cb(self._position_s, self._duration_s)
             except Exception:
-                pass
+                logger.debug("position_change callback error", exc_info=True)
 
     def _fire_queue_callbacks(self) -> None:
         for cb in self._on_queue_change:
             try:
                 cb(list(self._queue))
             except Exception:
-                pass
+                logger.warning("queue_change callback error", exc_info=True)

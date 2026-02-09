@@ -1,5 +1,7 @@
 """Main window for VDJ Manager Desktop Application."""
 
+import logging
+
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -8,6 +10,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtGui import QAction, QKeySequence
+
+logger = logging.getLogger(__name__)
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
@@ -255,7 +259,7 @@ class MainWindow(QMainWindow):
                 self._database.save()
                 self._save_pending = False
             except Exception:
-                pass  # Save will retry on next schedule or on close
+                logger.error("Failed to save database", exc_info=True)
 
     @Slot()
     def _on_about(self) -> None:

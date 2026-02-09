@@ -1,8 +1,11 @@
 """Serato export functionality."""
 
+import logging
 import struct
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     from mutagen import File as MutagenFile
@@ -160,7 +163,8 @@ class SeratoTagWriter:
                 return self._write_flac_tags(file_path, bpm, key, comment)
             else:
                 return False
-        except Exception:
+        except Exception as e:
+            logger.error("Failed to write tags to %s: %s", file_path, e)
             return False
 
     def _write_mp3_tags(
@@ -175,7 +179,7 @@ class SeratoTagWriter:
         try:
             audio = ID3(file_path)
         except Exception:
-            # Create new ID3 tag
+            logger.debug("No existing ID3 tag in %s, creating new", file_path)
             audio = ID3()
 
         # Write BPM

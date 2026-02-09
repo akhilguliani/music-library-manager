@@ -5,11 +5,14 @@ Maps freeform tags/genres to the 56-class MTG-Jamendo mood vocabulary.
 Cleans metadata (feat., remix, etc.) before querying for better hit rates.
 """
 
+import logging
 import re
 import threading
 import time
 from functools import lru_cache
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +400,7 @@ class LastFmLookup:
         except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
             return None
         except Exception:
+            logger.warning("Last.fm track lookup failed for %s - %s", artist, title, exc_info=True)
             return None
 
     def get_mood_from_artist(self, artist: str) -> Optional[str]:
@@ -423,6 +427,7 @@ class LastFmLookup:
         except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
             return None
         except Exception:
+            logger.warning("Last.fm artist lookup failed for %s", artist, exc_info=True)
             return None
 
 
@@ -468,6 +473,7 @@ class MusicBrainzLookup:
                 genres.append(tag.get("name", ""))
             return self._mapper.map_genres(genres)
         except Exception:
+            logger.warning("MusicBrainz lookup failed for %s - %s", artist, title, exc_info=True)
             return None
 
 
