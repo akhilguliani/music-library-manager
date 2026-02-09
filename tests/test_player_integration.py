@@ -114,3 +114,34 @@ class TestPlaybackIntegration:
 
         assert isinstance(window.mini_player, MiniPlayer)
         assert isinstance(window.player_panel, PlayerPanel)
+
+    def test_cue_change_updates_database(self, qapp):
+        """Cue point changes should call update_song_pois on database."""
+        window = MainWindow()
+        mock_db = MagicMock()
+        window._database = mock_db
+
+        cues = [
+            {"pos": 10.0, "name": "Start", "num": 1},
+            {"pos": 60.0, "name": "Drop", "num": 2},
+        ]
+        window._on_cues_changed("/test/song.mp3", cues)
+
+        mock_db.update_song_pois.assert_called_once_with("/test/song.mp3", cues)
+
+    def test_cue_change_no_db_is_noop(self, qapp):
+        """Cue point changes without database should not crash."""
+        window = MainWindow()
+        # Should not raise
+        window._on_cues_changed("/test/song.mp3", [])
+
+    def test_cue_change_schedules_save(self, qapp):
+        """Cue point changes should schedule a debounced save."""
+        window = MainWindow()
+        mock_db = MagicMock()
+        window._database = mock_db
+
+        window._on_cues_changed("/test/song.mp3", [{"pos": 5.0, "name": "X", "num": 1}])
+
+        assert window._save_pending is True
+        mock_db.save.assert_not_called()

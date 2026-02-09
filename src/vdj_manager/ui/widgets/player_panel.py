@@ -43,6 +43,7 @@ class PlayerPanel(QWidget):
     """
 
     rating_changed = Signal(str, int)
+    cues_changed = Signal(str, list)
 
     def __init__(self, bridge: PlaybackBridge, parent=None):
         super().__init__(parent)
@@ -203,8 +204,9 @@ class PlayerPanel(QWidget):
         self._bridge.track_finished.connect(self._on_track_finished)
         self._bridge.speed_changed.connect(self._on_speed_changed)
 
-        # Waveform seek
+        # Waveform seek and cue editing
         self.waveform.seek_requested.connect(self._bridge.seek)
+        self.waveform.cues_changed.connect(self._on_cues_changed)
 
         # Speed slider
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
@@ -295,6 +297,13 @@ class PlayerPanel(QWidget):
     def _on_rating_changed(self, rating: int) -> None:
         if self._current_track:
             self.rating_changed.emit(self._current_track.file_path, rating)
+
+    @Slot(list)
+    def _on_cues_changed(self, cue_dicts: list) -> None:
+        """Forward cue point changes with the current track's file path."""
+        if self._current_track:
+            self._current_track.cue_points = cue_dicts
+            self.cues_changed.emit(self._current_track.file_path, cue_dicts)
 
     def _cycle_repeat_mode(self) -> None:
         """Cycle through repeat modes: none -> one -> all -> none."""

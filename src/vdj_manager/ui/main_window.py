@@ -109,6 +109,7 @@ class MainWindow(QMainWindow):
         """Create the full player tab."""
         self.player_panel = PlayerPanel(self._playback_bridge)
         self.player_panel.rating_changed.connect(self._on_rating_changed)
+        self.player_panel.cues_changed.connect(self._on_cues_changed)
         self._playback_bridge.track_finished.connect(self._on_track_playback_finished)
         self.tab_widget.addTab(self.player_panel, "Player")
 
@@ -231,6 +232,14 @@ class MainWindow(QMainWindow):
         if not self._database:
             return
         self._database.update_song_tags(file_path, Rating=rating)
+        self._schedule_save()
+
+    @Slot(str, list)
+    def _on_cues_changed(self, file_path: str, cue_list: list) -> None:
+        """Persist cue point changes to database."""
+        if not self._database:
+            return
+        self._database.update_song_pois(file_path, cue_list)
         self._schedule_save()
 
     def _schedule_save(self) -> None:

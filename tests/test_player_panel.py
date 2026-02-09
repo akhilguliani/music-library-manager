@@ -196,3 +196,36 @@ class TestPlayerPanel:
             panel.waveform.seek_requested.emit(60.0)
             qapp.processEvents()
             mock_seek.assert_called_once_with(60.0)
+
+    def test_cues_changed_forwards_with_file_path(self, qapp, player_panel):
+        """Waveform cue changes should emit cues_changed with file path."""
+        panel, bridge = player_panel
+        track = TrackInfo(file_path="/test/cue_edit.mp3", title="Cue Edit")
+        with patch.object(panel, "_load_album_art"), \
+             patch.object(panel, "_load_waveform"):
+            bridge._emit_track(track)
+            qapp.processEvents()
+
+        received = []
+        panel.cues_changed.connect(lambda fp, cues: received.append((fp, cues)))
+
+        cue_list = [{"pos": 10.0, "name": "Start", "num": 1}]
+        panel.waveform.cues_changed.emit(cue_list)
+        qapp.processEvents()
+
+        assert len(received) == 1
+        assert received[0][0] == "/test/cue_edit.mp3"
+        assert received[0][1] == cue_list
+
+    def test_cues_changed_no_track_is_noop(self, qapp, player_panel):
+        """Cue changes without a current track should not emit."""
+        panel, bridge = player_panel
+        panel._current_track = None
+
+        received = []
+        panel.cues_changed.connect(lambda fp, cues: received.append((fp, cues)))
+
+        panel.waveform.cues_changed.emit([{"pos": 5.0, "name": "X", "num": 1}])
+        qapp.processEvents()
+
+        assert received == []
