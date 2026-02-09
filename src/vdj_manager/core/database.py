@@ -332,6 +332,53 @@ class VDJDatabase:
 
         return True
 
+    def update_song_pois(self, file_path: str, cue_pois: list[dict]) -> bool:
+        """Replace all cue-type POIs for a song.
+
+        Non-cue POIs (beatgrid, loop, remix, automix) are preserved.
+        Max 8 cue points enforced (VDJ limitation).
+
+        Args:
+            file_path: Song file path.
+            cue_pois: List of dicts with keys: pos (float), name (str|None), num (int|None).
+
+        Returns:
+            True if song found and updated, False otherwise.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Database not loaded")
+
+        song_elem = self._filepath_to_elem.get(file_path)
+        if song_elem is None:
+            return False
+
+        # Remove existing cue-type Poi elements from XML
+        for poi_elem in list(song_elem.iter("Poi")):
+            if poi_elem.get("Type") == "cue":
+                song_elem.remove(poi_elem)
+
+        # Add new cue Poi elements (max 8)
+        for cue in cue_pois[:8]:
+            poi_elem = etree.SubElement(song_elem, "Poi")
+            poi_elem.set("Type", "cue")
+            poi_elem.set("Pos", f"{cue['pos']:.6g}")
+            if cue.get("name"):
+                poi_elem.set("Name", cue["name"])
+            if cue.get("num") is not None:
+                poi_elem.set("Num", str(cue["num"]))
+
+        # Update in-memory model
+        if file_path in self._songs:
+            song = self._songs[file_path]
+            non_cue_pois = [p for p in song.pois if p.type != PoiType.CUE]
+            new_cue_pois = [
+                Poi(Type=PoiType.CUE, Pos=c["pos"], Name=c.get("name"), Num=c.get("num"))
+                for c in cue_pois[:8]
+            ]
+            song.pois = non_cue_pois + new_cue_pois
+
+        return True
+
     def remap_path(self, old_path: str, new_path: str) -> bool:
         """Remap a file path in the database."""
         if not self.is_loaded:
