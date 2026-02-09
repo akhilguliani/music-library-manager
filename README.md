@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-477%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-767%20passed-brightgreen.svg)]()
 
 A powerful Python tool for managing VirtualDJ music libraries, with both CLI and desktop GUI interfaces.
 
@@ -12,9 +12,12 @@ A powerful Python tool for managing VirtualDJ music libraries, with both CLI and
 - **Path Remapping** - Convert Windows paths (D:/, E:/) to macOS paths
 - **Duplicate Detection** - Find duplicates by filename, metadata, or file hash
 - **Audio Analysis** - Import Mixed In Key tags, calculate energy levels (1-10), AI mood classification
+- **Online Mood Enrichment** - Last.fm / MusicBrainz tag lookup with local model fallback
 - **Loudness Normalization** - LUFS-based normalization with parallel processing
 - **Serato Export** - Export cue points, beatgrid, and metadata to Serato DJ
+- **Audio Playback** - VLC-based player with waveform display, cue points, queue, and star ratings
 - **Desktop GUI** - Visual interface with real-time streaming results, progress tracking, and pause/resume
+- **Structured Logging** - Rotating log files at `~/.vdj_manager/logs/` with `--verbose` flag
 - **Persistent Caching** - SQLite caches for measurements and analysis results across sessions
 
 ## Installation
@@ -24,6 +27,12 @@ A powerful Python tool for managing VirtualDJ music libraries, with both CLI and
 git clone https://github.com/aguliani/vdj-manager.git
 cd vdj-manager
 pip install -e .
+
+# With optional dependencies
+pip install -e '.[mood]'            # AI mood analysis (essentia-tensorflow)
+pip install -e '.[player]'         # Audio playback (python-vlc)
+pip install -e '.[online]'         # Online mood lookup (pylast, musicbrainzngs)
+pip install -e '.[serato]'         # Serato export (mutagen)
 
 # Verify installation
 vdj-manager --version
@@ -120,9 +129,10 @@ vdj-manager-gui
 ```
 
 Features:
-- **5 tabs**: Database, Normalization, Files, Analysis, Export
+- **6 tabs**: Database, Normalization, Files, Analysis, Export, Player
 - Database browser with virtual scrolling (18k+ tracks)
 - Real-time streaming results for energy, mood, and MIK analysis
+- Audio playback with waveform, editable cue points, queue, and star ratings
 - Pause/Resume long operations with automatic checkpointing
 - Persistent SQLite caching avoids redundant analysis
 
@@ -135,6 +145,8 @@ Features:
 | Backups | `~/.vdj_manager/backups/` |
 | Measurement Cache | `~/.vdj_manager/measurements.db` |
 | Analysis Cache | `~/.vdj_manager/analysis.db` |
+| Waveform Cache | `~/.vdj_manager/waveforms.db` |
+| Log Files | `~/.vdj_manager/logs/vdj_manager.log` |
 
 ## How It Works
 
@@ -191,7 +203,9 @@ vdj_manager/
 ├── analysis/
 │   ├── audio_features.py  # librosa + MIK reader
 │   ├── energy.py       # Energy classification
-│   └── mood.py         # Mood tagging (Essentia)
+│   ├── mood_backend.py # Mood model protocol + factory
+│   ├── mood_mtg_jamendo.py # MTG-Jamendo 56-class CNN
+│   └── online_mood.py  # Last.fm / MusicBrainz lookup
 ├── files/
 │   ├── validator.py    # File validation
 │   ├── scanner.py      # Directory scanning
@@ -203,6 +217,11 @@ vdj_manager/
 ├── export/
 │   ├── serato.py       # Serato crate/tag writer
 │   └── mapper.py       # VDJ→Serato mapping
+├── player/             # Audio playback (VLC)
+│   ├── engine.py       # UI-agnostic playback engine
+│   ├── bridge.py       # Qt signal bridge
+│   ├── waveform.py     # Waveform peak generation
+│   └── album_art.py    # Album art extraction
 └── ui/                 # Desktop GUI (PySide6)
     ├── app.py          # Application entry point
     ├── main_window.py  # Main window

@@ -72,6 +72,22 @@ The Export tab supports:
 - **Serato Export**: Export cue points, beatgrid, and metadata to Serato DJ format
 - **Playlist/Crate Browser**: Browse and select VDJ playlists for export as Serato crates
 
+### Player Panel
+
+The Player tab provides a full-featured audio player:
+
+- **Waveform Display**: Visual waveform with cue point markers and drag-to-seek
+- **Editable Cue Points**: Right-click to add, drag to move, right-click to rename/delete cue points
+- **Album Art**: Extracted from embedded audio file tags (APIC, covr, FLAC pictures)
+- **Track Metadata**: Title, artist, album, BPM, key, energy, mood
+- **Star Rating**: Click-to-rate (1-5 stars), click same star to clear
+- **Speed Control**: 0.5x to 2.0x playback speed adjustment
+- **Queue Management**: Add tracks, reorder, remove; shuffle and repeat modes
+- **Play History**: Last 100 tracks with timestamps
+- **Mini Player**: Always-visible 60px bar at bottom of all tabs with transport, progress, volume, and expand button
+
+**Prerequisites:** VLC media player must be installed. The player gracefully degrades when VLC is not found (controls disabled, rest of app works normally).
+
 ## Pause and Resume
 
 One of the key features of the desktop app is the ability to pause long-running operations and resume them later, even after closing the application.
@@ -111,6 +127,10 @@ When incomplete tasks exist, a dialog appears on startup:
 | Ctrl+3 | Switch to Files tab |
 | Ctrl+4 | Switch to Analysis tab |
 | Ctrl+5 | Switch to Export tab |
+| Ctrl+6 | Switch to Player tab |
+| Space | Play/Pause |
+| Ctrl+Right | Next track |
+| Ctrl+Left | Previous track |
 | Ctrl+O | Open database file |
 | Ctrl+Q | Quit application |
 
@@ -163,13 +183,16 @@ The desktop UI is built with a clean separation of concerns:
 ```
 ui/
 ├── app.py              # QApplication entry point
-├── main_window.py      # Main window with 5 tabs
+├── main_window.py      # Main window with 6 tabs
 ├── widgets/
 │   ├── database_panel.py      # DB load, stats, track browser, tag editing, log
 │   ├── normalization_panel.py # Measure, apply, CSV export, limit
 │   ├── files_panel.py         # 5 sub-tabs: scan, import, remove, remap, dupes
 │   ├── analysis_panel.py      # 3 sub-tabs: energy, MIK import, mood
 │   ├── export_panel.py        # Serato export, playlist/crate browser
+│   ├── player_panel.py        # Full player with waveform, queue, ratings
+│   ├── mini_player.py         # Always-visible mini player bar
+│   ├── waveform_widget.py     # Waveform display with cue point editing
 │   ├── progress_widget.py     # Progress + pause/resume
 │   └── results_table.py       # ConfigurableResultsTable with dynamic columns
 ├── workers/
@@ -178,7 +201,8 @@ ui/
 │   ├── normalization_worker.py # Parallel measurement with caching
 │   ├── file_workers.py        # Scan, import, remove, remap, duplicate workers
 │   ├── analysis_workers.py    # Energy, mood, MIK workers (streaming results)
-│   └── export_workers.py      # Serato export & crate workers
+│   ├── export_workers.py      # Serato export & crate workers
+│   └── player_workers.py      # Waveform generation worker
 ├── models/
 │   ├── track_model.py         # QAbstractTableModel for tracks
 │   └── task_state.py          # Checkpoint state dataclass
@@ -223,3 +247,18 @@ For faster processing:
 1. Increase batch size (more items per checkpoint)
 2. Ensure ffmpeg is in your PATH
 3. Close other applications using audio files
+
+### Checking Log Files
+
+VDJ Manager writes detailed logs to `~/.vdj_manager/logs/vdj_manager.log`. To enable verbose console logging:
+
+```bash
+VDJ_VERBOSE=1 vdj-manager-gui    # GUI with debug output
+vdj-manager --verbose db status   # CLI with debug output
+```
+
+Log files rotate at 5MB with 3 backups kept. Check logs to diagnose:
+- Analysis failures for specific file formats
+- Online mood lookup errors (API rate limits, network issues)
+- Database save errors
+- Player/VLC initialization problems

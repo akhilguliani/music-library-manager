@@ -63,6 +63,7 @@ nav:
     - Audio Analysis: user-guide/analysis.md
     - Normalization: user-guide/normalization.md
     - Serato Export: user-guide/serato-export.md
+    - Player: user-guide/player.md
   - CLI Reference:
     - Commands: cli/commands.md
   - API Reference:
@@ -71,6 +72,7 @@ nav:
     - Analysis: api/analysis.md
     - Normalize: api/normalize.md
     - Export: api/export.md
+    - Player: api/player.md
   - Research:
     - Mood Analysis Models: mood-analysis-models-research.md
   - Development:

@@ -18,7 +18,7 @@ pip install -e '.[serato]'          # Optional: Serato export support
 pip install -e '.[player]'          # Optional: VLC-based audio playback
 
 # Testing
-pytest tests/ -v                    # Run all tests (710 tests)
+pytest tests/ -v                    # Run all tests (767 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -127,6 +127,7 @@ vdj_manager/
 ├── measurements.db     # SQLite cache for loudness measurements
 ├── analysis.db         # SQLite cache for energy/mood/MIK results (model-prefixed keys)
 ├── waveforms.db        # SQLite cache for waveform peak data
+├── logs/               # Rotating log files (vdj_manager.log, 5MB max, 3 backups)
 └── lastfm_api_key      # Optional: Last.fm API key (alternative to LASTFM_API_KEY env var)
 
 ~/Library/Application Support/VirtualDJ/database.xml  # Primary database (macOS)

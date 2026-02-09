@@ -3,9 +3,12 @@
 ## Global Options
 
 ```bash
-vdj-manager --version    # Show version
-vdj-manager --help       # Show help
+vdj-manager --version         # Show version
+vdj-manager --help            # Show help
+vdj-manager --verbose/-v ...  # Enable debug logging to console and log file
 ```
+
+The `--verbose` flag can also be set via the `VDJ_VERBOSE` environment variable. Log files are written to `~/.vdj_manager/logs/vdj_manager.log` regardless of the verbose flag (file handler always captures DEBUG).
 
 ## Database Commands (`db`)
 

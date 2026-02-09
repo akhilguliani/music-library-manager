@@ -91,6 +91,52 @@ Both caches use file mtime + size for invalidation. If a file is modified, its c
 
 The energy parser also supports the legacy `"Energy 7"` format for backward compatibility with older databases.
 
+## Last.fm API Key (Online Mood Enrichment)
+
+To enable online mood lookup via Last.fm, set your API key:
+
+```bash
+# Option 1: Environment variable
+export LASTFM_API_KEY=your_api_key_here
+
+# Option 2: File (persists across sessions)
+echo "your_api_key_here" > ~/.vdj_manager/lastfm_api_key
+```
+
+Get a free API key at [last.fm/api/account/create](https://www.last.fm/api/account/create).
+
+Online mood uses a tiered lookup: Last.fm track tags -> Last.fm artist tags -> MusicBrainz genres -> local model fallback.
+
+## Log Files
+
+VDJ Manager writes structured logs to `~/.vdj_manager/logs/`:
+
+| File | Size Limit | Backups |
+|------|-----------|---------|
+| `vdj_manager.log` | 5 MB | 3 rotated backups |
+
+Enable verbose console output:
+
+```bash
+# CLI
+vdj-manager --verbose db status
+
+# GUI (via environment variable)
+VDJ_VERBOSE=1 vdj-manager-gui
+```
+
+The file handler always captures DEBUG-level logs regardless of the verbose flag.
+
+## Model Downloads
+
+AI mood analysis models are auto-downloaded to `~/.vdj_manager/models/` on first use:
+
+| Model | Size | Description |
+|-------|------|-------------|
+| MTG-Jamendo | ~80 MB | 56-class mood/theme CNN (recommended) |
+
+Models are downloaded from Essentia's model repository and cached locally.
+
 ## Energy Analysis Weights
 
 Energy level calculation uses weighted audio features:

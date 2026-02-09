@@ -673,7 +673,7 @@ c37f228 Add comprehensive unit tests
 
 ## Test Coverage
 
-Final test count: **477 tests passing**
+Test count after Phase 6: **477 tests passing**
 
 | Module | Tests |
 |--------|-------|
@@ -739,10 +739,68 @@ Final test count: **477 tests passing**
 
 16. **Stream results, don't batch them** — Emitting per-file signals gives users immediate feedback and makes the UI feel responsive even for long operations.
 
+### Phase 7: Audio Player & Online Mood (February 2026)
+
+#### Audio Playback
+
+A 3-layer player architecture was built for clean separation of concerns:
+
+| Layer | File | Responsibility |
+|-------|------|----------------|
+| PlaybackEngine | `player/engine.py` | Pure Python, no Qt. VLC via python-vlc, thread-safe with RLock, observer pattern callbacks |
+| PlaybackBridge | `player/bridge.py` | Qt Signals adapter. Translates engine callbacks to Qt Signals for UI binding |
+| UI Widgets | `ui/widgets/player_panel.py`, `mini_player.py`, `waveform_widget.py` | Full player tab + always-visible mini player bar |
+
+**Player features:**
+- Waveform display with soundfile-first loading (avoids librosa audioread fd leaks)
+- Editable cue points: right-click to add, drag to move, right-click to rename/delete
+- Album art extraction from embedded tags (APIC, covr, FLAC pictures)
+- Star ratings with click-to-rate, click-same-to-clear toggle
+- Queue management with shuffle and repeat modes (none/one/all)
+- Speed control (0.5x-2.0x)
+- Mini player: 60px always-visible bar at bottom of all tabs
+- Debounced save: `QTimer.singleShot(5000)` batches play count/rating saves
+- Graceful VLC degradation: controls disabled when VLC not found
+
+**Waveform caching:** `WaveformCache` (SQLite at `~/.vdj_manager/waveforms.db`) keyed by (file_path, width), invalidated by mtime/size.
+
+#### Online Mood Enrichment
+
+Tiered online lookup for mood classification:
+1. Last.fm track tags (cleaned artist/title metadata)
+2. Last.fm artist tags (fallback when track has no tags)
+3. MusicBrainz genres
+4. Local model analysis (essentia MTG-Jamendo)
+
+**Metadata cleaning:** `_clean_artist()` strips featured artists (feat./ft.) and multi-artist separators. `_clean_title()` removes parentheticals, bracket info, and remix suffixes.
+
+**Rate limiting:** Thread-safe token-bucket limiters (5 req/s for Last.fm, 1 req/s for MusicBrainz).
+
+**Caching:** `@lru_cache(2048)` deduplicates identical artist+title pairs. Model-aware cache keys ("mood:mtg-jamendo" vs "mood:heuristic").
+
+#### Structured Logging
+
+- `setup_logging()` in `config.py` with `RotatingFileHandler` (5MB, 3 backups) at `~/.vdj_manager/logs/`
+- `--verbose/-v` CLI flag (envvar `VDJ_VERBOSE`) controls console log level
+- Replaced 18+ silent `except Exception: pass` blocks with structured logger calls across 9 modules
+- Log levels: DEBUG (expected fallbacks), WARNING (recoverable errors), ERROR (data-loss risks)
+
+#### Bug Fixes
+
+- **Waveform never displayed:** `cache.put(file_path, width, peaks)` had args swapped — fixed to `cache.put(file_path, peaks, width)`
+- **PySoundFile warning:** librosa's audioread fallback for MP3 files — fixed with soundfile-first loading for WAV/FLAC/OGG
+- **Essentia model URL:** Updated from old `music-style/` to current `feature-extractors/discogs-effnet/` path
+- **MyNVMe Windows paths excluded from mood analysis:** Removed `is_windows_path` filter when online enabled
+
+#### Test Coverage
+
+Test count: **767 tests passing** (477 from Phase 6 + 290 new)
+
+---
+
 ## Future Improvements
 
 1. **Batch Editing** - Select multiple tracks, edit tags in bulk
 2. **Cloud Backup** - Optional backup to cloud storage
 3. **Diff View** - Show changes before saving database
-4. **Waveform Preview** - Visual waveform display for tracks
-5. **Smart Playlists** - Auto-generate playlists by energy/mood/key
+4. **Smart Playlists** - Auto-generate playlists by energy/mood/key

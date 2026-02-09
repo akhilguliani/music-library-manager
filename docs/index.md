@@ -5,9 +5,12 @@
 VDJ Manager helps DJs organize, analyze, and normalize their music libraries. It provides a comprehensive set of tools for:
 
 - **Database Management** - Clean up invalid entries, remap Windows paths to macOS, detect duplicates
-- **Audio Analysis** - AI-based energy level detection, Mixed In Key tag import
+- **Audio Analysis** - AI-based energy level detection, Mixed In Key tag import, multi-label mood classification
+- **Online Mood Enrichment** - Last.fm / MusicBrainz tag lookup with local model fallback
+- **Audio Playback** - VLC-based player with waveform display, editable cue points, queue, and star ratings
 - **Loudness Normalization** - LUFS-based normalization with parallel processing
 - **Cross-Platform Support** - Export to Serato DJ with cue points and metadata
+- **Structured Logging** - Rotating log files with `--verbose` CLI flag for troubleshooting
 
 ## Features
 
