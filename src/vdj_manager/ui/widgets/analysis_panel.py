@@ -345,20 +345,40 @@ class AnalysisPanel(QWidget):
             return
 
         audio_tracks = self._get_audio_tracks()
+        local = [t for t in audio_tracks if not t.is_windows_path]
+        remote = [t for t in audio_tracks if t.is_windows_path]
         untagged = [t for t in audio_tracks if t.energy is None]
 
-        self.energy_info_label.setText(
-            f"{len(audio_tracks)} audio tracks, {len(untagged)} without energy tags"
-        )
-        self.mik_info_label.setText(f"{len(audio_tracks)} audio tracks to scan")
+        if remote:
+            self.energy_info_label.setText(
+                f"{len(audio_tracks)} tracks ({len(local)} local, {len(remote)} remote), "
+                f"{len(untagged)} without energy"
+            )
+            self.mik_info_label.setText(
+                f"{len(audio_tracks)} tracks ({len(local)} local, {len(remote)} remote) to scan"
+            )
+        else:
+            self.energy_info_label.setText(
+                f"{len(audio_tracks)} audio tracks, {len(untagged)} without energy tags"
+            )
+            self.mik_info_label.setText(f"{len(audio_tracks)} audio tracks to scan")
+
         mood_tracks = self._get_mood_tracks()
+        mood_local = [t for t in mood_tracks if not t.is_windows_path]
+        mood_remote = [t for t in mood_tracks if t.is_windows_path]
         unknown_mood = [
             t for t in mood_tracks
             if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
         ]
-        self.mood_info_label.setText(
-            f"{len(mood_tracks)} eligible tracks, {len(unknown_mood)} with #unknown mood"
-        )
+        if mood_remote:
+            self.mood_info_label.setText(
+                f"{len(mood_tracks)} tracks ({len(mood_local)} local, {len(mood_remote)} remote), "
+                f"{len(unknown_mood)} with #unknown mood"
+            )
+        else:
+            self.mood_info_label.setText(
+                f"{len(mood_tracks)} eligible tracks, {len(unknown_mood)} with #unknown mood"
+            )
 
     def _get_audio_tracks(self, untagged_only: bool = False) -> list[Song]:
         """Get filterable audio tracks, respecting duration and count limits.
@@ -375,13 +395,13 @@ class AnalysisPanel(QWidget):
         }
         tracks = []
         for track in self._tracks:
-            if track.is_netsearch or track.is_windows_path:
+            if track.is_netsearch:
                 continue
             if track.extension not in audio_extensions:
                 continue
             if untagged_only and track.energy is not None:
                 continue
-            if not Path(track.file_path).exists():
+            if not track.is_windows_path and not Path(track.file_path).exists():
                 continue
             tracks.append(track)
 
@@ -419,7 +439,7 @@ class AnalysisPanel(QWidget):
                 continue
             file_exists = not track.is_windows_path and Path(track.file_path).exists()
             has_metadata = track.tags and (track.tags.author or track.tags.title)
-            if not file_exists and not (enable_online and has_metadata):
+            if not file_exists and not has_metadata and not track.is_windows_path:
                 continue
             tracks.append(track)
 

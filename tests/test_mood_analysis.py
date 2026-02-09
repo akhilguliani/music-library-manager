@@ -1069,8 +1069,11 @@ class TestAnalysisPanelMoodHandlers:
             MockPath.return_value.exists.return_value = True
             panel.set_database(MagicMock(), [win_track, local_track])
 
-        # With online enabled (default), Windows track should be counted
-        assert "2 eligible tracks" in panel.mood_info_label.text()
+        # Both tracks should be counted — Windows tracks included (cache/online)
+        label = panel.mood_info_label.text()
+        assert "2 tracks" in label
+        assert "1 local" in label
+        assert "1 remote" in label
 
     def test_online_checkbox_updates_mood_count(self, qapp):
         """Toggling online checkbox should update the mood track count."""
@@ -1085,15 +1088,120 @@ class TestAnalysisPanelMoodHandlers:
             MockPath.return_value.exists.return_value = True
             panel.set_database(MagicMock(), [win_track, local_track])
 
-            # Online enabled (default): both tracks eligible
-            assert "2 eligible tracks" in panel.mood_info_label.text()
+            # Both tracks always included — Windows paths use cache/online
+            label = panel.mood_info_label.text()
+            assert "2 tracks" in label
 
-            # Uncheck online: Windows track no longer eligible
+            # Toggling online doesn't change count — Windows paths always included
             panel.mood_online_checkbox.setChecked(False)
             QCoreApplication.processEvents()
-            assert "1 eligible tracks" in panel.mood_info_label.text()
+            assert "2 tracks" in panel.mood_info_label.text()
 
-            # Re-check online: Windows track eligible again
             panel.mood_online_checkbox.setChecked(True)
             QCoreApplication.processEvents()
-            assert "2 eligible tracks" in panel.mood_info_label.text()
+            assert "2 tracks" in panel.mood_info_label.text()
+
+
+class TestWindowsPathTrackInclusion:
+    """Tests that Windows-path tracks are included in analysis (MyNVMe database)."""
+
+    def test_get_audio_tracks_includes_windows_paths(self, qapp):
+        """Windows-path tracks should be included in _get_audio_tracks."""
+        panel = AnalysisPanel()
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            MockPath.return_value.suffix.lower.return_value = ".mp3"
+            panel._tracks = [win_track, local_track]
+            tracks = panel._get_audio_tracks()
+
+        assert len(tracks) == 2
+        assert any(t.is_windows_path for t in tracks)
+
+    def test_get_audio_tracks_excludes_netsearch(self, qapp):
+        """Netsearch tracks should still be excluded."""
+        panel = AnalysisPanel()
+        net_track = Song(file_path="netsearch://test", tags=Tags())
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel._tracks = [net_track, local_track]
+            tracks = panel._get_audio_tracks()
+
+        assert len(tracks) == 1
+        assert tracks[0].file_path == "/a.mp3"
+
+    def test_get_mood_tracks_includes_windows_paths_without_online(self, qapp):
+        """Windows-path tracks should be included even when online is OFF."""
+        panel = AnalysisPanel()
+        panel.mood_online_checkbox.setChecked(False)
+
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel._tracks = [win_track, local_track]
+            tracks = panel._get_mood_tracks()
+
+        assert len(tracks) == 2
+        assert any(t.is_windows_path for t in tracks)
+
+    def test_energy_info_label_shows_remote_count(self, qapp):
+        """Energy info label should show local/remote breakdown for Windows paths."""
+        panel = AnalysisPanel()
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel.set_database(MagicMock(), [win_track, local_track])
+
+        label = panel.energy_info_label.text()
+        assert "2 tracks" in label
+        assert "1 local" in label
+        assert "1 remote" in label
+
+    def test_mik_info_label_shows_remote_count(self, qapp):
+        """MIK info label should show local/remote breakdown for Windows paths."""
+        panel = AnalysisPanel()
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel.set_database(MagicMock(), [win_track, local_track])
+
+        label = panel.mik_info_label.text()
+        assert "2 tracks" in label
+        assert "1 local" in label
+        assert "1 remote" in label
+
+    def test_all_local_tracks_no_remote_label(self, qapp):
+        """When all tracks are local, don't show remote breakdown."""
+        panel = AnalysisPanel()
+        track1 = _make_song("/a.mp3")
+        track2 = _make_song("/b.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel.set_database(MagicMock(), [track1, track2])
+
+        label = panel.energy_info_label.text()
+        assert "2 audio tracks" in label
+        assert "remote" not in label
