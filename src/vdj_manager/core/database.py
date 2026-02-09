@@ -1,5 +1,6 @@
 """VirtualDJ database XML parser and writer using lxml."""
 
+import os
 import re
 from pathlib import Path
 from typing import Optional, Iterator
@@ -406,7 +407,16 @@ class VDJDatabase:
         if not xml_str.endswith("\r\n"):
             xml_str += "\r\n"
 
-        path.write_bytes(xml_str.encode("utf-8"))
+        # Atomic write: write to temp file, then rename.
+        # os.replace() is atomic on POSIX when src/dst are on the same
+        # filesystem, so the database is never left partially written.
+        tmp_path = path.with_suffix(".xml.tmp")
+        try:
+            tmp_path.write_bytes(xml_str.encode("utf-8"))
+            os.replace(str(tmp_path), str(path))
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     def merge_from(self, other: "VDJDatabase", prefer_other: bool = True) -> dict:
         """Merge songs from another database into this one.
