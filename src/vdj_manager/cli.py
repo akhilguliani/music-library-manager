@@ -698,16 +698,22 @@ def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: 
 @click.option("--update-unknown", is_flag=True, help="Re-analyze tracks with #unknown mood using online lookup")
 @click.option("--online/--no-online", default=True, help="Enable online mood lookup (Last.fm/MusicBrainz)")
 @click.option("--lastfm-key", help="Last.fm API key (overrides env var)")
+@click.option("--model", type=click.Choice(["mtg-jamendo", "heuristic"]), default="mtg-jamendo", help="Mood analysis model")
+@click.option("--threshold", type=float, default=0.1, help="Min confidence for mood tags (0.01-0.50)")
+@click.option("--max-tags", type=int, default=5, help="Max mood tags per track (1-10)")
 @click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
 @click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online: bool, lastfm_key: Optional[str], dry_run: bool, db_choice: str):
-    """Tag tracks with mood/emotion.
+def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online: bool, lastfm_key: Optional[str], model: str, threshold: float, max_tags: int, dry_run: bool, db_choice: str):
+    """Tag tracks with mood/emotion (multi-label).
 
     Uses online databases (Last.fm, MusicBrainz) when available, with
-    fallback to local essentia-tensorflow analysis.
+    fallback to local analysis. Supports MTG-Jamendo (56-class CNN) or
+    heuristic backend. Assigns multiple mood tags per track based on
+    confidence threshold.
     """
     from .config import get_lastfm_api_key
+    from .analysis.mood_backend import MoodModel, get_backend, MOOD_CLASSES_SET
 
     path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
 
@@ -725,19 +731,19 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
         console.print("[yellow]Online lookup enabled but no Last.fm API key set (MusicBrainz only)[/yellow]")
         console.print("[dim]Set LASTFM_API_KEY env var or use --lastfm-key for Last.fm[/dim]")
 
-    # Check local essentia availability
-    local_available = False
-    try:
-        from .analysis.mood import MoodAnalyzer
-        analyzer = MoodAnalyzer()
-        local_available = analyzer.is_available
-    except ImportError:
-        pass
+    # Check local backend availability
+    mood_model = MoodModel(model)
+    backend = get_backend(mood_model)
+    local_available = backend.is_available
+    console.print(f"[cyan]Model: {model} (threshold={threshold}, max_tags={max_tags})[/cyan]")
 
     if not online and not local_available:
-        console.print("[red]Neither online lookup nor essentia-tensorflow is available.[/red]")
+        console.print(f"[red]Neither online lookup nor {model} backend is available.[/red]")
         console.print("Install with: pip install 'vdj-manager[mood]' or pip install 'vdj-manager[online]'")
         return
+
+    # Known mood hashtags for cleanup during re-analysis
+    known_mood_hashtags = {f"#{m}" for m in MOOD_CLASSES_SET} | {"#unknown"}
 
     # Find tracks to analyze
     to_analyze = []
@@ -795,35 +801,32 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
             try:
                 artist = (song.tags.author or "") if song.tags else ""
                 title = (song.tags.title or "") if song.tags else ""
-                mood = None
+                mood_tags = []
                 source = "none"
 
                 # Try online first
                 if online and artist and title:
                     from .analysis.online_mood import lookup_online_mood
                     mood, source = lookup_online_mood(artist, title, api_key)
+                    if mood:
+                        mood_tags = [mood]
 
-                # Fall back to local
-                if not mood and local_available:
-                    mood_tag = analyzer.get_mood_tag(song.file_path)
-                    if mood_tag:
-                        mood = mood_tag
-                        source = "local"
+                # Fall back to local backend
+                if not mood_tags and local_available:
+                    local_tags = backend.get_mood_tags(song.file_path, threshold, max_tags)
+                    if local_tags:
+                        mood_tags = local_tags
+                        source = f"local:{model}"
 
-                if mood:
-                    mood_hashtag = f"#{mood}"
+                if mood_tags:
                     existing = (song.tags.user2 or "") if song and song.tags else ""
-                    # When re-analyzing, replace #unknown with the new mood
-                    if update_unknown and "#unknown" in existing.split():
-                        words = existing.split()
-                        words = [w for w in words if w != "#unknown"]
-                        if mood_hashtag not in words:
-                            words.append(mood_hashtag)
-                        new_user2 = " ".join(words)
-                    elif mood_hashtag not in existing.split():
-                        new_user2 = f"{existing} {mood_hashtag}".strip()
-                    else:
-                        new_user2 = existing
+                    # Strip all known mood hashtags, then add new ones
+                    words = [w for w in existing.split() if w not in known_mood_hashtags]
+                    for tag in mood_tags:
+                        hashtag = f"#{tag}"
+                        if hashtag not in words:
+                            words.append(hashtag)
+                    new_user2 = " ".join(words)
                     db.update_song_tags(song.file_path, User2=new_user2)
                     analyzed += 1
                 else:
