@@ -71,6 +71,8 @@ nav:
     - Analysis: api/analysis.md
     - Normalize: api/normalize.md
     - Export: api/export.md
+  - Research:
+    - Mood Analysis Models: mood-analysis-models-research.md
   - Development:
     - Contributing: development/contributing.md
     - Testing: development/testing.md
