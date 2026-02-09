@@ -290,6 +290,48 @@ class VDJDatabase:
 
         return True
 
+    def update_song_infos(self, file_path: str, **kwargs) -> bool:
+        """Update infos for a song in the XML tree.
+
+        Accepts keyword arguments matching Infos element attributes:
+        PlayCount, LastPlay, SongLength, Bitrate, etc.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Database not loaded")
+
+        song_elem = self._filepath_to_elem.get(file_path)
+        if song_elem is None:
+            return False
+
+        infos_elem = song_elem.find("Infos")
+        if infos_elem is None:
+            infos_elem = etree.SubElement(song_elem, "Infos")
+
+        for key, value in kwargs.items():
+            if value is not None:
+                infos_elem.set(key, str(value))
+            elif key in infos_elem.attrib:
+                del infos_elem.attrib[key]
+
+        # Update in-memory model
+        if file_path in self._songs:
+            song = self._songs[file_path]
+            if song.infos is None:
+                song.infos = Infos()
+            # Map XML attribute names to Pydantic field names
+            alias_map = {
+                "playcount": "play_count",
+                "lastplay": "last_played",
+                "songlength": "song_length",
+                "firstseen": "first_seen",
+            }
+            for key, value in kwargs.items():
+                attr_name = alias_map.get(key.lower(), key.lower())
+                if hasattr(song.infos, attr_name):
+                    setattr(song.infos, attr_name, value)
+
+        return True
+
     def remap_path(self, old_path: str, new_path: str) -> bool:
         """Remap a file path in the database."""
         if not self.is_loaded:
