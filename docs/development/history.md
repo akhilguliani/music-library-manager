@@ -626,6 +626,13 @@ Test count: **477 tests passing** (464 + 13 new)
 ## Commit History
 
 ```
+fc805bf Include Windows-path tracks in all analysis types (MyNVMe fix)
+cf1941b Retry on library-specific network errors (musicbrainzngs/pylast)
+031b807 Fix mood analysis: correct file count and eliminate "failed" status
+7650704 Add tests for retry logic and GUI mood worker online integration
+6db8bfe Add retry with exponential backoff for online mood API calls
+c90e828 Fix file descriptor exhaustion after ~1000 files in analysis workers
+f900286 Improve GUI readability with color-coded results, compact layouts, and format column
 75c1610 Write energy as plain number, fix flaky Qt test segfaults
 aaf5462 Stream analysis results to GUI in real-time with periodic saves
 f94a05d Fix flaky bus error in normalization worker tests
@@ -673,37 +680,7 @@ c37f228 Add comprehensive unit tests
 
 ## Test Coverage
 
-Test count after Phase 6: **477 tests passing**
-
-| Module | Tests |
-|--------|-------|
-| test_analysis_cache.py | 7 |
-| test_analysis_panel.py | 41 |
-| test_backup.py | 10 |
-| test_checkpoint_manager.py | 20 |
-| test_database.py | 15 |
-| test_database_panel_operations.py | 20 |
-| test_export_panel.py | 14 |
-| test_files_panel.py | 27 |
-| test_gui_integration.py | 17 |
-| test_mapper.py | 6 |
-| test_measurement_cache.py | 8 |
-| test_models.py | 14 |
-| test_mood_analysis.py | 17 |
-| test_normalization.py | 8 |
-| test_normalization_panel.py | 14 |
-| test_normalization_panel_enhanced.py | 14 |
-| test_normalization_worker.py | 11 |
-| test_operation_panel.py | 8 |
-| test_path_remapper.py | 9 |
-| test_pausable_worker.py | 16 |
-| test_performance_fixes.py | 39 |
-| test_progress_widget.py | 20 |
-| test_results_table.py | 20 |
-| test_resume_dialog.py | 17 |
-| test_track_model.py | 16 |
-| test_ui_app.py | 13 |
-| test_validator.py | 10 |
+Test count after Phase 8: **804 tests passing**
 
 ## Lessons Learned
 
@@ -795,6 +772,60 @@ Tiered online lookup for mood classification:
 #### Test Coverage
 
 Test count: **767 tests passing** (477 from Phase 6 + 290 new)
+
+---
+
+### Phase 8: Robustness & Windows-Path Support (February 2026)
+
+#### Retry with Exponential Backoff
+
+Online mood lookups (Last.fm, MusicBrainz) now retry on transient network errors with exponential backoff:
+
+- Base retry function `_retry_on_network_error()` handles `ConnectionError`, `OSError`, `URLError`
+- `extra_exceptions` parameter catches library-specific wrappers (`musicbrainzngs.NetworkError`, `pylast.NetworkError`)
+- Up to 3 retries with 1s → 2s → 4s backoff delays
+- Returns `None` after all retries exhausted (graceful degradation)
+
+#### Mood Analysis: No More "failed"
+
+Multi-tier fallback ensures every track gets a mood result:
+
+1. Cache check
+2. Online lookup (Last.fm → MusicBrainz) when enabled
+3. Primary local model (MTG-Jamendo or Heuristic)
+4. Fallback local model (the other one)
+5. "unknown" as last resort — never returns "failed" or "error"
+
+Tracks tagged `#unknown` can be re-analyzed later via "Re-analyze Unknown" button.
+
+#### Windows-Path Track Inclusion (MyNVMe Fix)
+
+The MyNVMe database contains Windows paths (`D:\...`). Previously, all analysis types excluded these tracks entirely.
+
+**Fix:** Windows-path tracks are now included in all three analysis types:
+- **Energy / MIK**: `_get_audio_tracks()` no longer hard-skips `is_windows_path`; only requires `Path.exists()` for non-Windows paths
+- **Mood**: `_get_mood_tracks()` includes Windows-path tracks regardless of online checkbox state
+- **Info labels**: Show "X tracks (Y local, Z remote)" breakdown when remote tracks are present
+- Workers handle missing files gracefully (cached results applied, non-cached fail with clear status)
+
+#### Bug Fixes
+
+- **`musicbrainzngs.NetworkError` not retried**: The retry function only caught base Python exceptions; library-specific wrappers escaped. Added `extra_exceptions` parameter.
+- **Mood info label wrong count**: Used `_get_audio_tracks()` instead of `_get_mood_tracks()` for the mood tab label.
+- **Mock exception classes in tests**: `MagicMock` attributes aren't valid exception classes — tests now create proper `type("NetworkError", (Exception,), {})` classes.
+
+#### Test Coverage
+
+Test count: **804 tests passing** (767 from Phase 7 + 37 new)
+
+New test classes:
+- `TestRetryOnNetworkError` (10 tests): Retry logic, backoff timing, extra_exceptions
+- `TestLastFmRetryIntegration` (2 tests): Connection reset retried in Last.fm lookups
+- `TestMusicBrainzRetryIntegration` (3 tests): NetworkError retried in MusicBrainz lookups
+- `TestAnalyzeMoodSingleFallback` (6 tests): Fallback model, unknown return, exception handling
+- `TestMoodWorkerOnlineIntegration` (8 tests): Online mood in GUI workers
+- `TestWindowsPathTrackInclusion` (6 tests): Windows-path tracks in all analysis types
+- Updated 7 existing tests for new "no failed" behavior
 
 ---
 

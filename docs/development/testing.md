@@ -69,7 +69,7 @@ tests/
 ├── test_mapper.py                    # VDJ→Serato mapping tests
 ├── test_measurement_cache.py         # MeasurementCache (SQLite) tests
 ├── test_models.py                    # Pydantic model tests
-├── test_mood_analysis.py             # Mood classification tests
+├── test_mood_analysis.py             # Mood classification + Windows-path track tests
 ├── test_normalization.py             # LUFS measurement tests
 ├── test_normalization_panel.py       # Normalization UI panel tests
 ├── test_normalization_panel_enhanced.py # Enhanced normalization tests
@@ -82,8 +82,10 @@ tests/
 ├── test_results_table.py             # ConfigurableResultsTable tests
 ├── test_resume_dialog.py             # Resume dialog tests
 ├── test_track_model.py               # Qt model tests
+├── test_online_mood.py               # Online mood lookup + retry tests
 ├── test_ui_app.py                    # Main window tests
-└── test_validator.py                 # File validation tests
+├── test_validator.py                 # File validation tests
+└── test_waveform_widget.py           # Waveform display + cue point tests
 ```
 
 ### Test Organization
@@ -519,4 +521,4 @@ def test_something_qt(self, qapp):
 | ui/workers/ | 80%+ |
 | ui/widgets/ | 70%+ |
 
-Current coverage: **477 tests passing**
+Current coverage: **804 tests passing**

@@ -32,12 +32,16 @@ Moods are stored in `Tags/@User2` as space-separated hashtags (e.g., "#happy #up
 
 ### Online Mood Enrichment
 
-When enabled, mood lookup uses a tiered approach:
+When enabled, mood lookup uses a multi-tier fallback chain that never gives up:
 
 1. **Last.fm track tags** (cleaned artist/title metadata)
 2. **Last.fm artist tags** (fallback when track has no tags)
 3. **MusicBrainz genres**
-4. **Local model analysis** (final fallback)
+4. **Primary local model** (MTG-Jamendo or Heuristic)
+5. **Fallback local model** (the other model)
+6. **"unknown"** (last resort — analysis never returns "failed")
+
+All online lookups use **exponential backoff retry** (up to 3 retries) for transient network errors, including library-specific exceptions like `musicbrainzngs.NetworkError` and `pylast.NetworkError`.
 
 Setup:
 
@@ -69,8 +73,11 @@ The **Analysis** tab provides 3 sub-tabs with real-time streaming results:
 - **Mood**: Multi-label mood classification with model selection
 
 Features:
+- **Windows-path support**: Databases with Windows paths (e.g., MyNVMe `D:\...`) are fully supported — cached results from previous runs are applied, and online mood lookup works for tracks with artist/title metadata
+- **Local/remote breakdown**: Info labels show "X tracks (Y local, Z remote)" when the database contains Windows paths
 - Format column showing file extension
 - Color-coded status (green for success, red for errors)
 - Sortable columns
 - Pause/Resume/Cancel controls
 - Persistent SQLite cache (`~/.vdj_manager/analysis.db`) avoids re-analyzing unchanged files
+- **No "failed" status**: Mood analysis always produces a result — uses multi-tier fallback (online → primary model → fallback model → "unknown")

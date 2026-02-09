@@ -18,7 +18,7 @@ pip install -e '.[serato]'          # Optional: Serato export support
 pip install -e '.[player]'          # Optional: VLC-based audio playback
 
 # Testing
-pytest tests/ -v                    # Run all tests (767 tests)
+pytest tests/ -v                    # Run all tests (804 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 

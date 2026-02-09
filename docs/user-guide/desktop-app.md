@@ -62,6 +62,8 @@ Results stream to the table in real-time as each file is analyzed, with:
 - **Sortable columns**: Click any column header to sort results
 - **Failure summary**: Status bar shows format breakdown on failures (e.g., "3 failed (.flac: 2, .wav: 1)")
 - **Row count**: Live result count displayed below the table
+- **Windows-path support**: Databases with Windows paths (e.g., external drives with `D:\...` paths) show all tracks — cached results are applied automatically, and online mood lookup works for tracks with metadata
+- **Retry with backoff**: Online lookups (Last.fm, MusicBrainz) automatically retry on network errors with exponential backoff
 
 A persistent SQLite cache (`~/.vdj_manager/analysis.db`) avoids re-analyzing unchanged files across sessions.
 
