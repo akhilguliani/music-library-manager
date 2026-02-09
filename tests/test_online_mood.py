@@ -26,32 +26,32 @@ class TestTagToMoodMapper:
         self.mapper = TagToMoodMapper()
 
     def test_map_tags_happy(self):
-        tags = [("uplifting", 100), ("feel good", 50)]
+        tags = [("happy", 100), ("cheerful", 50)]
         assert self.mapper.map_tags(tags) == "happy"
 
     def test_map_tags_sad(self):
-        tags = [("melancholy", 100), ("somber", 80)]
+        tags = [("sad", 100), ("somber", 80)]
         assert self.mapper.map_tags(tags) == "sad"
 
-    def test_map_tags_aggressive(self):
+    def test_map_tags_heavy(self):
         tags = [("metal", 100), ("brutal", 90)]
-        assert self.mapper.map_tags(tags) == "aggressive"
+        assert self.mapper.map_tags(tags) == "heavy"
 
-    def test_map_tags_relaxed(self):
-        tags = [("chill", 100), ("ambient", 80)]
-        assert self.mapper.map_tags(tags) == "relaxed"
-
-    def test_map_tags_acoustic(self):
-        tags = [("folk", 100), ("acoustic", 80)]
-        assert self.mapper.map_tags(tags) == "acoustic"
-
-    def test_map_tags_electronic(self):
-        tags = [("techno", 100), ("edm", 80)]
-        assert self.mapper.map_tags(tags) == "electronic"
+    def test_map_tags_calm(self):
+        tags = [("chill", 100), ("peaceful", 80)]
+        assert self.mapper.map_tags(tags) == "calm"
 
     def test_map_tags_party(self):
         tags = [("dance", 100), ("club", 80)]
         assert self.mapper.map_tags(tags) == "party"
+
+    def test_map_tags_energetic(self):
+        tags = [("techno", 100), ("edm", 80)]
+        assert self.mapper.map_tags(tags) == "energetic"
+
+    def test_map_tags_melancholic(self):
+        tags = [("melancholy", 100), ("nostalgic", 80)]
+        assert self.mapper.map_tags(tags) == "melancholic"
 
     def test_map_tags_weighted_scoring(self):
         """Higher count should win when tags map to different moods."""
@@ -66,13 +66,13 @@ class TestTagToMoodMapper:
         assert self.mapper.map_tags([]) is None
 
     def test_map_tags_case_insensitive(self):
-        tags = [("HAPPY", 100), ("Uplifting", 50)]
+        tags = [("HAPPY", 100), ("CHEERFUL", 50)]
         assert self.mapper.map_tags(tags) == "happy"
 
     def test_map_genres_success(self):
         genres = ["electronic", "techno", "ambient"]
-        # electronic + techno = 2 votes, ambient -> relaxed = 1 vote
-        assert self.mapper.map_genres(genres) == "electronic"
+        # electronic + techno = 2 votes for energetic, ambient -> soundscape = 1
+        assert self.mapper.map_genres(genres) == "energetic"
 
     def test_map_genres_no_match(self):
         genres = ["completely_unknown", "niche_genre"]
@@ -83,7 +83,9 @@ class TestTagToMoodMapper:
 
     def test_map_genres_case_insensitive(self):
         genres = ["Jazz", "BLUES"]
-        assert self.mapper.map_genres(genres) == "acoustic"
+        # jazz -> cool, blues -> emotional
+        result = self.mapper.map_genres(genres)
+        assert result in ("cool", "emotional")
 
 
 # =============================================================================
@@ -111,7 +113,7 @@ class TestLastFmLookup:
             pylast.LastFMNetwork.return_value = mock_network
             lookup = LastFmLookup(api_key="test_key")
             result = lookup.get_mood("Artist", "Title")
-            assert result == "relaxed"
+            assert result == "calm"
 
     def test_get_mood_track_not_found(self):
         """Should return None when track is not found."""
@@ -175,7 +177,7 @@ class TestMusicBrainzLookup:
             musicbrainzngs.search_recordings.return_value = mock_result
             lookup = MusicBrainzLookup()
             result = lookup.get_mood("Artist", "Title")
-            assert result in ("electronic", "party")
+            assert result in ("energetic", "party")
 
     def test_get_mood_no_results(self):
         """Should return None when no recordings found."""
@@ -222,9 +224,9 @@ class TestLookupOnlineMood:
         with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
              patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
             MockLfm.return_value.get_mood.return_value = None
-            MockMb.return_value.get_mood.return_value = "electronic"
+            MockMb.return_value.get_mood.return_value = "energetic"
             mood, source = lookup_online_mood("Artist", "Title2", "api_key")
-            assert mood == "electronic"
+            assert mood == "energetic"
             assert source == "musicbrainz"
 
     def test_both_fail_returns_none(self):
@@ -253,9 +255,9 @@ class TestLookupOnlineMood:
         _cached_online_lookup.cache_clear()
         with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
              patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
-            MockMb.return_value.get_mood.return_value = "relaxed"
+            MockMb.return_value.get_mood.return_value = "relaxing"
             mood, source = lookup_online_mood("Artist", "Title4", None)
-            assert mood == "relaxed"
+            assert mood == "relaxing"
             assert source == "musicbrainz"
             MockLfm.return_value.get_mood.assert_not_called()
 
@@ -268,10 +270,13 @@ class TestLookupOnlineMood:
 class TestTagToMoodDict:
     """Tests for the TAG_TO_MOOD mapping dictionary."""
 
-    def test_all_values_are_canonical_moods(self):
-        canonical = {"happy", "sad", "aggressive", "relaxed", "acoustic", "electronic", "party"}
+    def test_all_values_are_56_class_moods(self):
+        from vdj_manager.analysis.mood_backend import MOOD_CLASSES_SET
+
         for tag, mood in TAG_TO_MOOD.items():
-            assert mood in canonical, f"Tag '{tag}' maps to non-canonical mood '{mood}'"
+            assert mood in MOOD_CLASSES_SET, (
+                f"Tag '{tag}' maps to '{mood}' which is not in MOOD_CLASSES"
+            )
 
     def test_all_keys_are_lowercase(self):
         for tag in TAG_TO_MOOD:
@@ -279,4 +284,4 @@ class TestTagToMoodDict:
 
     def test_minimum_tag_count(self):
         """Should have a reasonable number of tag mappings."""
-        assert len(TAG_TO_MOOD) >= 70
+        assert len(TAG_TO_MOOD) >= 100
