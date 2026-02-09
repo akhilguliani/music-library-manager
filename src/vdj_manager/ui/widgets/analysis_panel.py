@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QTabWidget,
     QSpinBox,
+    QDoubleSpinBox,
+    QComboBox,
     QCheckBox,
     QMessageBox,
 )
@@ -77,6 +79,7 @@ class AnalysisPanel(QWidget):
         self.mik_scan_btn.setEnabled(has_db)
         self.mood_btn.setEnabled(has_db)
         self.mood_reanalyze_btn.setEnabled(has_db)
+        self.mood_reanalyze_all_btn.setEnabled(has_db)
         self._update_track_info()
 
     def _setup_ui(self) -> None:
@@ -245,6 +248,36 @@ class AnalysisPanel(QWidget):
         online_layout.addStretch()
         layout.addLayout(online_layout)
 
+        # Model settings
+        model_layout = QHBoxLayout()
+
+        model_layout.addWidget(QLabel("Model:"))
+        self.mood_model_combo = QComboBox()
+        self.mood_model_combo.addItem("MTG-Jamendo (recommended)", "mtg-jamendo")
+        self.mood_model_combo.addItem("Heuristic (legacy)", "heuristic")
+        self.mood_model_combo.setToolTip("Mood analysis model to use")
+        model_layout.addWidget(self.mood_model_combo)
+
+        self.mood_threshold_spin = QDoubleSpinBox()
+        self.mood_threshold_spin.setRange(0.01, 0.50)
+        self.mood_threshold_spin.setSingleStep(0.01)
+        self.mood_threshold_spin.setValue(0.10)
+        self.mood_threshold_spin.setPrefix("Threshold: ")
+        self.mood_threshold_spin.setToolTip(
+            "Min confidence to include a mood tag (lower = more tags)"
+        )
+        model_layout.addWidget(self.mood_threshold_spin)
+
+        self.mood_max_tags_spin = QSpinBox()
+        self.mood_max_tags_spin.setRange(1, 10)
+        self.mood_max_tags_spin.setValue(5)
+        self.mood_max_tags_spin.setPrefix("Max tags: ")
+        self.mood_max_tags_spin.setToolTip("Maximum number of mood tags per track")
+        model_layout.addWidget(self.mood_max_tags_spin)
+
+        model_layout.addStretch()
+        layout.addLayout(model_layout)
+
         # Controls
         controls_layout = QHBoxLayout()
 
@@ -261,6 +294,14 @@ class AnalysisPanel(QWidget):
         )
         self.mood_reanalyze_btn.clicked.connect(self._on_mood_reanalyze_clicked)
         controls_layout.addWidget(self.mood_reanalyze_btn)
+
+        self.mood_reanalyze_all_btn = QPushButton("Re-analyze All")
+        self.mood_reanalyze_all_btn.setEnabled(False)
+        self.mood_reanalyze_all_btn.setToolTip(
+            "Invalidate mood cache and re-analyze all tracks with the selected model"
+        )
+        self.mood_reanalyze_all_btn.clicked.connect(self._on_mood_reanalyze_all_clicked)
+        controls_layout.addWidget(self.mood_reanalyze_all_btn)
 
         controls_layout.addStretch()
 
@@ -561,12 +602,19 @@ class AnalysisPanel(QWidget):
         enable_online = self.mood_online_checkbox.isChecked()
         lastfm_api_key = get_lastfm_api_key() if enable_online else None
 
+        model_name = self.mood_model_combo.currentData()
+        threshold = self.mood_threshold_spin.value()
+        max_tags = self.mood_max_tags_spin.value()
+
         self._mood_worker = MoodWorker(
             self._database, tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
             enable_online=enable_online,
             lastfm_api_key=lastfm_api_key,
+            model_name=model_name,
+            threshold=threshold,
+            max_tags=max_tags,
         )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
@@ -622,6 +670,10 @@ class AnalysisPanel(QWidget):
 
         lastfm_api_key = get_lastfm_api_key()
 
+        model_name = self.mood_model_combo.currentData()
+        threshold = self.mood_threshold_spin.value()
+        max_tags = self.mood_max_tags_spin.value()
+
         self._mood_worker = MoodWorker(
             self._database, tracks,
             max_workers=self.workers_spin.value(),
@@ -629,6 +681,9 @@ class AnalysisPanel(QWidget):
             enable_online=True,
             lastfm_api_key=lastfm_api_key,
             skip_cache=True,
+            model_name=model_name,
+            threshold=threshold,
+            max_tags=max_tags,
         )
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
@@ -649,11 +704,88 @@ class AnalysisPanel(QWidget):
 
         self._mood_worker.start()
 
+    def _on_mood_reanalyze_all_clicked(self) -> None:
+        """Re-analyze ALL tracks, invalidating mood cache first."""
+        if self.is_running():
+            QMessageBox.warning(self, "Already Running", "An analysis is already in progress.")
+            return
+        if self._database is None:
+            return
+
+        tracks = self._get_audio_tracks()
+        if not tracks:
+            QMessageBox.information(self, "No Tracks", "No tracks to analyze.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Re-analyze All",
+            f"This will re-analyze mood for all {len(tracks)} audio tracks, "
+            "invalidating existing mood cache.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Invalidate all mood cache entries
+        from vdj_manager.analysis.analysis_cache import AnalysisCache
+        cache = AnalysisCache(db_path=DEFAULT_ANALYSIS_CACHE_PATH)
+        cache.invalidate_by_type_prefix("mood:")
+
+        # Auto-backup
+        try:
+            from vdj_manager.core.backup import BackupManager
+            BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze_all")
+        except Exception:
+            pass
+
+        self.mood_btn.setEnabled(False)
+        self.mood_reanalyze_btn.setEnabled(False)
+        self.mood_reanalyze_all_btn.setEnabled(False)
+        self.mood_status.setText(f"Re-analyzing all {len(tracks)} tracks...")
+        self.mood_results.clear()
+
+        model_name = self.mood_model_combo.currentData()
+        threshold = self.mood_threshold_spin.value()
+        max_tags = self.mood_max_tags_spin.value()
+        enable_online = self.mood_online_checkbox.isChecked()
+        lastfm_api_key = get_lastfm_api_key() if enable_online else None
+
+        self._mood_worker = MoodWorker(
+            self._database, tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=enable_online,
+            lastfm_api_key=lastfm_api_key,
+            skip_cache=True,
+            model_name=model_name,
+            threshold=threshold,
+            max_tags=max_tags,
+        )
+        self._mood_worker.finished_work.connect(self._on_mood_finished)
+        self._mood_worker.error.connect(self._on_mood_error)
+        self._mood_worker.result_ready.connect(self.mood_results.add_result)
+
+        self.mood_progress.reset()
+        self.mood_progress.start(len(tracks))
+        self.mood_progress.setVisible(True)
+        self._mood_worker.progress.connect(self.mood_progress.update_progress)
+        self._mood_worker.status_changed.connect(self.mood_progress.on_status_changed)
+        self._mood_worker.finished_work.connect(
+            lambda _: self.mood_progress.on_finished(True, "Done")
+        )
+        self.mood_progress.pause_requested.connect(self._mood_worker.pause)
+        self.mood_progress.resume_requested.connect(self._mood_worker.resume)
+        self.mood_progress.cancel_requested.connect(self._mood_worker.cancel)
+
+        self._mood_worker.start()
+
     @Slot(object)
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood analysis completion."""
         self.mood_btn.setEnabled(True)
         self.mood_reanalyze_btn.setEnabled(True)
+        self.mood_reanalyze_all_btn.setEnabled(True)
 
         if result.get("error"):
             self.mood_status.setText(f"Error: {result['error']}")
@@ -678,4 +810,5 @@ class AnalysisPanel(QWidget):
         """Handle mood analysis error."""
         self.mood_btn.setEnabled(True)
         self.mood_reanalyze_btn.setEnabled(True)
+        self.mood_reanalyze_all_btn.setEnabled(True)
         self.mood_status.setText(f"Error: {error}")

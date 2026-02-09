@@ -597,6 +597,40 @@ class TestFormatColumnAndFailureSummary:
         assert summary == ""
 
 
+class TestMoodModelControls:
+    """Tests for mood model selector, threshold, max_tags, and Re-analyze All."""
+
+    def test_mood_model_combo_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_model_combo is not None
+        assert panel.mood_model_combo.count() == 2
+
+    def test_mood_model_combo_default_mtg_jamendo(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_model_combo.currentData() == "mtg-jamendo"
+
+    def test_mood_threshold_spin_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_threshold_spin is not None
+        assert panel.mood_threshold_spin.value() == 0.10
+
+    def test_mood_max_tags_spin_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_max_tags_spin is not None
+        assert panel.mood_max_tags_spin.value() == 5
+
+    def test_reanalyze_all_button_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.mood_reanalyze_all_btn is not None
+        assert not panel.mood_reanalyze_all_btn.isEnabled()
+
+    def test_reanalyze_all_button_enabled_with_database(self, qapp):
+        panel = AnalysisPanel()
+        mock_db = MagicMock()
+        panel.set_database(mock_db, [_make_song("/a.mp3")])
+        assert panel.mood_reanalyze_all_btn.isEnabled()
+
+
 class TestWorkerResultReady:
     """Tests for result_ready signal streaming."""
 
