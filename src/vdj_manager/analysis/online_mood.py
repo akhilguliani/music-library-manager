@@ -2,8 +2,10 @@
 
 Provides tiered online lookup: Last.fm tags -> MusicBrainz genres -> None.
 Maps freeform tags/genres to the 56-class MTG-Jamendo mood vocabulary.
+Cleans metadata (feat., remix, etc.) before querying for better hit rates.
 """
 
+import re
 import threading
 import time
 from functools import lru_cache
@@ -225,6 +227,59 @@ TAG_TO_MOOD: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Metadata cleaning
+# ---------------------------------------------------------------------------
+
+_FEAT_SPLIT_RE = re.compile(
+    r"\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+",
+    re.IGNORECASE,
+)
+
+_ARTIST_SPLIT_RE = re.compile(
+    r",\s*|\s+&\s+|\s*/\s*",
+)
+
+
+def _clean_artist(author: str) -> str:
+    """Extract primary artist name for online lookup.
+
+    Strips featured artists and takes the first from comma/&/slash-separated
+    lists.  E.g. ``'Jason Derulo feat. Nicki Minaj & Ty Dolla $ign'``
+    becomes ``'Jason Derulo'``.
+    """
+    # Remove feat/ft portions first
+    parts = _FEAT_SPLIT_RE.split(author, maxsplit=1)
+    name = parts[0]
+    # Then take first artist from comma / & / slash list
+    name = _ARTIST_SPLIT_RE.split(name, maxsplit=1)[0]
+    cleaned = name.strip()
+    return cleaned or author.strip()
+
+
+def _clean_title(title: str) -> str:
+    """Remove noise from title for better online matching.
+
+    Strips parenthetical info ``(Remix)``, bracket info ``[Remix]``,
+    ``- feat./ft.`` suffixes, and handles ``'Album - Title'`` duplication
+    like ``'Samjho Na - Samjho Na'``.
+    """
+    t = title
+    # Remove (...) and [...] content
+    t = re.sub(r"\s*\([^)]*\)", "", t)
+    t = re.sub(r"\s*\[[^\]]*\]", "", t)
+    # Remove '- feat./ft. ...' suffixes
+    t = re.sub(r"\s*[-–]\s*(?:feat\.?|ft\.?).*$", "", t, flags=re.IGNORECASE)
+    # Handle 'Album - Title' duplication: take last dash-separated part
+    if " - " in t:
+        parts = [p.strip() for p in t.split(" - ")]
+        # If two identical parts, use just one
+        if len(parts) == 2 and parts[0].lower() == parts[1].lower():
+            t = parts[0]
+    cleaned = t.strip()
+    return cleaned or title.strip()
+
+
 class TagToMoodMapper:
     """Maps freeform tags/genres to canonical moods via weighted scoring."""
 
@@ -344,6 +399,32 @@ class LastFmLookup:
         except Exception:
             return None
 
+    def get_mood_from_artist(self, artist: str) -> Optional[str]:
+        """Get mood from artist's top tags (fallback when track has no tags).
+
+        Args:
+            artist: Artist name.
+
+        Returns:
+            Canonical mood string or None.
+        """
+        try:
+            import pylast
+        except ImportError:
+            return None
+
+        try:
+            _lastfm_limiter.wait()
+            network = pylast.LastFMNetwork(api_key=self._api_key)
+            artist_obj = network.get_artist(artist)
+            top_tags = artist_obj.get_top_tags(limit=15)
+            tags = [(t.item.get_name(), int(t.weight)) for t in top_tags]
+            return self._mapper.map_tags(tags)
+        except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
+            return None
+        except Exception:
+            return None
+
 
 # ---------------------------------------------------------------------------
 # MusicBrainz lookup
@@ -400,19 +481,31 @@ def _cached_online_lookup(
 ) -> tuple[Optional[str], str]:
     """Cached online lookup (deduplicates identical artist+title pairs).
 
+    Cleans metadata before querying and falls back to artist-level tags
+    when track-level tags are empty.
+
     Returns:
-        (mood, source) where source is "lastfm", "musicbrainz", or "none".
+        (mood, source) where source is "lastfm", "lastfm-artist",
+        "musicbrainz", or "none".
     """
-    # Try Last.fm first
+    clean_a = _clean_artist(artist)
+    clean_t = _clean_title(title)
+
+    # Try Last.fm track tags (cleaned)
     if lastfm_api_key:
         lfm = LastFmLookup(lastfm_api_key)
-        mood = lfm.get_mood(artist, title)
+        mood = lfm.get_mood(clean_a, clean_t)
         if mood:
             return mood, "lastfm"
 
-    # Fall back to MusicBrainz
+        # Fall back to Last.fm artist tags
+        mood = lfm.get_mood_from_artist(clean_a)
+        if mood:
+            return mood, "lastfm-artist"
+
+    # Fall back to MusicBrainz (cleaned)
     mb = MusicBrainzLookup()
-    mood = mb.get_mood(artist, title)
+    mood = mb.get_mood(clean_a, clean_t)
     if mood:
         return mood, "musicbrainz"
 
@@ -426,17 +519,18 @@ def lookup_online_mood(
 ) -> tuple[Optional[str], str]:
     """Look up mood from online databases.
 
-    Tries Last.fm first, then MusicBrainz, returns None if both fail.
-    Uses LRU cache internally to deduplicate identical artist+title
-    pairs within a batch run.
+    Cleans artist/title metadata, then tries Last.fm track tags,
+    Last.fm artist tags, and MusicBrainz in order. Uses LRU cache
+    internally to deduplicate identical artist+title pairs.
 
     Args:
-        artist: Artist name.
-        title: Track title.
+        artist: Artist name (may contain feat., commas, etc.).
+        title: Track title (may contain remix info, parentheticals, etc.).
         lastfm_api_key: Optional Last.fm API key.
 
     Returns:
-        (mood, source) tuple. source is "lastfm", "musicbrainz", or "none".
+        (mood, source) tuple. source is "lastfm", "lastfm-artist",
+        "musicbrainz", or "none".
     """
     if not artist or not title:
         return None, "none"

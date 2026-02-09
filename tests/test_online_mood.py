@@ -11,6 +11,8 @@ from vdj_manager.analysis.online_mood import (
     MusicBrainzLookup,
     lookup_online_mood,
     _cached_online_lookup,
+    _clean_artist,
+    _clean_title,
 )
 
 
@@ -218,23 +220,37 @@ class TestLookupOnlineMood:
             assert source == "lastfm"
             MockMb.return_value.get_mood.assert_not_called()
 
-    def test_lastfm_fails_tries_mb(self):
-        """Should fall back to MusicBrainz when Last.fm fails."""
+    def test_lastfm_track_fails_tries_artist(self):
+        """Should fall back to artist tags when track tags are empty."""
         _cached_online_lookup.cache_clear()
         with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
              patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
             MockLfm.return_value.get_mood.return_value = None
-            MockMb.return_value.get_mood.return_value = "energetic"
+            MockLfm.return_value.get_mood_from_artist.return_value = "party"
             mood, source = lookup_online_mood("Artist", "Title2", "api_key")
+            assert mood == "party"
+            assert source == "lastfm-artist"
+            MockMb.return_value.get_mood.assert_not_called()
+
+    def test_lastfm_all_fail_tries_mb(self):
+        """Should fall back to MusicBrainz when all Last.fm lookups fail."""
+        _cached_online_lookup.cache_clear()
+        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
+             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+            MockLfm.return_value.get_mood.return_value = None
+            MockLfm.return_value.get_mood_from_artist.return_value = None
+            MockMb.return_value.get_mood.return_value = "energetic"
+            mood, source = lookup_online_mood("Artist", "Title5", "api_key")
             assert mood == "energetic"
             assert source == "musicbrainz"
 
-    def test_both_fail_returns_none(self):
-        """Should return (None, 'none') when both services fail."""
+    def test_all_fail_returns_none(self):
+        """Should return (None, 'none') when all services fail."""
         _cached_online_lookup.cache_clear()
         with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
              patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
             MockLfm.return_value.get_mood.return_value = None
+            MockLfm.return_value.get_mood_from_artist.return_value = None
             MockMb.return_value.get_mood.return_value = None
             mood, source = lookup_online_mood("Artist", "Title3", "api_key")
             assert mood is None
@@ -260,6 +276,103 @@ class TestLookupOnlineMood:
             assert mood == "relaxing"
             assert source == "musicbrainz"
             MockLfm.return_value.get_mood.assert_not_called()
+
+    def test_cleaning_applied_before_lookup(self):
+        """Metadata should be cleaned before querying online services."""
+        _cached_online_lookup.cache_clear()
+        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
+             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup"):
+            MockLfm.return_value.get_mood.return_value = "happy"
+            lookup_online_mood(
+                "Jason Derulo feat. Nicki Minaj", "Swalla (Remix)", "key"
+            )
+            # Should have been called with cleaned values
+            MockLfm.return_value.get_mood.assert_called_once_with(
+                "Jason Derulo", "Swalla"
+            )
+
+
+# =============================================================================
+# _clean_artist tests
+# =============================================================================
+
+
+class TestCleanArtist:
+    """Tests for artist metadata cleaning."""
+
+    def test_strips_feat(self):
+        assert _clean_artist("Jason Derulo feat. Nicki Minaj") == "Jason Derulo"
+
+    def test_strips_ft(self):
+        assert _clean_artist("Drake ft. Rihanna") == "Drake"
+
+    def test_strips_featuring(self):
+        assert _clean_artist("Eminem featuring Dido") == "Eminem"
+
+    def test_strips_comma_separated(self):
+        assert _clean_artist("Kenny G, Robin Thicke") == "Kenny G"
+
+    def test_strips_ampersand(self):
+        assert _clean_artist("Simon & Garfunkel") == "Simon"
+
+    def test_strips_slash(self):
+        assert _clean_artist("Artist1 / Artist2") == "Artist1"
+
+    def test_feat_plus_comma(self):
+        assert _clean_artist("DJ Khaled feat. Rihanna, Bryson Tiller") == "DJ Khaled"
+
+    def test_no_change_needed(self):
+        assert _clean_artist("Adele") == "Adele"
+
+    def test_empty_returns_original(self):
+        assert _clean_artist("") == ""
+
+    def test_preserves_original_if_cleaning_empty(self):
+        # Edge case: if splitting produces empty, return original stripped
+        assert _clean_artist("  Adele  ") == "Adele"
+
+
+# =============================================================================
+# _clean_title tests
+# =============================================================================
+
+
+class TestCleanTitle:
+    """Tests for title metadata cleaning."""
+
+    def test_strips_parenthetical(self):
+        assert _clean_title("Swalla (Remix)") == "Swalla"
+
+    def test_strips_brackets(self):
+        assert _clean_title("Song [Radio Edit]") == "Song"
+
+    def test_strips_feat_suffix(self):
+        assert _clean_title("U Move, I Move - feat. Jhene Aiko") == "U Move, I Move"
+
+    def test_strips_ft_suffix(self):
+        assert _clean_title("Song - ft. Someone") == "Song"
+
+    def test_deduplicates_dash_title(self):
+        assert _clean_title("Samjho Na - Samjho Na") == "Samjho Na"
+
+    def test_keeps_different_dash_parts(self):
+        assert _clean_title("Album - Song Title") == "Album - Song Title"
+
+    def test_strips_multiple_parens(self):
+        assert _clean_title("Song (feat. X) (Remix)") == "Song"
+
+    def test_no_change_needed(self):
+        assert _clean_title("Normal Title") == "Normal Title"
+
+    def test_empty_returns_original(self):
+        assert _clean_title("") == ""
+
+    def test_preserves_original_if_cleaning_empty(self):
+        # If everything is in parens, return original
+        assert _clean_title("(Remix)") == "(Remix)"
+
+    def test_en_dash_feat(self):
+        assert _clean_title("Song \u2013 feat. Artist") == "Song"
 
 
 # =============================================================================
