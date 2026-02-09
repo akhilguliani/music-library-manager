@@ -359,19 +359,29 @@ class _RateLimiter:
             self._last_time = time.monotonic()
 
 
-def _retry_on_network_error(func, max_retries: int = 3, base_delay: float = 1.0):
+def _retry_on_network_error(
+    func,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    extra_exceptions: tuple = (),
+):
     """Retry a callable on transient network errors with exponential backoff.
 
-    Catches ConnectionError, URLError, and library-specific network errors.
+    Catches ConnectionError, OSError, URLError, and any additional exception
+    types passed via *extra_exceptions* (e.g. library-specific wrappers like
+    ``musicbrainzngs.NetworkError`` or ``pylast.NetworkError``).
+
     Returns None after all retries are exhausted.
     """
     from urllib.error import URLError
+
+    retryable = (ConnectionError, OSError, URLError) + tuple(extra_exceptions)
 
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
             return func()
-        except (ConnectionError, OSError, URLError) as e:
+        except retryable as e:
             last_exc = e
             if attempt < max_retries:
                 delay = base_delay * (2 ** attempt)
@@ -427,8 +437,11 @@ class LastFmLookup:
             return self._mapper.map_tags(tags)
 
         try:
-            return _retry_on_network_error(_do_lookup)
-        except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
+            return _retry_on_network_error(
+                _do_lookup,
+                extra_exceptions=(pylast.NetworkError,),
+            )
+        except (pylast.WSError, pylast.MalformedResponseError):
             return None
         except Exception:
             logger.warning("Last.fm track lookup failed for %s - %s", artist, title, exc_info=True)
@@ -459,8 +472,11 @@ class LastFmLookup:
             return self._mapper.map_tags(tags)
 
         try:
-            return _retry_on_network_error(_do_lookup)
-        except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
+            return _retry_on_network_error(
+                _do_lookup,
+                extra_exceptions=(pylast.NetworkError,),
+            )
+        except (pylast.WSError, pylast.MalformedResponseError):
             return None
         except Exception:
             logger.warning("Last.fm artist lookup failed for %s", artist, exc_info=True)
@@ -512,7 +528,10 @@ class MusicBrainzLookup:
             return self._mapper.map_genres(genres)
 
         try:
-            return _retry_on_network_error(_do_lookup)
+            return _retry_on_network_error(
+                _do_lookup,
+                extra_exceptions=(musicbrainzngs.NetworkError,),
+            )
         except Exception:
             logger.warning("MusicBrainz lookup failed for %s - %s", artist, title, exc_info=True)
             return None

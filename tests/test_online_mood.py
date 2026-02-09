@@ -512,6 +512,43 @@ class TestRetryOnNetworkError:
         assert result is None
         assert call_count == 1
 
+    def test_extra_exceptions_are_retried(self):
+        """Custom exception types passed via extra_exceptions should be retried."""
+        class LibraryNetworkError(Exception):
+            pass
+
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise LibraryNetworkError("wrapped connection reset")
+            return "recovered"
+
+        with patch("vdj_manager.analysis.online_mood.time.sleep"):
+            result = _retry_on_network_error(
+                flaky, extra_exceptions=(LibraryNetworkError,)
+            )
+        assert result == "recovered"
+        assert call_count == 3
+
+    def test_extra_exceptions_not_retried_without_param(self):
+        """Custom exceptions should NOT be retried if not passed to extra_exceptions."""
+        class LibraryNetworkError(Exception):
+            pass
+
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            raise LibraryNetworkError("not retried")
+
+        with pytest.raises(LibraryNetworkError):
+            _retry_on_network_error(flaky)
+        assert call_count == 1
+
 
 class TestLastFmRetryIntegration:
     """Tests verifying retry logic is wired into Last.fm lookups."""
@@ -540,6 +577,10 @@ class TestLastFmRetryIntegration:
         with patch.dict("sys.modules", {"pylast": MagicMock()}), \
              patch("vdj_manager.analysis.online_mood.time.sleep"):
             import pylast
+            # Set up real exception classes so except clauses work
+            pylast.NetworkError = type("NetworkError", (Exception,), {})
+            pylast.WSError = type("WSError", (Exception,), {})
+            pylast.MalformedResponseError = type("MalformedResponseError", (Exception,), {})
             pylast.LastFMNetwork.return_value = mock_network
             lookup = LastFmLookup(api_key="test_key")
             result = lookup.get_mood("Artist", "Title")
@@ -570,6 +611,10 @@ class TestLastFmRetryIntegration:
         with patch.dict("sys.modules", {"pylast": MagicMock()}), \
              patch("vdj_manager.analysis.online_mood.time.sleep"):
             import pylast
+            # Set up real exception classes so except clauses work
+            pylast.NetworkError = type("NetworkError", (Exception,), {})
+            pylast.WSError = type("WSError", (Exception,), {})
+            pylast.MalformedResponseError = type("MalformedResponseError", (Exception,), {})
             pylast.LastFMNetwork.return_value = mock_network
             lookup = LastFmLookup(api_key="test_key")
             result = lookup.get_mood_from_artist("Artist")
@@ -592,6 +637,8 @@ class TestMusicBrainzRetryIntegration:
         with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
              patch("vdj_manager.analysis.online_mood.time.sleep"):
             import musicbrainzngs
+            # Set up real exception class so except clause works
+            musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
 
             def flaky_search(**kwargs):
                 nonlocal call_count
@@ -606,13 +653,44 @@ class TestMusicBrainzRetryIntegration:
             assert result in ("energetic", "party")
             assert call_count == 2
 
+    def test_musicbrainz_retries_on_library_network_error(self):
+        """MusicBrainz should retry on musicbrainzngs.NetworkError (wraps URLError)."""
+        call_count = 0
+        mock_result = {
+            "recording-list": [{
+                "tag-list": [{"name": "electronic"}, {"name": "dance"}]
+            }]
+        }
+
+        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
+             patch("vdj_manager.analysis.online_mood.time.sleep"):
+            import musicbrainzngs
+            # Create a real-ish NetworkError class (like the library does)
+            musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
+
+            def flaky_search(**kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count < 3:
+                    raise musicbrainzngs.NetworkError(
+                        "caused by: <urlopen error [Errno 54] Connection reset by peer>"
+                    )
+                return mock_result
+
+            musicbrainzngs.search_recordings.side_effect = flaky_search
+            lookup = MusicBrainzLookup()
+            result = lookup.get_mood("Artist", "Title")
+            assert result in ("energetic", "party")
+            assert call_count == 3
+
     def test_musicbrainz_all_retries_exhausted(self):
         """MusicBrainz should return None when all retries fail."""
         with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
              patch("vdj_manager.analysis.online_mood.time.sleep"):
             import musicbrainzngs
-            musicbrainzngs.search_recordings.side_effect = ConnectionResetError(
-                "[Errno 54] Connection reset by peer"
+            musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
+            musicbrainzngs.search_recordings.side_effect = musicbrainzngs.NetworkError(
+                "caused by: <urlopen error [Errno 54] Connection reset by peer>"
             )
             lookup = MusicBrainzLookup()
             result = lookup.get_mood("Artist", "Title")
