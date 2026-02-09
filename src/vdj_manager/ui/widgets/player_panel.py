@@ -249,7 +249,7 @@ class PlayerPanel(QWidget):
 
         # Cue points
         if track.cue_points:
-            cues = [(cp["time"], cp.get("label", str(i + 1)))
+            cues = [(cp["pos"], cp.get("name", str(i + 1)))
                     for i, cp in enumerate(track.cue_points)]
             self.waveform.set_cue_points(cues)
 

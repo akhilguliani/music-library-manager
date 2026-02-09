@@ -61,6 +61,26 @@ class TestPlayerPanel:
         assert panel.energy_label.text() == "Energy: 7"
         assert panel.mood_label.text() == "Mood: #happy"
 
+    def test_track_with_cue_points(self, qapp, player_panel):
+        """Track with cue points should set them on waveform widget."""
+        panel, bridge = player_panel
+        track = TrackInfo(
+            file_path="/cue.mp3",
+            title="Cue Song",
+            cue_points=[
+                {"pos": 30.0, "name": "Intro", "num": 1},
+                {"pos": 90.0, "name": "Drop", "num": 2},
+            ],
+        )
+        with patch.object(panel, "_load_album_art"), \
+             patch.object(panel, "_load_waveform"):
+            bridge._emit_track(track)
+            qapp.processEvents()
+
+        assert len(panel.waveform._cue_points) == 2
+        assert panel.waveform._cue_points[0] == (30.0, "Intro")
+        assert panel.waveform._cue_points[1] == (90.0, "Drop")
+
     def test_track_without_metadata(self, qapp, player_panel):
         """Track without metadata should show defaults."""
         panel, bridge = player_panel
