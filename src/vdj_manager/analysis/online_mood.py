@@ -359,6 +359,32 @@ class _RateLimiter:
             self._last_time = time.monotonic()
 
 
+def _retry_on_network_error(func, max_retries: int = 3, base_delay: float = 1.0):
+    """Retry a callable on transient network errors with exponential backoff.
+
+    Catches ConnectionError, URLError, and library-specific network errors.
+    Returns None after all retries are exhausted.
+    """
+    from urllib.error import URLError
+
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except (ConnectionError, OSError, URLError) as e:
+            last_exc = e
+            if attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logger.debug(
+                    "Network error (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1, max_retries + 1, delay, e,
+                )
+                time.sleep(delay)
+            else:
+                logger.warning("Network error after %d attempts: %s", max_retries + 1, e)
+    return None
+
+
 # Module-level rate limiters
 _lastfm_limiter = _RateLimiter(rate=5.0)
 _musicbrainz_limiter = _RateLimiter(rate=1.0)
@@ -378,6 +404,8 @@ class LastFmLookup:
     def get_mood(self, artist: str, title: str) -> Optional[str]:
         """Get mood for a track from Last.fm top tags.
 
+        Retries on transient network errors with exponential backoff.
+
         Args:
             artist: Artist name.
             title: Track title.
@@ -390,13 +418,16 @@ class LastFmLookup:
         except ImportError:
             return None
 
-        try:
+        def _do_lookup():
             _lastfm_limiter.wait()
             network = pylast.LastFMNetwork(api_key=self._api_key)
             track = network.get_track(artist, title)
             top_tags = track.get_top_tags(limit=15)
             tags = [(t.item.get_name(), int(t.weight)) for t in top_tags]
             return self._mapper.map_tags(tags)
+
+        try:
+            return _retry_on_network_error(_do_lookup)
         except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
             return None
         except Exception:
@@ -405,6 +436,8 @@ class LastFmLookup:
 
     def get_mood_from_artist(self, artist: str) -> Optional[str]:
         """Get mood from artist's top tags (fallback when track has no tags).
+
+        Retries on transient network errors with exponential backoff.
 
         Args:
             artist: Artist name.
@@ -417,13 +450,16 @@ class LastFmLookup:
         except ImportError:
             return None
 
-        try:
+        def _do_lookup():
             _lastfm_limiter.wait()
             network = pylast.LastFMNetwork(api_key=self._api_key)
             artist_obj = network.get_artist(artist)
             top_tags = artist_obj.get_top_tags(limit=15)
             tags = [(t.item.get_name(), int(t.weight)) for t in top_tags]
             return self._mapper.map_tags(tags)
+
+        try:
+            return _retry_on_network_error(_do_lookup)
         except (pylast.WSError, pylast.NetworkError, pylast.MalformedResponseError):
             return None
         except Exception:
@@ -444,6 +480,8 @@ class MusicBrainzLookup:
     def get_mood(self, artist: str, title: str) -> Optional[str]:
         """Get mood for a track from MusicBrainz genres.
 
+        Retries on transient network errors with exponential backoff.
+
         Args:
             artist: Artist name.
             title: Track title.
@@ -456,7 +494,7 @@ class MusicBrainzLookup:
         except ImportError:
             return None
 
-        try:
+        def _do_lookup():
             _musicbrainz_limiter.wait()
             musicbrainzngs.set_useragent("VDJ-Manager", "0.1.0", "")
             result = musicbrainzngs.search_recordings(
@@ -472,6 +510,9 @@ class MusicBrainzLookup:
             for tag in recording.get("tag-list", []):
                 genres.append(tag.get("name", ""))
             return self._mapper.map_genres(genres)
+
+        try:
+            return _retry_on_network_error(_do_lookup)
         except Exception:
             logger.warning("MusicBrainz lookup failed for %s - %s", artist, title, exc_info=True)
             return None
