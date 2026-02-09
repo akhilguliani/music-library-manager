@@ -300,6 +300,120 @@ class TestAnalyzeMoodSingleOnline:
 
 
 # =============================================================================
+# _analyze_mood_single fallback + unknown tests
+# =============================================================================
+
+
+class TestAnalyzeMoodSingleFallback:
+    """Tests for fallback model and 'unknown' last resort in _analyze_mood_single."""
+
+    def test_fallback_model_used_when_primary_fails(self):
+        """When primary model returns None, fallback model should be tried."""
+        primary = MagicMock()
+        primary.is_available = True
+        primary.get_mood_tags.return_value = None
+
+        fallback = MagicMock()
+        fallback.is_available = True
+        fallback.get_mood_tags.return_value = ["calm"]
+
+        def fake_get_backend(model):
+            from vdj_manager.analysis.mood_backend import MoodModel
+            if model == MoodModel.MTG_JAMENDO:
+                return primary
+            return fallback
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", side_effect=fake_get_backend):
+            result = _analyze_mood_single("/a.mp3", model_name="mtg-jamendo")
+            assert result["mood"] == "calm"
+            assert result["mood_tags"] == ["calm"]
+            assert "local:heuristic" in result["status"]
+
+    def test_unknown_returned_when_all_backends_fail(self):
+        """When both backends return None, 'unknown' should be returned."""
+        mock_backend = MagicMock()
+        mock_backend.is_available = True
+        mock_backend.get_mood_tags.return_value = None
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+            result = _analyze_mood_single("/a.mp3", model_name="heuristic")
+            assert result["mood"] == "unknown"
+            assert result["mood_tags"] == ["unknown"]
+            assert result["status"] == "ok (unknown)"
+
+    def test_unknown_returned_when_backend_unavailable(self):
+        """When fallback backend is not available, 'unknown' should be returned."""
+        primary = MagicMock()
+        primary.is_available = True
+        primary.get_mood_tags.return_value = None
+
+        fallback = MagicMock()
+        fallback.is_available = False
+
+        def fake_get_backend(model):
+            from vdj_manager.analysis.mood_backend import MoodModel
+            if model == MoodModel.MTG_JAMENDO:
+                return primary
+            return fallback
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", side_effect=fake_get_backend):
+            result = _analyze_mood_single("/a.mp3", model_name="mtg-jamendo")
+            assert result["mood"] == "unknown"
+            assert result["mood_tags"] == ["unknown"]
+            assert result["status"] == "ok (unknown)"
+
+    def test_exception_returns_unknown_not_error(self):
+        """Exceptions should produce 'unknown' status, not 'error:...'."""
+        mock_backend = MagicMock()
+        mock_backend.is_available = True
+        mock_backend.get_mood_tags.side_effect = RuntimeError("audio load failed")
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+            result = _analyze_mood_single("/a.mp3", model_name="heuristic")
+            assert result["mood"] == "unknown"
+            assert result["mood_tags"] == ["unknown"]
+            assert result["status"] == "ok (unknown)"
+            assert "error" not in result["status"]
+
+    def test_fallback_skipped_when_primary_succeeds(self):
+        """Fallback should not be tried when primary model succeeds."""
+        primary = MagicMock()
+        primary.is_available = True
+        primary.get_mood_tags.return_value = ["happy"]
+
+        call_count = 0
+        original_get_backend = None
+
+        def counting_get_backend(model):
+            nonlocal call_count
+            call_count += 1
+            return primary
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", side_effect=counting_get_backend):
+            result = _analyze_mood_single("/a.mp3", model_name="heuristic")
+            assert result["mood"] == "happy"
+            assert call_count == 1  # Only primary called, no fallback
+
+    def test_unknown_cached_when_cache_provided(self):
+        """'unknown' result should be cached like any other result."""
+        mock_backend = MagicMock()
+        mock_backend.is_available = True
+        mock_backend.get_mood_tags.return_value = None
+
+        with patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend), \
+             patch("vdj_manager.analysis.analysis_cache.AnalysisCache") as MockCache:
+            MockCache.return_value.get.return_value = None
+            result = _analyze_mood_single(
+                "/a.mp3", cache_db_path="/tmp/cache.db", model_name="heuristic"
+            )
+            assert result["mood"] == "unknown"
+            MockCache.return_value.put.assert_called()
+            # Verify "unknown" was cached
+            put_args = MockCache.return_value.put.call_args
+            assert put_args[0][2] == "unknown"
+
+
+# =============================================================================
 # MoodWorker tests
 # =============================================================================
 
@@ -308,8 +422,9 @@ class TestMoodWorkerDetailed:
     """Detailed tests for MoodWorker behavior."""
 
     def test_mood_worker_get_mood_tags_returns_none(self, qapp):
-        """Worker should count as failed when backend returns None/empty."""
+        """Worker should return 'unknown' when both backends return None."""
         mock_db = MagicMock()
+        mock_db.get_song.return_value = _make_song("/a.mp3")
         tracks = [_make_song("/a.mp3")]
 
         mock_backend = MagicMock()
@@ -325,14 +440,16 @@ class TestMoodWorkerDetailed:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
-            assert results[0]["analyzed"] == 0
-            assert results[0]["failed"] == 1
-            assert results[0]["results"][0]["status"] == "failed"
-            mock_db.save.assert_not_called()
+            assert results[0]["analyzed"] == 1
+            assert results[0]["failed"] == 0
+            assert results[0]["results"][0]["status"] == "ok (unknown)"
+            assert results[0]["results"][0]["mood"] == "unknown"
+            mock_db.save.assert_called()
 
     def test_mood_worker_exception_during_analysis(self, qapp):
-        """Worker should handle exceptions during individual track analysis."""
+        """Worker should return 'unknown' on exceptions instead of error."""
         mock_db = MagicMock()
+        mock_db.get_song.return_value = _make_song("/a.mp3")
         tracks = [_make_song("/a.mp3")]
 
         mock_backend = MagicMock()
@@ -348,13 +465,14 @@ class TestMoodWorkerDetailed:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
-            assert results[0]["analyzed"] == 0
-            assert results[0]["failed"] == 1
-            assert "error" in results[0]["results"][0]["status"]
-            mock_db.save.assert_not_called()
+            assert results[0]["analyzed"] == 1
+            assert results[0]["failed"] == 0
+            assert results[0]["results"][0]["status"] == "ok (unknown)"
+            assert results[0]["results"][0]["mood"] == "unknown"
+            mock_db.save.assert_called()
 
     def test_mood_worker_multiple_tracks_mixed(self, qapp):
-        """Worker should handle a mix of successful and failed analyses."""
+        """Worker should analyze all tracks — no failures, unknown as fallback."""
         mock_db = MagicMock()
         tracks = [
             _make_song("/a.mp3"),
@@ -367,7 +485,7 @@ class TestMoodWorkerDetailed:
 
         mock_backend = MagicMock()
         mock_backend.is_available = True
-        mock_backend.get_mood_tags.side_effect = [["happy"], None, ["energetic"]]
+        mock_backend.get_mood_tags.side_effect = [["happy"], None, None, ["energetic"]]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
             worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
@@ -378,14 +496,14 @@ class TestMoodWorkerDetailed:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
-            assert results[0]["analyzed"] == 2
-            assert results[0]["failed"] == 1
+            assert results[0]["analyzed"] == 3
+            assert results[0]["failed"] == 0
             assert len(results[0]["results"]) == 3
             by_path = {r["file_path"]: r for r in results[0]["results"]}
             assert by_path["/a.mp3"]["mood"] == "happy"
-            assert by_path["/b.mp3"]["mood"] is None
+            assert by_path["/b.mp3"]["mood"] == "unknown"
             assert by_path["/c.mp3"]["mood"] == "energetic"
-            mock_db.save.assert_called_once()
+            mock_db.save.assert_called()
 
     def test_mood_worker_updates_user2_tag(self, qapp):
         """Worker should append mood hashtags to User2 tag."""
@@ -431,9 +549,10 @@ class TestMoodWorkerDetailed:
                 "/song.mp3", User2="#happy #summer #uplifting"
             )
 
-    def test_mood_worker_no_save_when_all_fail(self, qapp):
-        """Worker should not save database if nothing was analyzed."""
+    def test_mood_worker_all_unknown_still_saves(self, qapp):
+        """Worker should save even when all tracks get 'unknown' mood."""
         mock_db = MagicMock()
+        mock_db.get_song.side_effect = lambda fp: _make_song(fp)
         tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
 
         mock_backend = MagicMock()
@@ -448,9 +567,10 @@ class TestMoodWorkerDetailed:
             worker.wait(5000)
             QCoreApplication.processEvents()
 
-            assert results[0]["analyzed"] == 0
-            assert results[0]["failed"] == 2
-            mock_db.save.assert_not_called()
+            assert results[0]["analyzed"] == 2
+            assert results[0]["failed"] == 0
+            assert all(r["mood"] == "unknown" for r in results[0]["results"])
+            mock_db.save.assert_called()
 
     def test_mood_worker_empty_tracks(self, qapp):
         """Worker should handle empty track list gracefully."""
@@ -559,7 +679,7 @@ class TestMoodWorkerOnlineIntegration:
             assert by_path["/a.mp3"]["mood"] == "relaxing"
 
     def test_online_mixed_results(self, qapp):
-        """Worker handles mix of online success, local fallback, and failure."""
+        """Worker handles mix of online success, local fallback, and unknown."""
         mock_db = MagicMock()
         tracks = [
             _make_song("/a.mp3"),
@@ -581,7 +701,7 @@ class TestMoodWorkerOnlineIntegration:
 
         mock_backend = MagicMock()
         mock_backend.is_available = True
-        mock_backend.get_mood_tags.side_effect = [["calm"], None]
+        mock_backend.get_mood_tags.side_effect = [["calm"], None, None]
 
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood", side_effect=mock_lookup_fn), \
@@ -598,14 +718,15 @@ class TestMoodWorkerOnlineIntegration:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
-            assert results[0]["analyzed"] == 2  # online + local fallback
-            assert results[0]["failed"] == 1    # local returned None
+            assert results[0]["analyzed"] == 3  # online + local + unknown
+            assert results[0]["failed"] == 0    # never fails
             by_path = {r["file_path"]: r for r in results[0]["results"]}
             assert by_path["/a.mp3"]["mood"] == "happy"
             assert by_path["/a.mp3"]["status"] == "ok (lastfm)"
             assert by_path["/b.mp3"]["mood"] == "calm"
             assert "local:heuristic" in by_path["/b.mp3"]["status"]
-            assert by_path["/c.mp3"]["mood"] is None
+            assert by_path["/c.mp3"]["mood"] == "unknown"
+            assert by_path["/c.mp3"]["status"] == "ok (unknown)"
 
     def test_online_caps_workers_at_one(self, qapp):
         """Online mode should cap max_workers to 1 for rate limiting."""
@@ -834,15 +955,15 @@ class TestAnalysisPanelMoodHandlers:
         results_data = [
             {"file_path": "/a.mp3", "mood": "happy", "status": "ok (local)"},
             {"file_path": "/b.mp3", "mood": "sad", "status": "ok (lastfm)"},
-            {"file_path": "/c.mp3", "mood": None, "status": "failed"},
+            {"file_path": "/c.mp3", "mood": "unknown", "status": "ok (unknown)"},
         ]
         for r in results_data:
             panel.mood_results.add_result(r)
 
-        panel._on_mood_finished({"analyzed": 2, "failed": 1, "results": results_data})
+        panel._on_mood_finished({"analyzed": 3, "failed": 0, "results": results_data})
         assert panel.mood_results.row_count() == 3
-        assert "2 analyzed" in panel.mood_status.text()
-        assert "1 failed" in panel.mood_status.text()
+        assert "3 analyzed" in panel.mood_status.text()
+        assert "0 failed" in panel.mood_status.text()
 
     def test_mood_finished_emits_database_changed(self, qapp):
         """database_changed signal should emit when mood analysis modifies data."""
@@ -933,3 +1054,46 @@ class TestAnalysisPanelMoodHandlers:
         with patch.object(QMessageBox, "information") as mock_info:
             panel._on_mood_reanalyze_clicked()
             mock_info.assert_called_once()
+
+    def test_mood_info_label_uses_mood_tracks(self, qapp):
+        """Mood info label should use _get_mood_tracks count, not _get_audio_tracks."""
+        panel = AnalysisPanel()
+        # Create a Windows-path track with metadata (online-eligible but not local)
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel.set_database(MagicMock(), [win_track, local_track])
+
+        # With online enabled (default), Windows track should be counted
+        assert "2 eligible tracks" in panel.mood_info_label.text()
+
+    def test_online_checkbox_updates_mood_count(self, qapp):
+        """Toggling online checkbox should update the mood track count."""
+        panel = AnalysisPanel()
+        win_track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(author="Artist", title="Title"),
+        )
+        local_track = _make_song("/a.mp3")
+
+        with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
+            MockPath.return_value.exists.return_value = True
+            panel.set_database(MagicMock(), [win_track, local_track])
+
+            # Online enabled (default): both tracks eligible
+            assert "2 eligible tracks" in panel.mood_info_label.text()
+
+            # Uncheck online: Windows track no longer eligible
+            panel.mood_online_checkbox.setChecked(False)
+            QCoreApplication.processEvents()
+            assert "1 eligible tracks" in panel.mood_info_label.text()
+
+            # Re-check online: Windows track eligible again
+            panel.mood_online_checkbox.setChecked(True)
+            QCoreApplication.processEvents()
+            assert "2 eligible tracks" in panel.mood_info_label.text()

@@ -6,6 +6,7 @@ which processes futures in batches and pauses between them.
 
 import contextlib
 import gc
+import logging
 import multiprocessing
 import os
 import sys
@@ -13,6 +14,8 @@ import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import QMutex, QWaitCondition, QThread, Signal
 
@@ -182,9 +185,49 @@ def _analyze_mood_single(
                 "mood_tags": mood_tags,
                 "status": f"ok (local:{model_name})",
             }
-        return {"file_path": file_path, "format": fmt, "mood": None, "mood_tags": [], "status": "failed"}
+
+        # Try fallback model (mtg-jamendo ↔ heuristic)
+        fallback_name = "heuristic" if model_name == "mtg-jamendo" else "mtg-jamendo"
+        try:
+            fallback = get_backend(MoodModel(fallback_name))
+            if fallback.is_available:
+                with _suppress_stderr():
+                    mood_tags = fallback.get_mood_tags(file_path, threshold, max_tags)
+                del fallback
+                gc.collect()
+                if mood_tags:
+                    mood_str = ", ".join(mood_tags)
+                    if cache is not None:
+                        cache.put(file_path, cache_type, ",".join(mood_tags))
+                    return {
+                        "file_path": file_path,
+                        "format": fmt,
+                        "mood": mood_str,
+                        "mood_tags": mood_tags,
+                        "status": f"ok (local:{fallback_name})",
+                    }
+        except Exception:
+            pass
+
+        # Last resort — never return "failed"
+        if cache is not None:
+            cache.put(file_path, cache_type, "unknown")
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "mood": "unknown",
+            "mood_tags": ["unknown"],
+            "status": "ok (unknown)",
+        }
     except Exception as e:
-        return {"file_path": file_path, "format": fmt, "mood": None, "mood_tags": [], "status": f"error: {e}"}
+        logger.warning("Mood analysis failed for %s: %s", file_path, e)
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "mood": "unknown",
+            "mood_tags": ["unknown"],
+            "status": "ok (unknown)",
+        }
 
 
 def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict:

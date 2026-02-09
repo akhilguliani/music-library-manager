@@ -239,6 +239,7 @@ class AnalysisPanel(QWidget):
         self.mood_online_checkbox.setToolTip(
             "Fetch mood from online databases by artist+title before falling back to local analysis"
         )
+        self.mood_online_checkbox.stateChanged.connect(lambda _: self._update_track_info())
         online_layout.addWidget(self.mood_online_checkbox)
 
         self.mood_api_key_label = QLabel("")
@@ -350,12 +351,13 @@ class AnalysisPanel(QWidget):
             f"{len(audio_tracks)} audio tracks, {len(untagged)} without energy tags"
         )
         self.mik_info_label.setText(f"{len(audio_tracks)} audio tracks to scan")
+        mood_tracks = self._get_mood_tracks()
         unknown_mood = [
-            t for t in audio_tracks
+            t for t in mood_tracks
             if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
         ]
         self.mood_info_label.setText(
-            f"{len(audio_tracks)} audio tracks, {len(unknown_mood)} with #unknown mood"
+            f"{len(mood_tracks)} eligible tracks, {len(unknown_mood)} with #unknown mood"
         )
 
     def _get_audio_tracks(self, untagged_only: bool = False) -> list[Song]:
