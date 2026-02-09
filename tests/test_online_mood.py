@@ -13,6 +13,7 @@ from vdj_manager.analysis.online_mood import (
     _cached_online_lookup,
     _clean_artist,
     _clean_title,
+    _retry_on_network_error,
 )
 
 
@@ -398,3 +399,221 @@ class TestTagToMoodDict:
     def test_minimum_tag_count(self):
         """Should have a reasonable number of tag mappings."""
         assert len(TAG_TO_MOOD) >= 100
+
+
+# =============================================================================
+# _retry_on_network_error tests
+# =============================================================================
+
+
+class TestRetryOnNetworkError:
+    """Tests for the retry-with-backoff mechanism."""
+
+    def test_success_on_first_try(self):
+        """Should return result immediately when no error."""
+        result = _retry_on_network_error(lambda: "ok")
+        assert result == "ok"
+
+    def test_success_after_connection_error(self):
+        """Should retry and succeed after a ConnectionError."""
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Connection reset by peer")
+            return "recovered"
+
+        with patch("vdj_manager.analysis.online_mood.time.sleep"):
+            result = _retry_on_network_error(flaky)
+        assert result == "recovered"
+        assert call_count == 3
+
+    def test_success_after_os_error(self):
+        """Should retry on OSError (e.g. errno 54)."""
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError(54, "Connection reset by peer")
+            return "ok"
+
+        with patch("vdj_manager.analysis.online_mood.time.sleep"):
+            result = _retry_on_network_error(flaky)
+        assert result == "ok"
+        assert call_count == 2
+
+    def test_success_after_url_error(self):
+        """Should retry on URLError."""
+        from urllib.error import URLError
+
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise URLError("connection refused")
+            return "ok"
+
+        with patch("vdj_manager.analysis.online_mood.time.sleep"):
+            result = _retry_on_network_error(flaky)
+        assert result == "ok"
+        assert call_count == 2
+
+    def test_all_retries_exhausted_returns_none(self):
+        """Should return None after all retries fail."""
+        with patch("vdj_manager.analysis.online_mood.time.sleep"):
+            result = _retry_on_network_error(
+                lambda: (_ for _ in ()).throw(ConnectionError("fail")),
+                max_retries=2,
+            )
+        assert result is None
+
+    def test_non_network_error_not_retried(self):
+        """Non-network errors should propagate immediately."""
+        call_count = 0
+
+        def bad():
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("not a network error")
+
+        with pytest.raises(ValueError, match="not a network error"):
+            _retry_on_network_error(bad)
+        assert call_count == 1
+
+    def test_exponential_backoff_timing(self):
+        """Should sleep with exponential backoff between retries."""
+        with patch("vdj_manager.analysis.online_mood.time.sleep") as mock_sleep:
+            _retry_on_network_error(
+                lambda: (_ for _ in ()).throw(ConnectionError("fail")),
+                max_retries=3,
+                base_delay=1.0,
+            )
+        assert mock_sleep.call_count == 3
+        mock_sleep.assert_any_call(1.0)   # attempt 0: 1.0 * 2^0
+        mock_sleep.assert_any_call(2.0)   # attempt 1: 1.0 * 2^1
+        mock_sleep.assert_any_call(4.0)   # attempt 2: 1.0 * 2^2
+
+    def test_zero_retries_returns_none_on_error(self):
+        """With max_retries=0, should try once and return None on error."""
+        call_count = 0
+
+        def fail():
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError("fail")
+
+        result = _retry_on_network_error(fail, max_retries=0)
+        assert result is None
+        assert call_count == 1
+
+
+class TestLastFmRetryIntegration:
+    """Tests verifying retry logic is wired into Last.fm lookups."""
+
+    def test_lastfm_get_mood_retries_on_connection_reset(self):
+        """Last.fm get_mood should retry on ConnectionResetError."""
+        call_count = 0
+        mock_tag = MagicMock()
+        mock_tag.item.get_name.return_value = "chill"
+        mock_tag.weight = "100"
+
+        mock_track = MagicMock()
+        mock_track.get_top_tags.return_value = [mock_tag]
+
+        mock_network = MagicMock()
+
+        def flaky_get_track(artist, title):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionResetError("Connection reset by peer")
+            return mock_track
+
+        mock_network.get_track.side_effect = flaky_get_track
+
+        with patch.dict("sys.modules", {"pylast": MagicMock()}), \
+             patch("vdj_manager.analysis.online_mood.time.sleep"):
+            import pylast
+            pylast.LastFMNetwork.return_value = mock_network
+            lookup = LastFmLookup(api_key="test_key")
+            result = lookup.get_mood("Artist", "Title")
+            assert result == "calm"
+            assert call_count == 3
+
+    def test_lastfm_get_mood_from_artist_retries(self):
+        """Last.fm get_mood_from_artist should retry on ConnectionError."""
+        call_count = 0
+        mock_tag = MagicMock()
+        mock_tag.item.get_name.return_value = "dance"
+        mock_tag.weight = "100"
+
+        mock_artist = MagicMock()
+        mock_artist.get_top_tags.return_value = [mock_tag]
+
+        mock_network = MagicMock()
+
+        def flaky_get_artist(artist):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("Connection refused")
+            return mock_artist
+
+        mock_network.get_artist.side_effect = flaky_get_artist
+
+        with patch.dict("sys.modules", {"pylast": MagicMock()}), \
+             patch("vdj_manager.analysis.online_mood.time.sleep"):
+            import pylast
+            pylast.LastFMNetwork.return_value = mock_network
+            lookup = LastFmLookup(api_key="test_key")
+            result = lookup.get_mood_from_artist("Artist")
+            assert result == "party"
+            assert call_count == 2
+
+
+class TestMusicBrainzRetryIntegration:
+    """Tests verifying retry logic is wired into MusicBrainz lookups."""
+
+    def test_musicbrainz_retries_on_connection_reset(self):
+        """MusicBrainz should retry on ConnectionResetError."""
+        call_count = 0
+        mock_result = {
+            "recording-list": [{
+                "tag-list": [{"name": "electronic"}, {"name": "dance"}]
+            }]
+        }
+
+        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
+             patch("vdj_manager.analysis.online_mood.time.sleep"):
+            import musicbrainzngs
+
+            def flaky_search(**kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count < 2:
+                    raise ConnectionResetError("[Errno 54] Connection reset by peer")
+                return mock_result
+
+            musicbrainzngs.search_recordings.side_effect = flaky_search
+            lookup = MusicBrainzLookup()
+            result = lookup.get_mood("Artist", "Title")
+            assert result in ("energetic", "party")
+            assert call_count == 2
+
+    def test_musicbrainz_all_retries_exhausted(self):
+        """MusicBrainz should return None when all retries fail."""
+        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
+             patch("vdj_manager.analysis.online_mood.time.sleep"):
+            import musicbrainzngs
+            musicbrainzngs.search_recordings.side_effect = ConnectionResetError(
+                "[Errno 54] Connection reset by peer"
+            )
+            lookup = MusicBrainzLookup()
+            result = lookup.get_mood("Artist", "Title")
+            assert result is None
