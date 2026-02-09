@@ -78,8 +78,12 @@ class TestPlayerPanel:
             qapp.processEvents()
 
         assert len(panel.waveform._cue_points) == 2
-        assert panel.waveform._cue_points[0] == (30.0, "Intro")
-        assert panel.waveform._cue_points[1] == (90.0, "Drop")
+        assert panel.waveform._cue_points[0].pos == 30.0
+        assert panel.waveform._cue_points[0].name == "Intro"
+        assert panel.waveform._cue_points[0].num == 1
+        assert panel.waveform._cue_points[1].pos == 90.0
+        assert panel.waveform._cue_points[1].name == "Drop"
+        assert panel.waveform._cue_points[1].num == 2
 
     def test_track_without_metadata(self, qapp, player_panel):
         """Track without metadata should show defaults."""

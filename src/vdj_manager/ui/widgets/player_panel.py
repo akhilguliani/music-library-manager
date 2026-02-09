@@ -249,9 +249,7 @@ class PlayerPanel(QWidget):
 
         # Cue points
         if track.cue_points:
-            cues = [(cp["pos"], cp.get("name", str(i + 1)))
-                    for i, cp in enumerate(track.cue_points)]
-            self.waveform.set_cue_points(cues)
+            self.waveform.set_cue_points(track.cue_points)
 
     @Slot(float, float)
     def _on_position_changed(self, pos: float, dur: float) -> None:
