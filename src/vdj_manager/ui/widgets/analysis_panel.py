@@ -398,6 +398,44 @@ class AnalysisPanel(QWidget):
 
         return tracks
 
+    def _get_mood_tracks(self) -> list:
+        """Get tracks eligible for mood analysis.
+
+        Unlike _get_audio_tracks, includes Windows-path tracks when online
+        mode is enabled since online lookup only needs artist/title metadata.
+        """
+        enable_online = self.mood_online_checkbox.isChecked()
+        audio_extensions = {
+            ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav",
+            ".aiff", ".aif", ".ogg", ".opus",
+        }
+        tracks = []
+        for track in self._tracks:
+            if track.is_netsearch:
+                continue
+            if track.extension not in audio_extensions:
+                continue
+            file_exists = not track.is_windows_path and Path(track.file_path).exists()
+            has_metadata = track.tags and (track.tags.author or track.tags.title)
+            if not file_exists and not (enable_online and has_metadata):
+                continue
+            tracks.append(track)
+
+        # Duration filter
+        max_duration = self.max_duration_spin.value() * 60
+        if max_duration > 0:
+            tracks = [
+                t for t in tracks
+                if not (t.infos and t.infos.song_length and t.infos.song_length > max_duration)
+            ]
+
+        # Count limit
+        limit = self.limit_spin.value()
+        if limit > 0:
+            tracks = tracks[:limit]
+
+        return tracks
+
     def is_running(self) -> bool:
         """Check if any analysis operation is currently running."""
         for worker in (self._energy_worker, self._mik_worker, self._mood_worker):
@@ -583,7 +621,7 @@ class AnalysisPanel(QWidget):
         if self._database is None:
             return
 
-        tracks = self._get_audio_tracks()
+        tracks = self._get_mood_tracks()
         if not tracks:
             QMessageBox.information(self, "No Tracks", "No tracks to analyze.")
             return
@@ -644,7 +682,7 @@ class AnalysisPanel(QWidget):
             return
 
         # Filter to tracks with #unknown in User2
-        all_tracks = self._get_audio_tracks()
+        all_tracks = self._get_mood_tracks()
         tracks = [
             t for t in all_tracks
             if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
@@ -712,7 +750,7 @@ class AnalysisPanel(QWidget):
         if self._database is None:
             return
 
-        tracks = self._get_audio_tracks()
+        tracks = self._get_mood_tracks()
         if not tracks:
             QMessageBox.information(self, "No Tracks", "No tracks to analyze.")
             return

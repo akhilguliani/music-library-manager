@@ -748,9 +748,12 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
     # Find tracks to analyze
     to_analyze = []
     for song in db.songs.values():
-        if song.is_windows_path or song.is_netsearch:
+        if song.is_netsearch:
             continue
-        if not Path(song.file_path).exists():
+        file_exists = not song.is_windows_path and Path(song.file_path).exists()
+        # Need either a local file (for local analysis) or online mode with metadata
+        has_metadata = song.tags and (song.tags.author or song.tags.title)
+        if not file_exists and not (online and has_metadata):
             continue
         if update_unknown:
             # Only include tracks with #unknown mood
@@ -811,8 +814,9 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
                     if mood:
                         mood_tags = [mood]
 
-                # Fall back to local backend
-                if not mood_tags and local_available:
+                # Fall back to local backend (only if file exists locally)
+                file_exists = not song.is_windows_path and Path(song.file_path).exists()
+                if not mood_tags and local_available and file_exists:
                     local_tags = backend.get_mood_tags(song.file_path, threshold, max_tags)
                     if local_tags:
                         mood_tags = local_tags

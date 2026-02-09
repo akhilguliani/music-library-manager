@@ -20,7 +20,7 @@ _BASE_URL = "https://essentia.upf.edu/models"
 
 EMBEDDING_MODEL = {
     "filename": "discogs-effnet-bs64-1.pb",
-    "url": f"{_BASE_URL}/music-style/discogs-effnet/discogs-effnet-bs64-1.pb",
+    "url": f"{_BASE_URL}/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb",
     "sha256": None,  # Skip hash check — file may be updated upstream
 }
 
