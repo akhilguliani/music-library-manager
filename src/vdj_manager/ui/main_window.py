@@ -17,6 +17,7 @@ from vdj_manager.ui.widgets.export_panel import ExportPanel
 from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.mini_player import MiniPlayer
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
+from vdj_manager.ui.widgets.player_panel import PlayerPanel
 
 
 class MainWindow(QMainWindow):
@@ -99,11 +100,8 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.export_panel, "Export")
 
     def _create_player_tab(self) -> None:
-        """Create the player tab (placeholder until Commit 5)."""
-        from PySide6.QtWidgets import QLabel
-
-        self.player_panel = QLabel("Full player — coming in next commit")
-        self.player_panel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        """Create the full player tab."""
+        self.player_panel = PlayerPanel(self._playback_bridge)
         self.tab_widget.addTab(self.player_panel, "Player")
 
     def _setup_menu_bar(self) -> None:
