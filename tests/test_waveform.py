@@ -107,3 +107,46 @@ class TestWaveformCache:
         assert len(result_200) == 200
         assert result_100[0] == 1.0
         assert result_200[0] == 0.5
+
+
+# =============================================================================
+# Soundfile path tests
+# =============================================================================
+
+
+class TestGenerateWaveformPeaksSoundfile:
+    """Tests for soundfile-first path (WAV/FLAC/OGG)."""
+
+    def test_wav_uses_soundfile(self):
+        """WAV files should use soundfile, not librosa.load."""
+        fake_data = np.random.randn(22050, 2).astype(np.float32)
+        with patch("soundfile.read", return_value=(fake_data, 22050)) as sf_mock:
+            peaks = generate_waveform_peaks("/fake.wav", target_width=100, sr=22050)
+            sf_mock.assert_called_once()
+            assert len(peaks) == 100
+
+    def test_flac_uses_soundfile(self):
+        """FLAC files should use soundfile."""
+        fake_data = np.random.randn(22050, 1).astype(np.float32)
+        with patch("soundfile.read", return_value=(fake_data, 22050)) as sf_mock:
+            peaks = generate_waveform_peaks("/fake.flac", target_width=50, sr=22050)
+            sf_mock.assert_called_once()
+            assert len(peaks) == 50
+
+    def test_mp3_uses_librosa(self):
+        """MP3 files should fall back to librosa."""
+        fake_audio = np.sin(np.linspace(0, 10 * np.pi, 22050))
+        with patch("librosa.load", return_value=(fake_audio, 22050)) as lib_mock:
+            peaks = generate_waveform_peaks("/fake.mp3", target_width=100, sr=22050)
+            lib_mock.assert_called_once()
+            assert len(peaks) == 100
+
+    def test_soundfile_resamples_if_sr_differs(self):
+        """Should resample when file sr differs from target sr."""
+        fake_data = np.random.randn(44100, 1).astype(np.float32)
+        resampled = np.random.randn(22050).astype(np.float32)
+        with patch("soundfile.read", return_value=(fake_data, 44100)), \
+             patch("librosa.resample", return_value=resampled) as resample_mock:
+            peaks = generate_waveform_peaks("/fake.wav", target_width=100, sr=22050)
+            resample_mock.assert_called_once()
+            assert len(peaks) == 100

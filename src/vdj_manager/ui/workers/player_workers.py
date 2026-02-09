@@ -31,7 +31,7 @@ class WaveformWorker(QThread):
                 return
 
             peaks = generate_waveform_peaks(self._file_path, self._width)
-            cache.put(self._file_path, self._width, peaks)
+            cache.put(self._file_path, peaks, self._width)
             self.peaks_ready.emit(self._file_path, peaks)
         except Exception as e:
             self.error.emit(self._file_path, str(e))

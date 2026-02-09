@@ -107,7 +107,11 @@ def generate_waveform_peaks(
     target_width: int = 800,
     sr: int = 22050,
 ) -> np.ndarray:
-    """Generate waveform peak data using librosa.
+    """Generate waveform peak data from an audio file.
+
+    Uses soundfile directly for WAV/FLAC/OGG/AIFF (avoids librosa's
+    audioread fallback which leaks file descriptors). Falls back to
+    librosa for MP3/M4A and other compressed formats.
 
     Args:
         file_path: Path to audio file.
@@ -117,9 +121,20 @@ def generate_waveform_peaks(
     Returns:
         1D numpy array of peak amplitudes (0.0-1.0), length = target_width.
     """
-    import librosa
+    ext = Path(file_path).suffix.lower()
+    if ext in (".wav", ".flac", ".ogg", ".aiff", ".aif"):
+        import soundfile as sf
 
-    y, _ = librosa.load(file_path, sr=sr, mono=True)
+        data, file_sr = sf.read(file_path, dtype="float32", always_2d=True)
+        y = data.mean(axis=1)  # mono mixdown
+        if file_sr != sr:
+            import librosa
+
+            y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
+    else:
+        import librosa
+
+        y, _ = librosa.load(file_path, sr=sr, mono=True)
 
     if len(y) == 0:
         return np.zeros(target_width)
