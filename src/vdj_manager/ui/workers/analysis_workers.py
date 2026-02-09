@@ -104,21 +104,31 @@ def _analyze_mood_single(
     lastfm_api_key: str | None = None,
     enable_online: bool = False,
     skip_cache: bool = False,
+    model_name: str = "mtg-jamendo",
+    threshold: float = 0.1,
+    max_tags: int = 5,
 ) -> dict:
     """Analyze mood for a single file in a subprocess.
 
     When enable_online is True and artist+title are available, tries
     online lookup (Last.fm -> MusicBrainz) before falling back to
-    local essentia analysis.
+    local model analysis.
 
     Args:
         skip_cache: If True, ignore cached results and re-analyze.
+        model_name: Backend model to use ("mtg-jamendo" or "heuristic").
+        threshold: Minimum confidence for multi-label selection.
+        max_tags: Maximum number of mood tags per track.
 
     Returns:
-        Dict with file_path, format, mood (str|None), and status.
+        Dict with file_path, format, mood (str), mood_tags (list), and status.
     """
     fmt = Path(file_path).suffix.lower()
     try:
+        from vdj_manager.analysis.mood_backend import MoodModel, cache_key_for_model
+
+        cache_type = cache_key_for_model(MoodModel(model_name))
+
         cache = None
         if cache_db_path:
             from vdj_manager.analysis.analysis_cache import AnalysisCache
@@ -126,39 +136,55 @@ def _analyze_mood_single(
             if skip_cache:
                 cache.invalidate(file_path)
             else:
-                cached = cache.get(file_path, "mood")
+                cached = cache.get(file_path, cache_type)
                 if cached is not None:
-                    return {"file_path": file_path, "format": fmt, "mood": cached, "status": "cached"}
+                    mood_tags = cached.split(",")
+                    return {
+                        "file_path": file_path,
+                        "format": fmt,
+                        "mood": ", ".join(mood_tags),
+                        "mood_tags": mood_tags,
+                        "status": "cached",
+                    }
 
         # Try online lookup first
         if enable_online and artist and title:
             from vdj_manager.analysis.online_mood import lookup_online_mood
             mood, source = lookup_online_mood(artist, title, lastfm_api_key)
             if mood:
+                mood_tags = [mood]
                 if cache is not None:
-                    cache.put(file_path, "mood", mood)
+                    cache.put(file_path, cache_type, mood)
                 return {
                     "file_path": file_path,
                     "format": fmt,
                     "mood": mood,
+                    "mood_tags": mood_tags,
                     "status": f"ok ({source})",
                 }
 
-        # Fall back to local essentia analysis
-        from vdj_manager.analysis.mood import MoodAnalyzer
+        # Fall back to local model analysis
+        from vdj_manager.analysis.mood_backend import get_backend
 
-        analyzer = MoodAnalyzer()
+        backend = get_backend(MoodModel(model_name))
         with _suppress_stderr():
-            mood_tag = analyzer.get_mood_tag(file_path)
-        del analyzer
+            mood_tags = backend.get_mood_tags(file_path, threshold, max_tags)
+        del backend
         gc.collect()
-        if mood_tag:
+        if mood_tags:
+            mood_str = ", ".join(mood_tags)
             if cache is not None:
-                cache.put(file_path, "mood", mood_tag)
-            return {"file_path": file_path, "format": fmt, "mood": mood_tag, "status": "ok (local)"}
-        return {"file_path": file_path, "format": fmt, "mood": None, "status": "failed"}
+                cache.put(file_path, cache_type, ",".join(mood_tags))
+            return {
+                "file_path": file_path,
+                "format": fmt,
+                "mood": mood_str,
+                "mood_tags": mood_tags,
+                "status": f"ok (local:{model_name})",
+            }
+        return {"file_path": file_path, "format": fmt, "mood": None, "mood_tags": [], "status": "failed"}
     except Exception as e:
-        return {"file_path": file_path, "format": fmt, "mood": None, "status": f"error: {e}"}
+        return {"file_path": file_path, "format": fmt, "mood": None, "mood_tags": [], "status": f"error: {e}"}
 
 
 def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict:
@@ -493,7 +519,9 @@ class MoodWorker(PausableAnalysisWorker):
     """Worker that analyzes mood/emotion for audio tracks in parallel.
 
     Supports online mood lookup (Last.fm / MusicBrainz) with fallback
-    to local essentia analysis. Supports pause/resume/cancel.
+    to local model analysis. Multi-label: writes multiple mood hashtags
+    to User2 (e.g. "#happy #uplifting #summer").
+    Supports pause/resume/cancel and model selection.
     """
 
     def __init__(
@@ -505,6 +533,9 @@ class MoodWorker(PausableAnalysisWorker):
         enable_online: bool = False,
         lastfm_api_key: str | None = None,
         skip_cache: bool = False,
+        model_name: str = "mtg-jamendo",
+        threshold: float = 0.1,
+        max_tags: int = 5,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -515,20 +546,24 @@ class MoodWorker(PausableAnalysisWorker):
         self._enable_online = enable_online
         self._lastfm_api_key = lastfm_api_key
         self._skip_cache = skip_cache
+        self._model_name = model_name
+        self._threshold = threshold
+        self._max_tags = max_tags
 
     def do_work(self) -> dict:
         """Analyze mood for all tracks in parallel."""
-        # When online is disabled, check essentia availability
+        # Check backend availability
         if not self._enable_online:
-            from vdj_manager.analysis.mood import MoodAnalyzer
-            analyzer = MoodAnalyzer()
-            if not analyzer.is_available:
+            from vdj_manager.analysis.mood_backend import MoodModel, get_backend
+            backend = get_backend(MoodModel(self._model_name))
+            if not backend.is_available:
                 return {
                     "analyzed": 0,
                     "failed": 0,
                     "cached": 0,
                     "results": [],
-                    "error": "essentia-tensorflow is not installed",
+                    "error": f"Backend '{self._model_name}' is not available "
+                             "(essentia-tensorflow not installed)",
                 }
 
         # Cap workers at 1 when online (rate limiting)
@@ -550,6 +585,9 @@ class MoodWorker(PausableAnalysisWorker):
 
         file_paths = [t.file_path for t in self._tracks]
 
+        # Known mood class names for tag cleanup during re-analysis
+        from vdj_manager.analysis.mood_backend import MOOD_CLASSES_SET
+
         for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
             if not self._wait_if_paused():
                 break
@@ -569,6 +607,9 @@ class MoodWorker(PausableAnalysisWorker):
                         lastfm_api_key=self._lastfm_api_key,
                         enable_online=self._enable_online,
                         skip_cache=self._skip_cache,
+                        model_name=self._model_name,
+                        threshold=self._threshold,
+                        max_tags=self._max_tags,
                     )] = fp
 
                 for future in as_completed(futures):
@@ -582,22 +623,31 @@ class MoodWorker(PausableAnalysisWorker):
                     results.append(result)
 
                     status = result.get("status", "")
-                    if result.get("mood") and (
+                    mood_tags = result.get("mood_tags", [])
+                    if mood_tags and (
                         status.startswith("ok") or status == "cached"
                     ):
-                        mood_hashtag = f"#{result['mood']}"
+                        new_hashtags = {f"#{t}" for t in mood_tags}
                         song = self._database.get_song(result["file_path"])
                         existing = (song.tags.user2 or "") if song and song.tags else ""
-                        # When re-analyzing, replace #unknown with the new mood
-                        if self._skip_cache and "#unknown" in existing.split():
-                            words = [w for w in existing.split() if w != "#unknown"]
-                            if mood_hashtag not in words:
-                                words.append(mood_hashtag)
-                            new_user2 = " ".join(words)
-                        elif mood_hashtag not in existing.split():
-                            new_user2 = f"{existing} {mood_hashtag}".strip()
+
+                        if self._skip_cache:
+                            # Re-analyzing: strip ALL known mood hashtags, then add new
+                            words = [
+                                w for w in existing.split()
+                                if not (w.startswith("#") and w[1:] in MOOD_CLASSES_SET)
+                                and w != "#unknown"
+                            ]
                         else:
-                            new_user2 = existing
+                            words = existing.split()
+
+                        # Add new hashtags that aren't already present
+                        existing_set = set(words)
+                        for ht in sorted(new_hashtags):
+                            if ht not in existing_set:
+                                words.append(ht)
+
+                        new_user2 = " ".join(words).strip()
                         self._database.update_song_tags(
                             result["file_path"], User2=new_user2
                         )

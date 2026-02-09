@@ -280,11 +280,11 @@ class TestMoodWorker:
         mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
-            analyzer_instance = MockAnalyzer.return_value
-            analyzer_instance.is_available = False
+        mock_backend = MagicMock()
+        mock_backend.is_available = False
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -292,7 +292,7 @@ class TestMoodWorker:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
-            assert results[0]["error"] == "essentia-tensorflow is not installed"
+            assert "not available" in results[0]["error"]
             assert results[0]["analyzed"] == 0
 
     def test_mood_worker_success(self, qapp):
@@ -301,12 +301,12 @@ class TestMoodWorker:
         mock_db.get_song.return_value = song
         tracks = [song]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
-            analyzer_instance = MockAnalyzer.return_value
-            analyzer_instance.is_available = True
-            analyzer_instance.get_mood_tag.return_value = "happy"
+        mock_backend = MagicMock()
+        mock_backend.is_available = True
+        mock_backend.get_mood_tags.return_value = ["happy"]
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -644,12 +644,12 @@ class TestWorkerResultReady:
         mock_db.get_song.return_value = song
         tracks = [song]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
-            analyzer_instance = MockAnalyzer.return_value
-            analyzer_instance.is_available = True
-            analyzer_instance.get_mood_tag.return_value = "happy"
+        mock_backend = MagicMock()
+        mock_backend.is_available = True
+        mock_backend.get_mood_tags.return_value = ["happy"]
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
+        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
             worker.start()
