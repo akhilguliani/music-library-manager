@@ -1,132 +1,115 @@
-"""Mood classification using Essentia TensorFlow models."""
+"""Heuristic mood classification using Essentia audio features.
 
-from pathlib import Path
+This is a lightweight backend that uses BPM, RMS, and spectral centroid
+to estimate mood via simple heuristics. For better accuracy, use the
+MTG-Jamendo backend which employs a pre-trained deep learning model.
+
+Implements the MoodBackend protocol from mood_backend.py.
+"""
+
 from typing import Optional
+
+from .mood_backend import select_top_moods
 
 
 class MoodAnalyzer:
-    """Analyze audio files for mood/emotion using Essentia models.
+    """Analyze audio files for mood using heuristic features.
 
     Requires: pip install essentia-tensorflow
+
+    Implements the MoodBackend protocol.
     """
 
-    # Available mood tags
-    MOODS = [
-        "happy",
-        "sad",
-        "aggressive",
-        "relaxed",
-        "acoustic",
-        "electronic",
-        "party",
-    ]
-
-    def __init__(self, model_path: Optional[Path] = None):
-        """Initialize mood analyzer.
-
-        Args:
-            model_path: Optional path to custom model
-        """
-        self._model = None
-        self._model_path = model_path
+    def __init__(self) -> None:
         self._essentia_available = False
+        self._es = None
 
         try:
-            import essentia
             import essentia.standard as es
+
             self._essentia_available = True
             self._es = es
         except ImportError:
             pass
 
     @property
+    def name(self) -> str:
+        """Backend identifier for cache keys."""
+        return "heuristic"
+
+    @property
     def is_available(self) -> bool:
         """Check if Essentia is available."""
         return self._essentia_available
 
-    def analyze(self, file_path: str) -> Optional[dict]:
+    def analyze(self, file_path: str) -> dict[str, float] | None:
         """Analyze mood of an audio file.
 
-        Args:
-            file_path: Path to audio file
-
         Returns:
-            Dict with mood predictions, or None if unavailable
+            Dict mapping mood names to confidence scores (0.0-1.0),
+            or None if unavailable. Keys are a subset of heuristic
+            mood categories: energetic, calm, bright, dark.
         """
         if not self._essentia_available:
             return None
 
         try:
-            # Load audio
             audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()
-
-            # Run mood classifier
-            # Note: This is a simplified example. Real implementation would
-            # use Essentia's TensorFlow models for music auto-tagging
-            results = self._analyze_mood_features(audio)
-            return results
-
+            return self._compute_heuristic_scores(audio)
         except Exception:
             return None
 
-    def _analyze_mood_features(self, audio) -> dict:
-        """Analyze mood-related audio features.
+    def _compute_heuristic_scores(self, audio) -> dict[str, float]:
+        """Compute mood scores from audio features.
 
-        This is a simplified heuristic approach. For better results,
-        use Essentia's pre-trained TensorFlow models.
+        Returns dict mapping mood name -> confidence (0.0-1.0).
+        On error, returns {"unknown": 0.0} so callers get a valid dict.
         """
         try:
-            # Extract basic features that correlate with mood
             rhythm_extractor = self._es.RhythmExtractor2013(method="multifeature")
             bpm, beats, beats_confidence, _, _ = rhythm_extractor(audio)
 
-            # Spectral features
             spectrum = self._es.Spectrum()(audio)
             centroid = self._es.Centroid(range=22050 / 2)(spectrum)
 
-            # Energy features
-            energy = self._es.Energy()(audio)
             rms = self._es.RMS()(audio)
 
-            # Simple mood heuristics based on features
-            moods = {
+            return {
                 "energetic": min(1.0, bpm / 140) * 0.5 + min(1.0, rms * 10) * 0.5,
-                "chill": max(0.0, 1.0 - bpm / 140) * 0.5 + max(0.0, 1.0 - rms * 10) * 0.5,
+                "calm": max(0.0, 1.0 - bpm / 140) * 0.5 + max(0.0, 1.0 - rms * 10) * 0.5,
                 "bright": min(1.0, centroid / 3000),
                 "dark": max(0.0, 1.0 - centroid / 3000),
             }
-
-            # Determine primary mood
-            primary_mood = max(moods.items(), key=lambda x: x[1])[0]
-
-            return {
-                "primary_mood": primary_mood,
-                "moods": moods,
-                "features": {
-                    "bpm": bpm,
-                    "spectral_centroid": centroid,
-                    "energy": energy,
-                    "rms": rms,
-                },
-            }
-
         except Exception:
-            return {
-                "primary_mood": "unknown",
-                "moods": {},
-                "features": {},
-            }
+            return {"unknown": 0.0}
 
-    def get_mood_tag(self, file_path: str) -> Optional[str]:
-        """Get a simple mood tag for a file.
-
-        Args:
-            file_path: Path to audio file
+    def get_mood_tags(
+        self,
+        file_path: str,
+        threshold: float = 0.1,
+        max_tags: int = 5,
+    ) -> list[str] | None:
+        """Get mood tags using multi-label selection.
 
         Returns:
-            Mood tag string, or None
+            List of mood tag strings sorted by confidence, or None.
         """
-        result = self.analyze(file_path)
-        if result:
-            return result.get("primary_mood")
-        return None
+        scores = self.analyze(file_path)
+        if scores is None:
+            return None
+        return select_top_moods(scores, threshold, max_tags)
+
+    def get_mood_tag(self, file_path: str) -> Optional[str]:
+        """Get the single top mood tag for a file.
+
+        Backward-compatible convenience method.
+
+        Returns:
+            Top mood tag string, or None.
+        """
+        scores = self.analyze(file_path)
+        if scores is None:
+            return None
+        if not scores:
+            return "unknown"
+        return max(scores, key=scores.get)  # type: ignore[arg-type]

@@ -49,21 +49,15 @@ class TestMoodAnalyzerInit:
 
     def test_is_available_false_without_essentia(self):
         """MoodAnalyzer.is_available should be False when essentia isn't installed."""
-        with patch.dict("sys.modules", {"essentia": None, "essentia.standard": None}):
-            # Force reimport
-            analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
-            analyzer._model = None
-            analyzer._model_path = None
-            analyzer._essentia_available = False
-            assert not analyzer.is_available
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        analyzer._essentia_available = False
+        analyzer._es = None
+        assert not analyzer.is_available
 
-    def test_moods_constant_defined(self):
-        """MOODS list should contain expected mood tags."""
-        assert "happy" in MoodAnalyzer.MOODS
-        assert "sad" in MoodAnalyzer.MOODS
-        assert "aggressive" in MoodAnalyzer.MOODS
-        assert "relaxed" in MoodAnalyzer.MOODS
-        assert len(MoodAnalyzer.MOODS) == 7
+    def test_name_property(self):
+        """name property should return 'heuristic'."""
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        assert analyzer.name == "heuristic"
 
     def test_analyze_returns_none_when_unavailable(self):
         """analyze() should return None when essentia is not available."""
@@ -79,11 +73,11 @@ class TestMoodAnalyzerInit:
         result = analyzer.get_mood_tag("/fake/file.mp3")
         assert result is None
 
-    def test_get_mood_tag_returns_primary_mood(self):
-        """get_mood_tag() should return the primary_mood from analyze()."""
+    def test_get_mood_tag_returns_top_mood(self):
+        """get_mood_tag() should return the mood with highest confidence."""
         analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
         analyzer._essentia_available = True
-        with patch.object(analyzer, "analyze", return_value={"primary_mood": "energetic"}):
+        with patch.object(analyzer, "analyze", return_value={"energetic": 0.8, "calm": 0.2}):
             result = analyzer.get_mood_tag("/fake/file.mp3")
             assert result == "energetic"
 
@@ -104,39 +98,33 @@ class TestMoodAnalyzerInit:
         result = analyzer.analyze("/fake/file.mp3")
         assert result is None
 
-    def test_analyze_mood_features_returns_dict(self):
-        """_analyze_mood_features should return mood dict with expected structure."""
+    def test_compute_heuristic_scores_returns_dict(self):
+        """_compute_heuristic_scores should return mood -> confidence dict."""
         analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
         analyzer._essentia_available = True
 
         mock_es = MagicMock()
         analyzer._es = mock_es
 
-        # Mock Essentia extractors
         mock_es.RhythmExtractor2013.return_value.return_value = (
-            128.0,  # bpm
-            [0.5, 1.0],  # beats
-            0.9,  # beats_confidence
-            [],  # ticks
-            0.95,  # ticks_confidence
+            128.0, [0.5, 1.0], 0.9, [], 0.95,
         )
-        mock_es.Spectrum.return_value.return_value = [0.1, 0.2]  # spectrum
-        mock_es.Centroid.return_value.return_value = 2500.0  # centroid
-        mock_es.Energy.return_value.return_value = 0.5  # energy
-        mock_es.RMS.return_value.return_value = 0.15  # rms
+        mock_es.Spectrum.return_value.return_value = [0.1, 0.2]
+        mock_es.Centroid.return_value.return_value = 2500.0
+        mock_es.RMS.return_value.return_value = 0.15
 
         fake_audio = [0.0] * 100
-        result = analyzer._analyze_mood_features(fake_audio)
+        result = analyzer._compute_heuristic_scores(fake_audio)
 
-        assert "primary_mood" in result
-        assert "moods" in result
-        assert "features" in result
-        assert result["features"]["bpm"] == 128.0
-        assert result["features"]["rms"] == 0.15
-        assert result["primary_mood"] in result["moods"]
+        assert isinstance(result, dict)
+        assert all(isinstance(v, float) for v in result.values())
+        assert "energetic" in result
+        assert "calm" in result
+        assert "bright" in result
+        assert "dark" in result
 
-    def test_analyze_mood_features_catches_exceptions(self):
-        """_analyze_mood_features should return 'unknown' on error."""
+    def test_compute_heuristic_scores_catches_exceptions(self):
+        """_compute_heuristic_scores should return 'unknown' on error."""
         analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
         analyzer._essentia_available = True
 
@@ -144,10 +132,10 @@ class TestMoodAnalyzerInit:
         analyzer._es = mock_es
         mock_es.RhythmExtractor2013.return_value.side_effect = RuntimeError("bad audio")
 
-        result = analyzer._analyze_mood_features([0.0])
+        result = analyzer._compute_heuristic_scores([0.0])
 
-        assert result["primary_mood"] == "unknown"
-        assert result["moods"] == {}
+        assert "unknown" in result
+        assert result["unknown"] == 0.0
 
     def test_analyze_full_flow_with_mocked_essentia(self):
         """Full analyze() flow with mocked essentia."""
@@ -157,24 +145,39 @@ class TestMoodAnalyzerInit:
         mock_es = MagicMock()
         analyzer._es = mock_es
 
-        # Mock MonoLoader
         mock_es.MonoLoader.return_value.return_value = [0.0] * 100
-
-        # Mock extractors
         mock_es.RhythmExtractor2013.return_value.return_value = (
             140.0, [], 0.9, [], 0.95
         )
         mock_es.Spectrum.return_value.return_value = [0.1]
         mock_es.Centroid.return_value.return_value = 3500.0
-        mock_es.Energy.return_value.return_value = 0.7
         mock_es.RMS.return_value.return_value = 0.2
 
         result = analyzer.analyze("/fake/song.mp3")
 
         assert result is not None
-        assert "primary_mood" in result
-        assert result["primary_mood"] in ("energetic", "chill", "bright", "dark")
+        assert isinstance(result, dict)
+        assert all(isinstance(v, float) for v in result.values())
+        assert any(k in result for k in ("energetic", "calm", "bright", "dark"))
         mock_es.MonoLoader.assert_called_once_with(filename="/fake/song.mp3", sampleRate=16000)
+
+    def test_get_mood_tags_returns_list(self):
+        """get_mood_tags() should return a list of mood strings."""
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        analyzer._essentia_available = True
+        with patch.object(analyzer, "analyze", return_value={"energetic": 0.8, "calm": 0.2, "bright": 0.05}):
+            result = analyzer.get_mood_tags("/fake/file.mp3", threshold=0.1)
+            assert isinstance(result, list)
+            assert "energetic" in result
+            assert "calm" in result
+            assert "bright" not in result  # below 0.1
+
+    def test_get_mood_tags_returns_none_when_unavailable(self):
+        """get_mood_tags() should return None when essentia is not available."""
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        analyzer._essentia_available = False
+        result = analyzer.get_mood_tags("/fake/file.mp3")
+        assert result is None
 
 
 # =============================================================================
@@ -328,7 +331,7 @@ class TestMoodWorkerDetailed:
         with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
             instance = MockAnalyzer.return_value
             instance.is_available = True
-            instance.get_mood_tag.side_effect = ["happy", None, "aggressive"]
+            instance.get_mood_tag.side_effect = ["happy", None, "energetic"]
 
             worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
             results = []
@@ -341,12 +344,10 @@ class TestMoodWorkerDetailed:
             assert results[0]["analyzed"] == 2
             assert results[0]["failed"] == 1
             assert len(results[0]["results"]) == 3
-            # Results may arrive in any order with parallel processing,
-            # so check by file_path
             by_path = {r["file_path"]: r for r in results[0]["results"]}
             assert by_path["/a.mp3"]["mood"] == "happy"
             assert by_path["/b.mp3"]["mood"] is None
-            assert by_path["/c.mp3"]["mood"] == "aggressive"
+            assert by_path["/c.mp3"]["mood"] == "energetic"
             mock_db.save.assert_called_once()
 
     def test_mood_worker_updates_user2_tag(self, qapp):
@@ -499,7 +500,6 @@ class TestAnalysisPanelMoodHandlers:
             {"file_path": "/b.mp3", "mood": "sad", "status": "ok (lastfm)"},
             {"file_path": "/c.mp3", "mood": None, "status": "failed"},
         ]
-        # Simulate streaming results (result_ready adds rows during processing)
         for r in results_data:
             panel.mood_results.add_result(r)
 
