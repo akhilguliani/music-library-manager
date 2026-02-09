@@ -48,7 +48,12 @@ The Analysis tab provides 3 sub-tabs with real-time streaming results:
 
 - **Energy**: Analyze tracks for energy levels (1-10), stored in `Grouping` field as a plain number
 - **MIK Import**: Import Mixed In Key tags (key → `Key` field, energy → `Grouping` field)
-- **Mood**: AI-powered mood classification (requires essentia-tensorflow), stored in `User2` as hashtags
+- **Mood**: Multi-label mood classification with model selection, stored in `User2` as hashtags (e.g., `#happy #uplifting #summer`)
+  - **Model selector**: MTG-Jamendo (56-class CNN, recommended) or Heuristic (legacy)
+  - **Threshold**: Min confidence to include a mood tag (default 0.10, lower = more tags)
+  - **Max tags**: Maximum mood tags per track (default 5)
+  - **Re-analyze All**: Clear cache and re-run mood analysis on all tracks
+  - **Online enrichment**: Last.fm → MusicBrainz → local model fallback chain
 
 Results stream to the table in real-time as each file is analyzed, with:
 

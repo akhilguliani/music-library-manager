@@ -17,7 +17,7 @@ pip install -e '.[online]'          # Optional: Online mood lookup (pylast, musi
 pip install -e '.[serato]'          # Optional: Serato export support
 
 # Testing
-pytest tests/ -v                    # Run all tests (527 tests)
+pytest tests/ -v                    # Run all tests (604 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -47,7 +47,7 @@ vdj_manager/
 │   ├── models.py       # Pydantic models (Song, Tags, Infos, Scan, Poi)
 │   └── backup.py       # Backup management
 ├── files/              # File operations (scanner, validator, path_remapper, duplicates)
-├── analysis/           # Audio analysis (energy, mood, online mood via Last.fm/MusicBrainz)
+├── analysis/           # Audio analysis (energy, mood models, online mood via Last.fm/MusicBrainz)
 ├── normalize/          # LUFS loudness normalization via ffmpeg
 ├── export/             # Serato format conversion
 └── ui/                 # PySide6 desktop application
@@ -72,10 +72,11 @@ vdj_manager/
 **VDJ Database Format:**
 - XML with lxml parsing; BPM stored as seconds-per-beat (0.5 = 120 BPM)
 - Energy stored in `Tags/@Grouping` as plain number (e.g., "7"); parser also handles legacy "Energy 7" format
-- Mood stored in `Tags/@User2` as hashtags (e.g., "#happy")
+- Mood stored in `Tags/@User2` as space-separated hashtags (e.g., "#happy #uplifting #summer") — multi-label
 - MIK key imported to `Tags/@Key`, MIK energy to `Tags/@Grouping`
 - Use lxml's default output format (single quotes in XML declaration, LF line endings)
 - `_filepath_to_elem` dict provides O(1) XML element lookups (built during `load()`)
+- Atomic save via temp file + `os.replace()` prevents database corruption on crash
 
 **Pydantic Models:**
 - Use `alias` for XML attribute names, `populate_by_name=True`
@@ -88,7 +89,9 @@ vdj_manager/
 - `SimpleWorker`/`ProgressSimpleWorker` for quick operations (backup, clean)
 - Analysis workers stream results via `result_ready = Signal(dict)` for real-time GUI updates
 - Analysis panel uses `ProgressWidget` for pause/resume/cancel controls on all 3 sub-tabs
-- Online mood enrichment: Last.fm → MusicBrainz → local essentia fallback chain
+- Mood analysis: model selector (MTG-Jamendo 56-class CNN or heuristic), threshold, max tags controls
+- Online mood enrichment: Last.fm → MusicBrainz → local model fallback chain
+- `MoodBackend` protocol allows pluggable model backends (MTG-Jamendo, heuristic, future Music2Emo)
 - Checkpoint system saves state at batch boundaries for task recovery
 - All destructive operations auto-backup the database first
 - Qt signals require event loop pumping in tests: `QCoreApplication.processEvents()`
@@ -99,8 +102,9 @@ vdj_manager/
 ~/.vdj_manager/
 ├── backups/            # Timestamped database backups
 ├── checkpoints/        # JSON task checkpoints for pause/resume
+├── models/             # Auto-downloaded Essentia model files (~87MB)
 ├── measurements.db     # SQLite cache for loudness measurements
-├── analysis.db         # SQLite cache for energy/mood/MIK results
+├── analysis.db         # SQLite cache for energy/mood/MIK results (model-prefixed keys)
 └── lastfm_api_key      # Optional: Last.fm API key (alternative to LASTFM_API_KEY env var)
 
 ~/Library/Application Support/VirtualDJ/database.xml  # Primary database (macOS)

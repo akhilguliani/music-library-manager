@@ -6,12 +6,15 @@ This document compares available models and approaches for music mood/emotion re
 
 ## Current Implementation
 
-VDJ Manager uses a 3-tier fallback chain:
-1. **Online: Last.fm tags** → weighted tag-to-mood mapping (80+ tags to 7 canonical moods)
+VDJ Manager uses a 3-tier fallback chain with pluggable model backends:
+1. **Online: Last.fm tags** → weighted tag-to-mood mapping (160+ tags to 56-class vocabulary)
 2. **Online: MusicBrainz genres** → genre-to-mood mapping
-3. **Local: essentia-tensorflow** → CNN-based audio analysis (heuristic mood from audio features)
+3. **Local: MTG-Jamendo MoodTheme** (default) → 56-class multi-label CNN via essentia-tensorflow
+4. **Local: Heuristic** (legacy) → BPM/RMS/spectral-based mood estimation
 
-Our 7 canonical moods: `happy`, `sad`, `aggressive`, `relaxed`, `acoustic`, `electronic`, `party`
+The 56-class vocabulary (MTG-Jamendo MoodTheme): `action`, `adventure`, `advertising`, `background`, `ballad`, `calm`, `children`, `christmas`, `commercial`, `cool`, `corporate`, `dark`, `deep`, `documentary`, `drama`, `dramatic`, `dream`, `emotional`, `energetic`, `epic`, `fast`, `film`, `fun`, `funny`, `game`, `groovy`, `happy`, `heavy`, `holiday`, `hopeful`, `inspiring`, `love`, `meditative`, `melancholic`, `melodic`, `motivational`, `movie`, `nature`, `party`, `positive`, `powerful`, `relaxing`, `retro`, `romantic`, `sad`, `sexy`, `slow`, `soft`, `soundscape`, `space`, `sport`, `summer`, `trailer`, `travel`, `upbeat`, `uplifting`
+
+Multi-label tagging assigns multiple mood tags per track based on configurable confidence threshold (default 0.10, max 5 tags).
 
 ---
 
@@ -150,9 +153,16 @@ Our 7 canonical moods: `happy`, `sad`, `aggressive`, `relaxed`, `acoustic`, `ele
 
 ## Recommendation
 
-### Short-term (low effort, high impact)
+### Short-term (low effort, high impact) — IMPLEMENTED
 
-**Upgrade Essentia to use the `mtg_jamendo_moodtheme` model** instead of our current heuristic approach. This gives us 56 mood/theme predictions per track in a single pass, with no new dependencies needed. The model covers: happy, sad, melancholic, calm, dark, energetic, emotional, epic, party, relaxing, romantic, and many more.
+**Upgraded Essentia to use the `mtg_jamendo_moodtheme` model** with a `MoodBackend` protocol abstraction. The implementation includes:
+- 56-class multi-label predictions per track in a single pass
+- Configurable confidence threshold (default 0.10) and max tags (default 5)
+- Auto-download of model files (~87MB) to `~/.vdj_manager/models/`
+- Model-aware cache keys (`mood:mtg-jamendo` vs `mood:heuristic`) for clean re-analysis
+- GUI model selector, threshold controls, and "Re-analyze All" button
+- CLI `--model`, `--threshold`, `--max-tags` options
+- Online tag mappings expanded to 56-class vocabulary (160+ tags)
 
 ### Medium-term (best accuracy)
 

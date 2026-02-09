@@ -189,16 +189,35 @@ Options:
 
 ### `analyze mood`
 
-Tag tracks with mood/emotion (requires essentia-tensorflow).
+Tag tracks with mood/emotion using multi-label classification. Supports MTG-Jamendo (56-class CNN) or heuristic backend, with online fallback via Last.fm/MusicBrainz.
 
 ```bash
 vdj-manager analyze mood [OPTIONS]
 
 Options:
-  --all         Analyze all tracks
-  --dry-run     Preview without tagging
-  --local       Use local database
-  --mynvme      Use MyNVMe database
+  --all             Analyze all tracks
+  --untagged        Only tracks without mood tags
+  --update-unknown  Re-analyze tracks with #unknown mood
+  --online/--no-online  Enable online mood lookup (default: on)
+  --lastfm-key KEY  Last.fm API key (overrides env var)
+  --model MODEL     Mood model: mtg-jamendo (default) or heuristic
+  --threshold FLOAT Min confidence for mood tags (default: 0.1)
+  --max-tags INT    Max mood tags per track (default: 5)
+  --dry-run         Preview without tagging
+  --local           Use local database
+  --mynvme          Use MyNVMe database
+```
+
+**Examples:**
+```bash
+# Analyze all tracks with MTG-Jamendo (default)
+vdj-manager analyze mood --all
+
+# Use heuristic backend with lower threshold
+vdj-manager analyze mood --all --model heuristic --threshold 0.05
+
+# Re-analyze unknown tracks with online lookup
+vdj-manager analyze mood --update-unknown --online
 ```
 
 ### `analyze import-mik`
