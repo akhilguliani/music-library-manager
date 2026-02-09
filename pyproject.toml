@@ -55,6 +55,9 @@ online = [
     "pylast>=5.0.0",
     "musicbrainzngs>=0.7.1",
 ]
+player = [
+    "python-vlc>=3.0.0",
+]
 
 [project.scripts]
 vdj-manager = "vdj_manager.cli:cli"

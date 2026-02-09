@@ -15,9 +15,10 @@ pip install -e '.[dev]'             # With dev dependencies (pytest, black, ruff
 pip install -e '.[mood]'            # Optional: AI mood analysis (essentia-tensorflow)
 pip install -e '.[online]'          # Optional: Online mood lookup (pylast, musicbrainzngs)
 pip install -e '.[serato]'          # Optional: Serato export support
+pip install -e '.[player]'          # Optional: VLC-based audio playback
 
 # Testing
-pytest tests/ -v                    # Run all tests (604 tests)
+pytest tests/ -v                    # Run all tests (710 tests)
 pytest tests/ -k "pattern"          # Run tests matching pattern
 pytest tests/ --cov=src/vdj_manager # With coverage
 
@@ -50,6 +51,11 @@ vdj_manager/
 ├── analysis/           # Audio analysis (energy, mood models, online mood via Last.fm/MusicBrainz)
 ├── normalize/          # LUFS loudness normalization via ffmpeg
 ├── export/             # Serato format conversion
+├── player/             # Audio playback (API-ready architecture)
+│   ├── engine.py       # PlaybackEngine (pure Python, no Qt) - VLC control, queue, history
+│   ├── bridge.py       # PlaybackBridge (Qt Signal adapter for engine callbacks)
+│   ├── waveform.py     # Waveform peak generation + SQLite cache
+│   └── album_art.py    # Album art extraction via mutagen
 └── ui/                 # PySide6 desktop application
     ├── workers/        # QThread-based workers with pause/resume
     │   ├── base_worker.py         # PausableWorker, SimpleWorker, ProgressSimpleWorker
@@ -57,14 +63,20 @@ vdj_manager/
     │   ├── database_worker.py     # Load, backup, validate, clean workers
     │   ├── file_workers.py        # Scan, import, remove, remap, duplicate workers
     │   ├── analysis_workers.py    # Energy, mood, MIK import workers
-    │   └── export_workers.py      # Serato export & crate workers
+    │   ├── export_workers.py      # Serato export & crate workers
+    │   └── player_workers.py      # WaveformWorker (background peak generation)
     ├── state/          # Checkpoint persistence for task recovery
     └── widgets/        # Qt widgets
+        ├── main_window.py         # MainWindow with tab widget + mini player
         ├── database_panel.py      # DB load, stats, track browser, tag editing, operation log
         ├── normalization_panel.py # Measure, apply, CSV export, limit
         ├── files_panel.py         # 5 sub-tabs: scan, import, remove, remap, duplicates
         ├── analysis_panel.py      # 3 sub-tabs: energy, MIK import, mood
-        └── export_panel.py        # Serato export, playlist/crate browser
+        ├── export_panel.py        # Serato export, playlist/crate browser
+        ├── player_panel.py        # Full player: waveform, queue, history, ratings, speed
+        ├── mini_player.py         # Always-visible 60px bottom bar with transport controls
+        ├── waveform_widget.py     # QPainter waveform with playhead + cue markers
+        └── star_rating_widget.py  # Interactive 5-star rating widget
 ```
 
 ### Key Patterns
@@ -82,8 +94,17 @@ vdj_manager/
 - Use `alias` for XML attribute names, `populate_by_name=True`
 - `computed_field` for derived values like `energy_level`
 
-**GUI Architecture (5 tabs):**
-- Database(0), Normalization(1), Files(2), Analysis(3), Export(4)
+**Player Architecture (3-layer, API-ready):**
+- `PlaybackEngine` (pure Python, no Qt) → `PlaybackBridge` (Qt signals) → UI widgets
+- Engine uses callbacks/observer pattern, bridge converts to Qt Signals for thread safety
+- VLC graceful degradation: `engine.initialize()` returns False if VLC not found
+- `TrackInfo.from_song()` bridges Song model to player-specific dataclass
+- Play count + last played updated on `track_finished` signal via `update_song_infos()`
+- Debounced save: `QTimer.singleShot(5000)` batches rapid changes during playback
+- WaveformCache (SQLite at `~/.vdj_manager/waveforms.db`) caches peak data
+
+**GUI Architecture (6 tabs):**
+- Database(0), Normalization(1), Files(2), Analysis(3), Export(4), Player(5)
 - `PausableWorker` for long operations with pause/resume (QMutex/QWaitCondition)
 - `PausableAnalysisWorker` for analysis workers with pause/resume/cancel and ProcessPoolExecutor batching
 - `SimpleWorker`/`ProgressSimpleWorker` for quick operations (backup, clean)
@@ -105,6 +126,7 @@ vdj_manager/
 ├── models/             # Auto-downloaded Essentia model files (~87MB)
 ├── measurements.db     # SQLite cache for loudness measurements
 ├── analysis.db         # SQLite cache for energy/mood/MIK results (model-prefixed keys)
+├── waveforms.db        # SQLite cache for waveform peak data
 └── lastfm_api_key      # Optional: Last.fm API key (alternative to LASTFM_API_KEY env var)
 
 ~/Library/Application Support/VirtualDJ/database.xml  # Primary database (macOS)

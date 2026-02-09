@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 
 from vdj_manager.player.bridge import PlaybackBridge
@@ -28,6 +28,12 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("VDJ Manager")
         self.setMinimumSize(1000, 700)
+
+        self._database = None
+        self._save_pending = False
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.timeout.connect(self._flush_save)
 
         self._setup_ui()
         self._setup_menu_bar()
@@ -102,6 +108,8 @@ class MainWindow(QMainWindow):
     def _create_player_tab(self) -> None:
         """Create the full player tab."""
         self.player_panel = PlayerPanel(self._playback_bridge)
+        self.player_panel.rating_changed.connect(self._on_rating_changed)
+        self._playback_bridge.track_finished.connect(self._on_track_playback_finished)
         self.tab_widget.addTab(self.player_panel, "Player")
 
     def _setup_menu_bar(self) -> None:
@@ -178,6 +186,7 @@ class MainWindow(QMainWindow):
     @Slot(object)
     def _on_database_loaded(self, database) -> None:
         """Handle database loaded event."""
+        self._database = database
         tracks = list(database.iter_songs())
         track_count = len(tracks)
         self.statusBar().showMessage(f"Loaded database with {track_count} tracks")
@@ -199,6 +208,46 @@ class MainWindow(QMainWindow):
         track_info = TrackInfo.from_song(song)
         self._playback_bridge.play_track(track_info)
 
+    @Slot(object)
+    def _on_track_playback_finished(self, track) -> None:
+        """Increment play count and set last played on track completion."""
+        if not self._database:
+            return
+        import time
+
+        song = self._database.get_song(track.file_path)
+        if song:
+            current_count = (song.infos.play_count or 0) if song.infos else 0
+            self._database.update_song_infos(
+                track.file_path,
+                PlayCount=current_count + 1,
+                LastPlay=int(time.time()),
+            )
+            self._schedule_save()
+
+    @Slot(str, int)
+    def _on_rating_changed(self, file_path: str, rating: int) -> None:
+        """Persist rating change to database."""
+        if not self._database:
+            return
+        self._database.update_song_tags(file_path, Rating=rating)
+        self._schedule_save()
+
+    def _schedule_save(self) -> None:
+        """Schedule a debounced save (5s delay to batch rapid changes)."""
+        self._save_pending = True
+        self._save_timer.start(5000)
+
+    @Slot()
+    def _flush_save(self) -> None:
+        """Perform the actual save."""
+        if self._save_pending and self._database:
+            try:
+                self._database.save()
+                self._save_pending = False
+            except Exception:
+                pass  # Save will retry on next schedule or on close
+
     @Slot()
     def _on_about(self) -> None:
         """Show the about dialog."""
@@ -218,6 +267,8 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
-        """Clean up player resources on close."""
+        """Flush pending saves and clean up player resources on close."""
+        self._save_timer.stop()
+        self._flush_save()
         self._playback_bridge.shutdown()
         super().closeEvent(event)
