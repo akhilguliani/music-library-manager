@@ -214,10 +214,11 @@ class PlaybackEngine:
 
     def toggle_play_pause(self) -> None:
         """Toggle between play and pause."""
-        if self._state == PlaybackState.PLAYING:
-            self.pause()
-        else:
-            self.play()
+        with self._lock:
+            if self._state == PlaybackState.PLAYING:
+                self.pause()
+            else:
+                self.play()
 
     def seek(self, position_s: float) -> None:
         """Seek to position in seconds."""
@@ -486,6 +487,7 @@ class PlaybackEngine:
         self._current_track = track
         media = self._vlc_instance.media_new(track.file_path)
         self._media_player.set_media(media)
+        media.release()  # Release our reference; player holds its own
         self._position_s = 0.0
         self._duration_s = track.duration_s
 
@@ -508,17 +510,23 @@ class PlaybackEngine:
             self._fire_state_callbacks()
 
     def _on_vlc_end_reached(self, event) -> None:
-        """VLC event: track ended."""
-        # Fire track finished callbacks (for play count)
-        if self._current_track:
-            for cb in self._on_track_finished:
+        """VLC event: track ended (called from VLC event thread)."""
+        # Snapshot shared state under lock
+        with self._lock:
+            track = self._current_track
+            repeat = self._repeat_mode
+            callbacks = list(self._on_track_finished)
+
+        # Fire callbacks outside lock to avoid blocking
+        if track:
+            for cb in callbacks:
                 try:
-                    cb(self._current_track)
+                    cb(track)
                 except Exception:
                     logger.warning("track_finished callback error", exc_info=True)
 
         # Handle repeat mode
-        if self._repeat_mode == "one" and self._current_track:
+        if repeat == "one" and track:
             # Use a timer thread to avoid VLC deadlock
             threading.Thread(
                 target=self._replay_current, daemon=True
@@ -559,6 +567,8 @@ class PlaybackEngine:
     def _poll_position(self) -> None:
         """Poll VLC for current position (runs in background thread)."""
         while self._poll_running:
+            pos = None
+            dur = None
             with self._lock:
                 if self._media_player is not None and self._state == PlaybackState.PLAYING:
                     pos_ms = self._media_player.get_time()
@@ -567,7 +577,15 @@ class PlaybackEngine:
                         self._position_s = pos_ms / 1000.0
                     if dur_ms > 0:
                         self._duration_s = dur_ms / 1000.0
-                    self._fire_position_callbacks()
+                    pos = self._position_s
+                    dur = self._duration_s
+            # Fire callbacks outside lock to avoid blocking other threads
+            if pos is not None:
+                for cb in self._on_position_change:
+                    try:
+                        cb(pos, dur)
+                    except Exception:
+                        logger.debug("position_change callback error", exc_info=True)
             time.sleep(0.1)
 
     # --- Callback firing ---
