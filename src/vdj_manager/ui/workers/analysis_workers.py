@@ -424,14 +424,12 @@ class EnergyWorker(PausableAnalysisWorker):
 
         file_paths = [t.file_path for t in self._tracks]
 
-        # Process in batches for pause/resume support
-        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
-            if not self._wait_if_paused():
-                break
+        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+            for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+                if not self._wait_if_paused():
+                    break
 
-            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
-
-            with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
                 futures = {
                     executor.submit(_analyze_energy_single, fp, self._cache_db_path): fp
                     for fp in batch
@@ -442,7 +440,11 @@ class EnergyWorker(PausableAnalysisWorker):
                         executor.shutdown(wait=False, cancel_futures=True)
                         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
-                    result = future.result()
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        fp = futures[future]
+                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "energy": None, "status": f"error: {e}"}
 
                     if result["status"] == "cached" and result["energy"] is not None:
                         result["tag_updates"] = {"Grouping": str(result["energy"])}
@@ -497,13 +499,12 @@ class MIKImportWorker(PausableAnalysisWorker):
 
         file_paths = [t.file_path for t in self._tracks]
 
-        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
-            if not self._wait_if_paused():
-                break
+        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+            for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+                if not self._wait_if_paused():
+                    break
 
-            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
-
-            with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
                 futures = {
                     executor.submit(_import_mik_single, fp, self._cache_db_path): fp
                     for fp in batch
@@ -514,7 +515,11 @@ class MIKImportWorker(PausableAnalysisWorker):
                         executor.shutdown(wait=False, cancel_futures=True)
                         return {"found": found, "updated": updated, "results": results}
 
-                    result = future.result()
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        fp = futures[future]
+                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "energy": None, "key": None, "status": f"error: {e}"}
 
                     if result["status"] in ("found", "cached"):
                         found += 1
@@ -613,13 +618,12 @@ class MoodWorker(PausableAnalysisWorker):
         # Known mood class names for tag cleanup during re-analysis
         from vdj_manager.analysis.mood_backend import MOOD_CLASSES_SET
 
-        for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
-            if not self._wait_if_paused():
-                break
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+                if not self._wait_if_paused():
+                    break
 
-            batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
-
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
                 futures = {}
                 for fp in batch:
                     artist, title = track_info.get(fp, ("", ""))
@@ -642,7 +646,11 @@ class MoodWorker(PausableAnalysisWorker):
                         executor.shutdown(wait=False, cancel_futures=True)
                         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
-                    result = future.result()
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        fp = futures[future]
+                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "mood": "unknown", "mood_tags": ["unknown"], "status": "ok (unknown)"}
 
                     status = result.get("status", "")
                     mood_tags = result.get("mood_tags", [])
