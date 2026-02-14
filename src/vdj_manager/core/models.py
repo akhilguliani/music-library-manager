@@ -149,7 +149,7 @@ class Song(BaseModel):
     @property
     def is_netsearch(self) -> bool:
         """Check if this is a streaming/netsearch entry."""
-        return self.file_path.startswith("netsearch://") or "://" in self.file_path
+        return "://" in self.file_path and not self.file_path.startswith("file://")
 
     @computed_field
     @property

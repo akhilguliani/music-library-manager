@@ -181,7 +181,12 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
             backup_path = input_path.with_suffix(f".backup{input_path.suffix}")
             shutil.copy2(str(input_path), str(backup_path))
 
-        shutil.move(str(temp_output), str(input_path))
+        try:
+            shutil.move(str(temp_output), str(input_path))
+        except Exception:
+            if temp_output.exists():
+                temp_output.unlink()
+            raise
 
         return NormalizationResult(
             file_path=file_path,

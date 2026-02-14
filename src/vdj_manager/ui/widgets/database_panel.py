@@ -71,6 +71,7 @@ class DatabasePanel(QWidget):
         self._backup_worker: BackupWorker | None = None
         self._validate_worker: ValidateWorker | None = None
         self._clean_worker: CleanWorker | None = None
+        self._editing_track: Song | None = None
 
         self._setup_ui()
 
@@ -490,7 +491,7 @@ class DatabasePanel(QWidget):
 
     def _on_tag_save_clicked(self) -> None:
         """Handle tag save button click."""
-        if self._database is None or not hasattr(self, "_editing_track"):
+        if self._database is None or self._editing_track is None:
             return
 
         track = self._editing_track

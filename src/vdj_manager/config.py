@@ -39,14 +39,14 @@ def get_lastfm_api_key() -> Optional[str]:
 
 # Audio file extensions
 AUDIO_EXTENSIONS = {
-    ".mp3", ".m4a", ".aac", ".flac", ".wav", ".aiff", ".aif",
+    ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav", ".aiff", ".aif",
     ".ogg", ".opus", ".wma", ".alac"
 }
 
 # Non-audio extensions to clean
 NON_AUDIO_EXTENSIONS = {
     ".zip", ".rar", ".7z", ".tar", ".gz",
-    ".mp4", ".mkv", ".avi", ".mov", ".wmv",
+    ".mkv", ".avi", ".mov", ".wmv",
     ".jpg", ".jpeg", ".png", ".gif", ".bmp",
     ".pdf", ".doc", ".docx", ".txt",
     ".exe", ".dmg", ".pkg", ".app",

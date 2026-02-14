@@ -1,5 +1,6 @@
 """Analysis panel with energy, mood, and MIK import sub-tabs."""
 
+import logging
 import multiprocessing
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
-from vdj_manager.config import get_lastfm_api_key
+from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
@@ -32,6 +33,9 @@ from vdj_manager.ui.workers.analysis_workers import (
     MIKImportWorker,
     MoodWorker,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisPanel(QWidget):
@@ -391,15 +395,11 @@ class AnalysisPanel(QWidget):
         Returns:
             List of Song objects.
         """
-        audio_extensions = {
-            ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav",
-            ".aiff", ".aif", ".ogg", ".opus",
-        }
         tracks = []
         for track in self._tracks:
             if track.is_netsearch:
                 continue
-            if track.extension not in audio_extensions:
+            if track.extension not in AUDIO_EXTENSIONS:
                 continue
             if untagged_only and track.energy is not None:
                 continue
@@ -428,16 +428,11 @@ class AnalysisPanel(QWidget):
         Unlike _get_audio_tracks, includes Windows-path tracks when online
         mode is enabled since online lookup only needs artist/title metadata.
         """
-        enable_online = self.mood_online_checkbox.isChecked()
-        audio_extensions = {
-            ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav",
-            ".aiff", ".aif", ".ogg", ".opus",
-        }
         tracks = []
         for track in self._tracks:
             if track.is_netsearch:
                 continue
-            if track.extension not in audio_extensions:
+            if track.extension not in AUDIO_EXTENSIONS:
                 continue
             file_exists = not track.is_windows_path and Path(track.file_path).exists()
             has_metadata = track.tags and (track.tags.author or track.tags.title)
@@ -489,7 +484,7 @@ class AnalysisPanel(QWidget):
             from vdj_manager.core.backup import BackupManager
             BackupManager().create_backup(self._database.db_path, label="pre_energy")
         except Exception:
-            pass
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
 
         self.energy_all_btn.setEnabled(False)
         self.energy_untagged_btn.setEnabled(False)
@@ -613,7 +608,7 @@ class AnalysisPanel(QWidget):
             from vdj_manager.core.backup import BackupManager
             BackupManager().create_backup(self._database.db_path, label="pre_mik")
         except Exception:
-            pass
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
 
         self.mik_scan_btn.setEnabled(False)
         self.mik_status.setText("Scanning...")
@@ -685,7 +680,7 @@ class AnalysisPanel(QWidget):
             from vdj_manager.core.backup import BackupManager
             BackupManager().create_backup(self._database.db_path, label="pre_mood")
         except Exception:
-            pass
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
 
         self.mood_btn.setEnabled(False)
         self.mood_status.setText("Analyzing...")
@@ -754,7 +749,7 @@ class AnalysisPanel(QWidget):
             from vdj_manager.core.backup import BackupManager
             BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze")
         except Exception:
-            pass
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
 
         self.mood_btn.setEnabled(False)
         self.mood_reanalyze_btn.setEnabled(False)
@@ -831,7 +826,7 @@ class AnalysisPanel(QWidget):
             from vdj_manager.core.backup import BackupManager
             BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze_all")
         except Exception:
-            pass
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
 
         self.mood_btn.setEnabled(False)
         self.mood_reanalyze_btn.setEnabled(False)

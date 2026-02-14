@@ -234,7 +234,9 @@ class PlaybackEngine:
 
     def seek_relative(self, delta_s: float) -> None:
         """Seek relative to current position."""
-        self.seek(self._position_s + delta_s)
+        with self._lock:
+            pos = self._position_s
+        self.seek(pos + delta_s)
 
     # --- Volume / speed ---
 

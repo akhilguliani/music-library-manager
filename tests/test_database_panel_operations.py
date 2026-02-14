@@ -133,7 +133,7 @@ class TestValidateWorker:
     def test_validate_worker_counts_categories(self, qapp):
         tracks = [
             _make_song("/music/song.mp3"),
-            _make_song("/music/video.mp4"),
+            _make_song("/music/video.mkv"),
         ]
         worker = ValidateWorker(tracks)
         results = []
@@ -145,7 +145,7 @@ class TestValidateWorker:
         assert len(results) == 1
         report = results[0]
         assert report["total"] == 2
-        assert report["non_audio"] >= 1  # mp4 is non-audio
+        assert report["non_audio"] >= 1  # mkv is non-audio
 
 
 class TestDatabasePanelValidate:

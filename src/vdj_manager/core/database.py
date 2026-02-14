@@ -224,7 +224,7 @@ class VDJDatabase:
             ext = song.extension
             if ext in AUDIO_EXTENSIONS:
                 stats.audio_files += 1
-            elif ext in NON_AUDIO_EXTENSIONS or ext not in AUDIO_EXTENSIONS:
+            else:
                 if not song.is_netsearch:
                     stats.non_audio_files += 1
 
@@ -358,7 +358,7 @@ class VDJDatabase:
             return False
 
         # Remove existing cue-type Poi elements from XML
-        for poi_elem in list(song_elem.iter("Poi")):
+        for poi_elem in list(song_elem.findall("Poi")):
             if poi_elem.get("Type") == "cue":
                 song_elem.remove(poi_elem)
 
@@ -491,8 +491,10 @@ class VDJDatabase:
             return ">" + text + "<"
         xml_str = re.sub(r">([^<]+)<", _fix_text_content, xml_str)
 
-        # Add space before /> in self-closing tags (VDJ format)
-        xml_str = xml_str.replace("/>", " />")
+        # Add space before /> in self-closing tags (VDJ format).
+        # Target "/> (end of attribute value + tag close) which is safe because
+        # lxml escapes internal " as &quot; — unescaped " always ends a value.
+        xml_str = xml_str.replace('"/>', '" />')
 
         # Convert LF to CRLF
         xml_str = xml_str.replace("\r\n", "\n").replace("\n", "\r\n")

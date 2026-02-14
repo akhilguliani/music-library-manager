@@ -30,14 +30,14 @@ class TestFileValidator:
         assert validator.is_audio_file("/path/to/track.m4a")
 
         assert not validator.is_audio_file("/path/to/file.zip")
-        assert not validator.is_audio_file("/path/to/file.mp4")
+        assert validator.is_audio_file("/path/to/track.mp4")
 
     def test_is_non_audio_file(self):
         """Test non-audio file detection."""
         validator = FileValidator()
 
         assert validator.is_non_audio_file("/path/to/file.zip")
-        assert validator.is_non_audio_file("/path/to/file.mp4")
+        assert not validator.is_non_audio_file("/path/to/file.mp4")
         assert validator.is_non_audio_file("/path/to/file.pdf")
         assert validator.is_non_audio_file("/path/to/file.exe")
 
@@ -110,7 +110,7 @@ class TestFileValidator:
         validator = FileValidator()
         songs = [
             Song(FilePath="/path/track.mp3"),
-            Song(FilePath="/path/video.mp4"),
+            Song(FilePath="/path/video.mkv"),
             Song(FilePath="/path/archive.zip"),
             Song(FilePath="netsearch://track"),  # Skipped
         ]
@@ -119,7 +119,7 @@ class TestFileValidator:
 
         assert len(non_audio) == 2
         paths = [s.file_path for s in non_audio]
-        assert "/path/video.mp4" in paths
+        assert "/path/video.mkv" in paths
         assert "/path/archive.zip" in paths
 
     def test_categorize_entries(self, temp_audio_file):

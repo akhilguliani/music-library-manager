@@ -93,8 +93,13 @@ class SeratoCrateWriter:
             track_entry = self.create_track_entry(path)
             content.extend(track_entry)
 
+        # Sanitize crate name to prevent path traversal
+        safe_name = Path(name).name.replace("..", "_")
+        if not safe_name:
+            safe_name = "unnamed"
+
         # Write crate file
-        crate_path = self.subcrates_dir / f"{name}.crate"
+        crate_path = self.subcrates_dir / f"{safe_name}.crate"
         with open(crate_path, "wb") as f:
             f.write(content)
 
