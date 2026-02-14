@@ -27,6 +27,7 @@ from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
+    _SAVE_INTERVAL,
     EnergyWorker,
     MIKImportWorker,
     MoodWorker,
@@ -55,6 +56,7 @@ class AnalysisPanel(QWidget):
         self._energy_worker: EnergyWorker | None = None
         self._mik_worker: MIKImportWorker | None = None
         self._mood_worker: MoodWorker | None = None
+        self._unsaved_count: int = 0
 
         self._setup_ui()
 
@@ -495,13 +497,14 @@ class AnalysisPanel(QWidget):
         self.energy_results.clear()
 
         self._energy_worker = EnergyWorker(
-            self._database, tracks,
+            tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(self._on_energy_error)
         self._energy_worker.result_ready.connect(self.energy_results.add_result)
+        self._energy_worker.result_ready.connect(self._apply_result_to_db)
 
         # Set up progress widget
         self.energy_progress.reset()
@@ -517,6 +520,32 @@ class AnalysisPanel(QWidget):
         self.energy_progress.cancel_requested.connect(self._energy_worker.cancel)
 
         self._energy_worker.start()
+
+    # ------------------------------------------------------------------
+    # Main-thread DB mutation handler
+    # ------------------------------------------------------------------
+
+    @Slot(dict)
+    def _apply_result_to_db(self, result: dict) -> None:
+        """Apply tag updates from a worker result to the database.
+
+        Called on the main thread via signal connection, ensuring
+        VDJDatabase is never mutated from a worker QThread.
+        """
+        tag_updates = result.get("tag_updates")
+        if not tag_updates or self._database is None:
+            return
+        self._database.update_song_tags(result["file_path"], **tag_updates)
+        self._unsaved_count += 1
+        if self._unsaved_count >= _SAVE_INTERVAL:
+            self._database.save()
+            self._unsaved_count = 0
+
+    def _save_if_needed(self) -> None:
+        """Save database if there are pending changes."""
+        if self._unsaved_count > 0 and self._database is not None:
+            self._database.save()
+            self._unsaved_count = 0
 
     @staticmethod
     def _format_failure_summary(results: list[dict], failed_count: int) -> str:
@@ -537,6 +566,7 @@ class AnalysisPanel(QWidget):
     @Slot(object)
     def _on_energy_finished(self, result: dict) -> None:
         """Handle energy analysis completion."""
+        self._save_if_needed()
         self.energy_all_btn.setEnabled(True)
         self.energy_untagged_btn.setEnabled(True)
 
@@ -590,13 +620,14 @@ class AnalysisPanel(QWidget):
         self.mik_results.clear()
 
         self._mik_worker = MIKImportWorker(
-            self._database, tracks,
+            tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._mik_worker.finished_work.connect(self._on_mik_finished)
         self._mik_worker.error.connect(self._on_mik_error)
         self._mik_worker.result_ready.connect(self.mik_results.add_result)
+        self._mik_worker.result_ready.connect(self._apply_result_to_db)
 
         # Set up progress widget
         self.mik_progress.reset()
@@ -616,6 +647,7 @@ class AnalysisPanel(QWidget):
     @Slot(object)
     def _on_mik_finished(self, result: dict) -> None:
         """Handle MIK import completion."""
+        self._save_if_needed()
         self.mik_scan_btn.setEnabled(True)
 
         found = result["found"]
@@ -667,7 +699,7 @@ class AnalysisPanel(QWidget):
         max_tags = self.mood_max_tags_spin.value()
 
         self._mood_worker = MoodWorker(
-            self._database, tracks,
+            tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
             enable_online=enable_online,
@@ -679,6 +711,7 @@ class AnalysisPanel(QWidget):
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
         self._mood_worker.result_ready.connect(self.mood_results.add_result)
+        self._mood_worker.result_ready.connect(self._apply_result_to_db)
 
         # Set up progress widget
         self.mood_progress.reset()
@@ -735,7 +768,7 @@ class AnalysisPanel(QWidget):
         max_tags = self.mood_max_tags_spin.value()
 
         self._mood_worker = MoodWorker(
-            self._database, tracks,
+            tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
             enable_online=True,
@@ -748,6 +781,7 @@ class AnalysisPanel(QWidget):
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
         self._mood_worker.result_ready.connect(self.mood_results.add_result)
+        self._mood_worker.result_ready.connect(self._apply_result_to_db)
 
         # Set up progress widget
         self.mood_progress.reset()
@@ -812,7 +846,7 @@ class AnalysisPanel(QWidget):
         lastfm_api_key = get_lastfm_api_key() if enable_online else None
 
         self._mood_worker = MoodWorker(
-            self._database, tracks,
+            tracks,
             max_workers=self.workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
             enable_online=enable_online,
@@ -825,6 +859,7 @@ class AnalysisPanel(QWidget):
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(self._on_mood_error)
         self._mood_worker.result_ready.connect(self.mood_results.add_result)
+        self._mood_worker.result_ready.connect(self._apply_result_to_db)
 
         self.mood_progress.reset()
         self.mood_progress.start(len(tracks))
@@ -843,6 +878,7 @@ class AnalysisPanel(QWidget):
     @Slot(object)
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood analysis completion."""
+        self._save_if_needed()
         self.mood_btn.setEnabled(True)
         self.mood_reanalyze_btn.setEnabled(True)
         self.mood_reanalyze_all_btn.setEnabled(True)

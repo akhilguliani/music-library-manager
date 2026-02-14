@@ -423,8 +423,6 @@ class TestMoodWorkerDetailed:
 
     def test_mood_worker_get_mood_tags_returns_none(self, qapp):
         """Worker should return 'unknown' when both backends return None."""
-        mock_db = MagicMock()
-        mock_db.get_song.return_value = _make_song("/a.mp3")
         tracks = [_make_song("/a.mp3")]
 
         mock_backend = MagicMock()
@@ -432,7 +430,7 @@ class TestMoodWorkerDetailed:
         mock_backend.get_mood_tags.return_value = None
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -444,12 +442,9 @@ class TestMoodWorkerDetailed:
             assert results[0]["failed"] == 0
             assert results[0]["results"][0]["status"] == "ok (unknown)"
             assert results[0]["results"][0]["mood"] == "unknown"
-            mock_db.save.assert_called()
 
     def test_mood_worker_exception_during_analysis(self, qapp):
         """Worker should return 'unknown' on exceptions instead of error."""
-        mock_db = MagicMock()
-        mock_db.get_song.return_value = _make_song("/a.mp3")
         tracks = [_make_song("/a.mp3")]
 
         mock_backend = MagicMock()
@@ -457,7 +452,7 @@ class TestMoodWorkerDetailed:
         mock_backend.get_mood_tags.side_effect = RuntimeError("analysis crashed")
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -469,26 +464,21 @@ class TestMoodWorkerDetailed:
             assert results[0]["failed"] == 0
             assert results[0]["results"][0]["status"] == "ok (unknown)"
             assert results[0]["results"][0]["mood"] == "unknown"
-            mock_db.save.assert_called()
 
     def test_mood_worker_multiple_tracks_mixed(self, qapp):
         """Worker should analyze all tracks — no failures, unknown as fallback."""
-        mock_db = MagicMock()
         tracks = [
             _make_song("/a.mp3"),
             _make_song("/b.mp3"),
             _make_song("/c.mp3"),
         ]
-        mock_db.get_song.side_effect = lambda fp: next(
-            (t for t in tracks if t.file_path == fp), None
-        )
 
         mock_backend = MagicMock()
         mock_backend.is_available = True
         mock_backend.get_mood_tags.side_effect = [["happy"], None, None, ["energetic"]]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -503,13 +493,10 @@ class TestMoodWorkerDetailed:
             assert by_path["/a.mp3"]["mood"] == "happy"
             assert by_path["/b.mp3"]["mood"] == "unknown"
             assert by_path["/c.mp3"]["mood"] == "energetic"
-            mock_db.save.assert_called()
 
     def test_mood_worker_updates_user2_tag(self, qapp):
-        """Worker should append mood hashtags to User2 tag."""
-        mock_db = MagicMock()
+        """Worker should include tag_updates with mood hashtags."""
         song = _make_song("/song.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -517,20 +504,18 @@ class TestMoodWorkerDetailed:
         mock_backend.get_mood_tags.return_value = ["relaxing"]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
             worker.wait(5000)
             QCoreApplication.processEvents()
 
-            mock_db.update_song_tags.assert_called_once_with("/song.mp3", User2="#relaxing")
+            assert results[0]["results"][0]["tag_updates"] == {"User2": "#relaxing"}
 
     def test_mood_worker_multi_label_hashtags(self, qapp):
-        """Worker should write multiple mood hashtags to User2."""
-        mock_db = MagicMock()
+        """Worker should include multiple mood hashtags in tag_updates."""
         song = _make_song("/song.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -538,21 +523,19 @@ class TestMoodWorkerDetailed:
         mock_backend.get_mood_tags.return_value = ["happy", "uplifting", "summer"]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
             worker.wait(5000)
             QCoreApplication.processEvents()
 
-            mock_db.update_song_tags.assert_called_once_with(
-                "/song.mp3", User2="#happy #summer #uplifting"
-            )
+            assert results[0]["results"][0]["tag_updates"] == {
+                "User2": "#happy #summer #uplifting"
+            }
 
-    def test_mood_worker_all_unknown_still_saves(self, qapp):
-        """Worker should save even when all tracks get 'unknown' mood."""
-        mock_db = MagicMock()
-        mock_db.get_song.side_effect = lambda fp: _make_song(fp)
+    def test_mood_worker_all_unknown_counts_analyzed(self, qapp):
+        """Worker should count 'unknown' results as analyzed, not failed."""
         tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
 
         mock_backend = MagicMock()
@@ -560,7 +543,7 @@ class TestMoodWorkerDetailed:
         mock_backend.get_mood_tags.return_value = None
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -570,17 +553,14 @@ class TestMoodWorkerDetailed:
             assert results[0]["analyzed"] == 2
             assert results[0]["failed"] == 0
             assert all(r["mood"] == "unknown" for r in results[0]["results"])
-            mock_db.save.assert_called()
 
     def test_mood_worker_empty_tracks(self, qapp):
         """Worker should handle empty track list gracefully."""
-        mock_db = MagicMock()
-
         mock_backend = MagicMock()
         mock_backend.is_available = True
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, [], max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker([], max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -591,13 +571,11 @@ class TestMoodWorkerDetailed:
             assert results[0]["analyzed"] == 0
             assert results[0]["failed"] == 0
             assert results[0]["results"] == []
-            mock_db.save.assert_not_called()
 
     def test_mood_worker_online_enabled(self, qapp):
         """Worker should store online and model params."""
-        mock_db = MagicMock()
         worker = MoodWorker(
-            mock_db, [], max_workers=1,
+            [], max_workers=1,
             enable_online=True, lastfm_api_key="test_key",
             model_name="mtg-jamendo", threshold=0.15, max_tags=3,
         )
@@ -617,17 +595,15 @@ class TestMoodWorkerOnlineIntegration:
     """Tests for MoodWorker with online mood lookup enabled."""
 
     def test_online_success_writes_lastfm_mood(self, qapp):
-        """Worker with online=True should use Last.fm result and write to db."""
-        mock_db = MagicMock()
+        """Worker with online=True should include tag_updates with Last.fm mood."""
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
             mock_lookup.return_value = ("happy", "lastfm")
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -643,14 +619,11 @@ class TestMoodWorkerOnlineIntegration:
             by_path = {r["file_path"]: r for r in results[0]["results"]}
             assert by_path["/a.mp3"]["status"] == "ok (lastfm)"
             assert by_path["/a.mp3"]["mood"] == "happy"
-            mock_db.update_song_tags.assert_called_once_with("/a.mp3", User2="#happy")
-            mock_db.save.assert_called()
+            assert by_path["/a.mp3"]["tag_updates"] == {"User2": "#happy"}
 
     def test_online_failure_falls_back_to_local(self, qapp):
         """When online lookup fails, worker should fall back to local model."""
-        mock_db = MagicMock()
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -662,7 +635,7 @@ class TestMoodWorkerOnlineIntegration:
              patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
             mock_lookup.return_value = (None, "none")
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -680,15 +653,11 @@ class TestMoodWorkerOnlineIntegration:
 
     def test_online_mixed_results(self, qapp):
         """Worker handles mix of online success, local fallback, and unknown."""
-        mock_db = MagicMock()
         tracks = [
             _make_song("/a.mp3"),
             _make_song("/b.mp3"),
             _make_song("/c.mp3"),
         ]
-        mock_db.get_song.side_effect = lambda fp: next(
-            (t for t in tracks if t.file_path == fp), None
-        )
 
         call_count = 0
 
@@ -707,7 +676,7 @@ class TestMoodWorkerOnlineIntegration:
              patch("vdj_manager.analysis.online_mood.lookup_online_mood", side_effect=mock_lookup_fn), \
              patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -730,14 +699,13 @@ class TestMoodWorkerOnlineIntegration:
 
     def test_online_caps_workers_at_one(self, qapp):
         """Online mode should cap max_workers to 1 for rate limiting."""
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
             mock_lookup.return_value = ("happy", "lastfm")
             worker = MoodWorker(
-                mock_db, tracks, max_workers=8,
+                tracks, max_workers=8,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -754,23 +722,9 @@ class TestMoodWorkerOnlineIntegration:
 
     def test_online_connection_reset_retried(self, qapp):
         """ConnectionResetError from MusicBrainz should be retried transparently."""
-        mock_db = MagicMock()
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
-        call_count = 0
-
-        def flaky_lookup(artist, title, api_key):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ConnectionResetError("[Errno 54] Connection reset by peer")
-            return ("energetic", "musicbrainz")
-
-        # The retry happens inside _analyze_mood_single → lookup_online_mood → LastFm/MB
-        # We need to test that the lookup_online_mood is called and retries work.
-        # Since retry is INSIDE LastFm/MusicBrainz classes, we mock at that level.
         mock_backend = MagicMock()
         mock_backend.is_available = True
         mock_backend.get_mood_tags.return_value = ["energetic"]
@@ -778,10 +732,9 @@ class TestMoodWorkerOnlineIntegration:
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup, \
              patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            # First call raises, second succeeds
             mock_lookup.side_effect = [("energetic", "musicbrainz")]
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -799,19 +752,17 @@ class TestMoodWorkerOnlineIntegration:
 
     def test_online_multi_track_preserves_existing_user2(self, qapp):
         """Online mood should append to existing User2 tags, not replace."""
-        mock_db = MagicMock()
         song = Song(
             file_path="/a.mp3",
             tags=Tags(author="Artist", title="Title", user2="#existing_tag"),
         )
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
             mock_lookup.return_value = ("happy", "lastfm")
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -822,22 +773,20 @@ class TestMoodWorkerOnlineIntegration:
             QCoreApplication.processEvents()
 
             # Should preserve #existing_tag and add #happy
-            mock_db.update_song_tags.assert_called_once_with(
-                "/a.mp3", User2="#existing_tag #happy"
-            )
+            assert results[0]["results"][0]["tag_updates"] == {
+                "User2": "#existing_tag #happy"
+            }
 
     def test_online_musicbrainz_source(self, qapp):
         """Worker should correctly report MusicBrainz as source."""
-        mock_db = MagicMock()
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         with _PATCH_POOL, \
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup:
             mock_lookup.return_value = ("calm", "musicbrainz")
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )
@@ -852,9 +801,7 @@ class TestMoodWorkerOnlineIntegration:
 
     def test_online_no_artist_title_skips_online(self, qapp):
         """Tracks without artist/title should skip online and use local model."""
-        mock_db = MagicMock()
         song = Song(file_path="/a.mp3", tags=Tags(author="", title=""))
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -865,7 +812,7 @@ class TestMoodWorkerOnlineIntegration:
              patch("vdj_manager.analysis.online_mood.lookup_online_mood") as mock_lookup, \
              patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
             worker = MoodWorker(
-                mock_db, tracks, max_workers=1,
+                tracks, max_workers=1,
                 enable_online=True, lastfm_api_key="test_key",
                 model_name="heuristic",
             )

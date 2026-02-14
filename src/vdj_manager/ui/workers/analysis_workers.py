@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import QMutex, QWaitCondition, QThread, Signal
 
-from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 
 # Save to disk every N results to avoid losing work on crash
@@ -395,20 +394,22 @@ class EnergyWorker(PausableAnalysisWorker):
     """Worker that analyzes energy levels for audio tracks in parallel.
 
     Uses ProcessPoolExecutor to analyze multiple files simultaneously,
-    streaming results to the GUI and saving periodically.
+    streaming results to the GUI via result_ready signal.
     Supports pause/resume/cancel between batches.
+
+    Note: This worker does NOT mutate the database directly. It includes
+    ``tag_updates`` in each result dict so the main-thread panel handler
+    can apply DB changes safely (no cross-thread mutation).
     """
 
     def __init__(
         self,
-        database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
         cache_db_path: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
         self._cache_db_path = cache_db_path
@@ -420,7 +421,6 @@ class EnergyWorker(PausableAnalysisWorker):
         cached = 0
         results = []
         total = len(self._tracks)
-        unsaved = 0
 
         file_paths = [t.file_path for t in self._tracks]
 
@@ -440,37 +440,22 @@ class EnergyWorker(PausableAnalysisWorker):
                 for future in as_completed(futures):
                     if self._check_cancelled():
                         executor.shutdown(wait=False, cancel_futures=True)
-                        if unsaved > 0:
-                            self._database.save()
                         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
                     result = future.result()
-                    results.append(result)
 
                     if result["status"] == "cached" and result["energy"] is not None:
-                        self._database.update_song_tags(
-                            result["file_path"],
-                            Grouping=str(result["energy"]),
-                        )
+                        result["tag_updates"] = {"Grouping": str(result["energy"])}
                         cached += 1
-                        unsaved += 1
                     elif result["status"] == "ok" and result["energy"] is not None:
-                        self._database.update_song_tags(
-                            result["file_path"],
-                            Grouping=str(result["energy"]),
-                        )
+                        result["tag_updates"] = {"Grouping": str(result["energy"])}
                         analyzed += 1
-                        unsaved += 1
                     else:
                         failed += 1
 
+                    results.append(result)
                     self.result_ready.emit(result)
                     self._emit_progress(analyzed + failed + cached, total)
-
-            # Save after each batch
-            if unsaved > 0:
-                self._database.save()
-                unsaved = 0
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
@@ -478,20 +463,22 @@ class EnergyWorker(PausableAnalysisWorker):
 class MIKImportWorker(PausableAnalysisWorker):
     """Worker that imports Mixed In Key tags from audio files in parallel.
 
-    Reads MIK energy and key data from file tags using ProcessPoolExecutor
-    and updates the VDJ database. Supports pause/resume/cancel.
+    Reads MIK energy and key data from file tags using ProcessPoolExecutor.
+    Supports pause/resume/cancel.
+
+    Note: This worker does NOT mutate the database directly. It includes
+    ``tag_updates`` in each result dict so the main-thread panel handler
+    can apply DB changes safely (no cross-thread mutation).
     """
 
     def __init__(
         self,
-        database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
         cache_db_path: str | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
         self._cache_db_path = cache_db_path
@@ -502,9 +489,8 @@ class MIKImportWorker(PausableAnalysisWorker):
         updated = 0
         results = []
         total = len(self._tracks)
-        unsaved = 0
 
-        # Build a lookup for existing energy tags
+        # Build a lookup for existing energy tags (read-only snapshot)
         existing_energy = {
             t.file_path: t.energy for t in self._tracks
         }
@@ -526,23 +512,20 @@ class MIKImportWorker(PausableAnalysisWorker):
                 for future in as_completed(futures):
                     if self._check_cancelled():
                         executor.shutdown(wait=False, cancel_futures=True)
-                        if unsaved > 0:
-                            self._database.save()
                         return {"found": found, "updated": updated, "results": results}
 
                     result = future.result()
 
                     if result["status"] in ("found", "cached"):
                         found += 1
-                        updates = {}
+                        tag_updates = {}
                         if result.get("energy") and not existing_energy.get(result["file_path"]):
-                            updates["Grouping"] = str(result["energy"])
+                            tag_updates["Grouping"] = str(result["energy"])
                         if result.get("key"):
-                            updates["Key"] = result["key"]
-                        if updates:
-                            self._database.update_song_tags(result["file_path"], **updates)
+                            tag_updates["Key"] = result["key"]
+                        if tag_updates:
+                            result["tag_updates"] = tag_updates
                             updated += 1
-                            unsaved += 1
                             result["status"] = "updated"
                         else:
                             result["status"] = "exists"
@@ -550,10 +533,6 @@ class MIKImportWorker(PausableAnalysisWorker):
                     results.append(result)
                     self.result_ready.emit(result)
                     self._emit_progress(len(results), total)
-
-            if unsaved > 0:
-                self._database.save()
-                unsaved = 0
 
         return {"found": found, "updated": updated, "results": results}
 
@@ -565,11 +544,14 @@ class MoodWorker(PausableAnalysisWorker):
     to local model analysis. Multi-label: writes multiple mood hashtags
     to User2 (e.g. "#happy #uplifting #summer").
     Supports pause/resume/cancel and model selection.
+
+    Note: This worker does NOT mutate the database directly. It includes
+    ``tag_updates`` in each result dict so the main-thread panel handler
+    can apply DB changes safely (no cross-thread mutation).
     """
 
     def __init__(
         self,
-        database: VDJDatabase,
         tracks: list[Song],
         max_workers: int | None = None,
         cache_db_path: str | None = None,
@@ -582,7 +564,6 @@ class MoodWorker(PausableAnalysisWorker):
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self._database = database
         self._tracks = tracks
         self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
         self._cache_db_path = cache_db_path
@@ -617,14 +598,15 @@ class MoodWorker(PausableAnalysisWorker):
         cached = 0
         results = []
         total = len(self._tracks)
-        unsaved = 0
 
-        # Build track lookup for artist/title metadata
+        # Build read-only snapshots for artist/title and existing user2
         track_info = {}
+        existing_user2 = {}
         for t in self._tracks:
             artist = (t.tags.author or "") if t.tags else ""
             title = (t.tags.title or "") if t.tags else ""
             track_info[t.file_path] = (artist, title)
+            existing_user2[t.file_path] = (t.tags.user2 or "") if t.tags else ""
 
         file_paths = [t.file_path for t in self._tracks]
 
@@ -658,12 +640,9 @@ class MoodWorker(PausableAnalysisWorker):
                 for future in as_completed(futures):
                     if self._check_cancelled():
                         executor.shutdown(wait=False, cancel_futures=True)
-                        if unsaved > 0:
-                            self._database.save()
                         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
                     result = future.result()
-                    results.append(result)
 
                     status = result.get("status", "")
                     mood_tags = result.get("mood_tags", [])
@@ -671,8 +650,7 @@ class MoodWorker(PausableAnalysisWorker):
                         status.startswith("ok") or status == "cached"
                     ):
                         new_hashtags = {f"#{t}" for t in mood_tags}
-                        song = self._database.get_song(result["file_path"])
-                        existing = (song.tags.user2 or "") if song and song.tags else ""
+                        existing = existing_user2.get(result["file_path"], "")
 
                         if self._skip_cache:
                             # Re-analyzing: strip ALL known mood hashtags, then add new
@@ -691,22 +669,16 @@ class MoodWorker(PausableAnalysisWorker):
                                 words.append(ht)
 
                         new_user2 = " ".join(words).strip()
-                        self._database.update_song_tags(
-                            result["file_path"], User2=new_user2
-                        )
+                        result["tag_updates"] = {"User2": new_user2}
                         if status == "cached":
                             cached += 1
                         else:
                             analyzed += 1
-                        unsaved += 1
                     else:
                         failed += 1
 
+                    results.append(result)
                     self.result_ready.emit(result)
                     self._emit_progress(analyzed + failed + cached, total)
-
-            if unsaved > 0:
-                self._database.save()
-                unsaved = 0
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}

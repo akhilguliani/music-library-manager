@@ -124,14 +124,13 @@ class TestEnergyWorker:
     """Tests for EnergyWorker."""
 
     def test_energy_worker_success(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 7
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -142,18 +141,16 @@ class TestEnergyWorker:
             assert results[0]["analyzed"] == 1
             assert results[0]["failed"] == 0
             assert results[0]["results"][0]["energy"] == 7
-            mock_db.update_song_tags.assert_called_once_with("/a.mp3", Grouping="7")
-            mock_db.save.assert_called_once()
+            assert results[0]["results"][0]["tag_updates"] == {"Grouping": "7"}
 
     def test_energy_worker_failure(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = None
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -163,17 +160,15 @@ class TestEnergyWorker:
             assert len(results) == 1
             assert results[0]["analyzed"] == 0
             assert results[0]["failed"] == 1
-            mock_db.save.assert_not_called()
 
     def test_energy_worker_exception(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.side_effect = RuntimeError("bad file")
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -186,8 +181,7 @@ class TestEnergyWorker:
 
     def test_energy_worker_has_pause_resume(self, qapp):
         """EnergyWorker should have pause/resume/cancel methods."""
-        mock_db = MagicMock()
-        worker = EnergyWorker(mock_db, [], max_workers=1)
+        worker = EnergyWorker([], max_workers=1)
         assert hasattr(worker, "pause")
         assert hasattr(worker, "resume")
         assert hasattr(worker, "cancel")
@@ -199,7 +193,6 @@ class TestMIKImportWorker:
     """Tests for MIKImportWorker."""
 
     def test_mik_worker_finds_and_updates(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
@@ -208,7 +201,7 @@ class TestMIKImportWorker:
                 "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
+            worker = MIKImportWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -218,11 +211,9 @@ class TestMIKImportWorker:
             assert len(results) == 1
             assert results[0]["found"] == 1
             assert results[0]["updated"] == 1
-            mock_db.update_song_tags.assert_called_once()
-            mock_db.save.assert_called_once()
+            assert results[0]["results"][0]["tag_updates"] == {"Grouping": "8", "Key": "Am"}
 
     def test_mik_worker_no_data(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
@@ -231,7 +222,7 @@ class TestMIKImportWorker:
                 "energy": None, "key": None, "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
+            worker = MIKImportWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -241,10 +232,8 @@ class TestMIKImportWorker:
             assert len(results) == 1
             assert results[0]["found"] == 0
             assert results[0]["updated"] == 0
-            mock_db.save.assert_not_called()
 
     def test_mik_worker_skips_existing_energy(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3", energy=5)]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
@@ -253,7 +242,7 @@ class TestMIKImportWorker:
                 "energy": 8, "key": None, "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
+            worker = MIKImportWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -266,8 +255,7 @@ class TestMIKImportWorker:
             assert results[0]["updated"] == 0
 
     def test_mik_worker_has_pause_resume(self, qapp):
-        mock_db = MagicMock()
-        worker = MIKImportWorker(mock_db, [], max_workers=1)
+        worker = MIKImportWorker([], max_workers=1)
         assert hasattr(worker, "pause")
         assert hasattr(worker, "resume")
         assert hasattr(worker, "cancel")
@@ -277,14 +265,13 @@ class TestMoodWorker:
     """Tests for MoodWorker."""
 
     def test_mood_worker_unavailable(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         mock_backend = MagicMock()
         mock_backend.is_available = False
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -296,9 +283,7 @@ class TestMoodWorker:
             assert results[0]["analyzed"] == 0
 
     def test_mood_worker_success(self, qapp):
-        mock_db = MagicMock()
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -306,7 +291,7 @@ class TestMoodWorker:
         mock_backend.get_mood_tags.return_value = ["happy"]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
             worker.start()
@@ -316,22 +301,19 @@ class TestMoodWorker:
             assert len(results) == 1
             assert results[0]["analyzed"] == 1
             assert results[0]["results"][0]["mood"] == "happy"
-            mock_db.update_song_tags.assert_called_once_with("/a.mp3", User2="#happy")
-            mock_db.save.assert_called_once()
+            assert results[0]["results"][0]["tag_updates"] == {"User2": "#happy"}
 
     def test_mood_worker_online_params(self, qapp):
         """MoodWorker should accept enable_online and lastfm_api_key params."""
-        mock_db = MagicMock()
         worker = MoodWorker(
-            mock_db, [], max_workers=1,
+            [], max_workers=1,
             enable_online=True, lastfm_api_key="test_key",
         )
         assert worker._enable_online is True
         assert worker._lastfm_api_key == "test_key"
 
     def test_mood_worker_has_pause_resume(self, qapp):
-        mock_db = MagicMock()
-        worker = MoodWorker(mock_db, [], max_workers=1)
+        worker = MoodWorker([], max_workers=1)
         assert hasattr(worker, "pause")
         assert hasattr(worker, "resume")
         assert hasattr(worker, "cancel")
@@ -635,14 +617,13 @@ class TestWorkerResultReady:
     """Tests for result_ready signal streaming."""
 
     def test_energy_worker_emits_result_ready(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 7
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
             worker.start()
@@ -653,7 +634,6 @@ class TestWorkerResultReady:
             assert all(r["energy"] == 7 for r in streamed)
 
     def test_mik_worker_emits_result_ready(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
@@ -662,7 +642,7 @@ class TestWorkerResultReady:
                 "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
             }
 
-            worker = MIKImportWorker(mock_db, tracks, max_workers=1)
+            worker = MIKImportWorker(tracks, max_workers=1)
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
             worker.start()
@@ -673,9 +653,7 @@ class TestWorkerResultReady:
             assert streamed[0]["status"] == "updated"
 
     def test_mood_worker_emits_result_ready(self, qapp):
-        mock_db = MagicMock()
         song = _make_song("/a.mp3")
-        mock_db.get_song.return_value = song
         tracks = [song]
 
         mock_backend = MagicMock()
@@ -683,7 +661,7 @@ class TestWorkerResultReady:
         mock_backend.get_mood_tags.return_value = ["happy"]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False, model_name="heuristic")
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
             worker.start()
@@ -694,14 +672,13 @@ class TestWorkerResultReady:
             assert streamed[0]["mood"] == "happy"
 
     def test_energy_worker_progress_emitted(self, qapp):
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3"), _make_song("/b.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 5
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             progress_calls = []
             worker.progress.connect(lambda cur, tot, pct: progress_calls.append((cur, tot)))
             worker.start()
@@ -713,14 +690,13 @@ class TestWorkerResultReady:
 
     def test_energy_worker_status_changed_emitted(self, qapp):
         """EnergyWorker should emit status_changed signals."""
-        mock_db = MagicMock()
         tracks = [_make_song("/a.mp3")]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 5
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             statuses = []
             worker.status_changed.connect(lambda s: statuses.append(s))
             worker.start()
@@ -736,14 +712,13 @@ class TestWorkerPauseResume:
 
     def test_energy_worker_cancel(self, qapp):
         """Cancel should stop processing and return partial results."""
-        mock_db = MagicMock()
         tracks = [_make_song(f"/song{i}.mp3") for i in range(100)]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
             analyzer_instance = MockAnalyzer.return_value
             analyzer_instance.analyze.return_value = 5
 
-            worker = EnergyWorker(mock_db, tracks, max_workers=1)
+            worker = EnergyWorker(tracks, max_workers=1)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
 
@@ -760,7 +735,6 @@ class TestWorkerPauseResume:
 
     def test_mood_worker_cancel(self, qapp):
         """Cancel should stop mood processing."""
-        mock_db = MagicMock()
         tracks = [_make_song(f"/song{i}.mp3") for i in range(100)]
 
         with _PATCH_POOL, patch("vdj_manager.analysis.mood.MoodAnalyzer") as MockAnalyzer:
@@ -768,7 +742,7 @@ class TestWorkerPauseResume:
             analyzer_instance.is_available = True
             analyzer_instance.get_mood_tag.return_value = "happy"
 
-            worker = MoodWorker(mock_db, tracks, max_workers=1, enable_online=False)
+            worker = MoodWorker(tracks, max_workers=1, enable_online=False)
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
 
