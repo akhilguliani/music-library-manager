@@ -122,6 +122,33 @@ class TestVDJDatabase:
         assert song.tags.grouping == "5"
         assert song.energy == 5
 
+    def test_update_song_tags_track_number_alias(self, temp_db_file):
+        """Test that TrackNumber XML attribute maps to track_number field."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+
+        result = db.update_song_tags("/path/to/track2.mp3", TrackNumber="3")
+        assert result
+
+        song = db.get_song("/path/to/track2.mp3")
+        assert song.tags.track_number == "3"
+
+    def test_update_song_tags_clears_value_with_none(self, temp_db_file):
+        """Test that setting a tag to None removes it from XML."""
+        db = VDJDatabase(temp_db_file)
+        db.load()
+
+        # First set a value
+        db.update_song_tags("/path/to/track2.mp3", Grouping="5")
+        assert db.get_song("/path/to/track2.mp3").tags.grouping == "5"
+
+        # Then clear it
+        db.update_song_tags("/path/to/track2.mp3", Grouping=None)
+        # Verify it was removed from XML
+        song_elem = db._filepath_to_elem["/path/to/track2.mp3"]
+        tags_elem = song_elem.find("Tags")
+        assert "Grouping" not in tags_elem.attrib
+
     def test_remap_path(self, temp_db_file):
         """Test path remapping."""
         db = VDJDatabase(temp_db_file)

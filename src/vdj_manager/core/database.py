@@ -265,9 +265,14 @@ class VDJDatabase:
             song = self._songs[file_path]
             if song.tags is None:
                 song.tags = Tags()
+            # Map XML attribute names to Pydantic field names
+            alias_map = {
+                "tracknumber": "track_number",
+            }
             for key, value in kwargs.items():
-                if hasattr(song.tags, key.lower()):
-                    setattr(song.tags, key.lower(), value)
+                attr_name = alias_map.get(key.lower(), key.lower())
+                if hasattr(song.tags, attr_name):
+                    setattr(song.tags, attr_name, value)
 
         return True
 
