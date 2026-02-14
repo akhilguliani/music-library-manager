@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-767%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-806%20passed-brightgreen.svg)]()
 
 A powerful Python tool for managing VirtualDJ music libraries, with both CLI and desktop GUI interfaces.
 
@@ -18,14 +18,16 @@ A powerful Python tool for managing VirtualDJ music libraries, with both CLI and
 - **Audio Playback** - VLC-based player with waveform display, cue points, queue, and star ratings
 - **Desktop GUI** - Visual interface with real-time streaming results, progress tracking, and pause/resume
 - **Structured Logging** - Rotating log files at `~/.vdj_manager/logs/` with `--verbose` flag
-- **Persistent Caching** - SQLite caches for measurements and analysis results across sessions
+- **Persistent Caching** - SQLite caches for measurements, analysis results, and waveform data across sessions
+- **Windows-Path Support** - Databases with Windows paths fully supported for analysis and online mood lookup
+- **Retry with Backoff** - Online lookups automatically retry on network errors with exponential backoff
 
 ## Installation
 
 ```bash
 # Install from source
-git clone https://github.com/aguliani/vdj-manager.git
-cd vdj-manager
+git clone https://github.com/akhilguliani/music-library-manager.git
+cd music-library-manager
 pip install -e .
 
 # With optional dependencies
