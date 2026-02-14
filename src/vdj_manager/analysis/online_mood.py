@@ -353,10 +353,13 @@ class _RateLimiter:
         with self._lock:
             now = time.monotonic()
             min_interval = 1.0 / self._rate
-            elapsed = now - self._last_time
-            if elapsed < min_interval:
-                time.sleep(min_interval - elapsed)
-            self._last_time = time.monotonic()
+            earliest = self._last_time + min_interval
+            sleep_time = max(0.0, earliest - now)
+            # Reserve this time slot while holding the lock
+            self._last_time = max(now, earliest)
+        # Sleep outside lock so other threads can reserve their slots
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 
 def _retry_on_network_error(
