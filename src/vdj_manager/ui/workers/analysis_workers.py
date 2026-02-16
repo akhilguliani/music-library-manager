@@ -27,6 +27,13 @@ _SAVE_INTERVAL = 25
 # Top-level worker functions (required for ProcessPoolExecutor pickling)
 # ------------------------------------------------------------------
 
+# Process-level cache for expensive objects.  Each subprocess in the
+# ProcessPoolExecutor persists for multiple files within a batch, so
+# caching the AnalysisCache connection and analyzer/backend objects
+# avoids redundant construction per file.
+_process_cache: dict = {}
+
+
 @contextlib.contextmanager
 def _suppress_stderr():
     """Suppress C-level stderr output (e.g. mpg123 decoder warnings).
@@ -66,6 +73,9 @@ def _suppress_stderr():
 def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Analyze energy for a single file in a subprocess.
 
+    Caches AnalysisCache and EnergyAnalyzer at process level so they
+    are reused across files within the same subprocess.
+
     Returns:
         Dict with file_path, format, energy (int|None), and status.
     """
@@ -73,20 +83,21 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
     try:
         cache = None
         if cache_db_path:
-            from vdj_manager.analysis.analysis_cache import AnalysisCache
-            cache = AnalysisCache(db_path=Path(cache_db_path))
+            if "analysis_cache" not in _process_cache:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
+            cache = _process_cache["analysis_cache"]
             cached = cache.get(file_path, "energy")
             if cached is not None:
                 return {"file_path": file_path, "format": fmt, "energy": int(cached), "status": "cached"}
 
-        from vdj_manager.analysis.energy import EnergyAnalyzer
+        if "energy_analyzer" not in _process_cache:
+            from vdj_manager.analysis.energy import EnergyAnalyzer
+            _process_cache["energy_analyzer"] = EnergyAnalyzer()
+        analyzer = _process_cache["energy_analyzer"]
 
-        analyzer = EnergyAnalyzer()
         with _suppress_stderr():
             energy = analyzer.analyze(file_path)
-        # Free librosa/audioread file handles before they accumulate
-        del analyzer
-        gc.collect()
         if energy is not None:
             if cache is not None:
                 cache.put(file_path, "energy", str(energy))
@@ -131,8 +142,10 @@ def _analyze_mood_single(
 
         cache = None
         if cache_db_path:
-            from vdj_manager.analysis.analysis_cache import AnalysisCache
-            cache = AnalysisCache(db_path=Path(cache_db_path))
+            if "analysis_cache" not in _process_cache:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
+            cache = _process_cache["analysis_cache"]
             if skip_cache:
                 cache.invalidate(file_path)
             else:
@@ -166,11 +179,13 @@ def _analyze_mood_single(
         # Fall back to local model analysis
         from vdj_manager.analysis.mood_backend import get_backend
 
-        backend = get_backend(MoodModel(model_name))
+        backend_key = f"mood_backend:{model_name}"
+        if backend_key not in _process_cache:
+            _process_cache[backend_key] = get_backend(MoodModel(model_name))
+        backend = _process_cache[backend_key]
+
         with _suppress_stderr():
             mood_tags = backend.get_mood_tags(file_path, threshold, max_tags)
-        del backend
-        gc.collect()
         if mood_tags:
             mood_str = ", ".join(mood_tags)
             if cache is not None:
@@ -186,12 +201,13 @@ def _analyze_mood_single(
         # Try fallback model (mtg-jamendo ↔ heuristic)
         fallback_name = "heuristic" if model_name == "mtg-jamendo" else "mtg-jamendo"
         try:
-            fallback = get_backend(MoodModel(fallback_name))
+            fallback_key = f"mood_backend:{fallback_name}"
+            if fallback_key not in _process_cache:
+                _process_cache[fallback_key] = get_backend(MoodModel(fallback_name))
+            fallback = _process_cache[fallback_key]
             if fallback.is_available:
                 with _suppress_stderr():
                     mood_tags = fallback.get_mood_tags(file_path, threshold, max_tags)
-                del fallback
-                gc.collect()
                 if mood_tags:
                     mood_str = ", ".join(mood_tags)
                     if cache is not None:
@@ -237,8 +253,10 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
     try:
         cache = None
         if cache_db_path:
-            from vdj_manager.analysis.analysis_cache import AnalysisCache
-            cache = AnalysisCache(db_path=Path(cache_db_path))
+            if "analysis_cache" not in _process_cache:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+                _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
+            cache = _process_cache["analysis_cache"]
             cached = cache.get(file_path, "mik")
             if cached is not None:
                 # cached format: "energy:key" e.g. "8:Am" or ":Am" or "8:"
@@ -456,6 +474,9 @@ class EnergyWorker(PausableAnalysisWorker):
                     results.append(result)
                     self.result_ready.emit(result)
                     self._emit_progress(analyzed + failed + cached, total)
+
+                # Free librosa/audioread handles accumulated during batch
+                gc.collect()
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
 
@@ -686,5 +707,8 @@ class MoodWorker(PausableAnalysisWorker):
                     results.append(result)
                     self.result_ready.emit(result)
                     self._emit_progress(analyzed + failed + cached, total)
+
+                # Free audioread handles accumulated during batch
+                gc.collect()
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}

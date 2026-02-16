@@ -13,6 +13,7 @@ from vdj_manager.ui.workers.analysis_workers import (
     EnergyWorker,
     MIKImportWorker,
     MoodWorker,
+    _process_cache,
 )
 
 # Use ThreadPoolExecutor in tests so mocks are visible (ProcessPoolExecutor
@@ -29,6 +30,19 @@ def qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def _clear_process_cache():
+    """Clear the module-level _process_cache before each test.
+
+    Worker functions cache AnalysisCache/EnergyAnalyzer/MoodBackend at
+    process level for performance. Without clearing, mocked objects from
+    one test leak into the next.
+    """
+    _process_cache.clear()
+    yield
+    _process_cache.clear()
 
 
 def _make_song(path: str, energy: int | None = None, key: str | None = None) -> Song:
@@ -774,3 +788,51 @@ class TestWorkerPauseResume:
             QCoreApplication.processEvents()
 
             assert len(results) == 1
+
+
+class TestProcessLevelCaching:
+    """Tests that worker functions reuse cached objects across calls."""
+
+    def test_energy_worker_reuses_analyzer(self):
+        """Calling _analyze_energy_single twice should reuse cached analyzer."""
+        from vdj_manager.ui.workers.analysis_workers import (
+            _analyze_energy_single,
+            _process_cache,
+        )
+
+        # Clear process cache
+        _process_cache.clear()
+
+        with patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            mock_instance = MockAnalyzer.return_value
+            mock_instance.analyze.return_value = 5
+
+            _analyze_energy_single("/fake1.mp3")
+            _analyze_energy_single("/fake2.mp3")
+
+            # EnergyAnalyzer should be constructed once, not twice
+            assert MockAnalyzer.call_count == 1
+            assert "energy_analyzer" in _process_cache
+
+        _process_cache.clear()
+
+    def test_energy_worker_reuses_cache_instance(self, tmp_path):
+        """Calling _analyze_energy_single twice reuses AnalysisCache."""
+        from vdj_manager.ui.workers.analysis_workers import (
+            _analyze_energy_single,
+            _process_cache,
+        )
+
+        _process_cache.clear()
+        cache_path = str(tmp_path / "test.db")
+
+        with patch("vdj_manager.analysis.energy.EnergyAnalyzer") as MockAnalyzer:
+            mock_instance = MockAnalyzer.return_value
+            mock_instance.analyze.return_value = 5
+
+            _analyze_energy_single("/fake1.mp3", cache_db_path=cache_path)
+            _analyze_energy_single("/fake2.mp3", cache_db_path=cache_path)
+
+            assert "analysis_cache" in _process_cache
+
+        _process_cache.clear()
