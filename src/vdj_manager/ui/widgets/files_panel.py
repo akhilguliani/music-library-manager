@@ -219,15 +219,27 @@ class FilesPanel(QWidget):
         self.import_status.setText(f"Importing {len(paths)} files...")
         self.import_results.clear()
 
-        self._import_worker = ImportWorker(self._database, paths)
+        self._import_worker = ImportWorker(paths)
         self._import_worker.finished_work.connect(self._on_import_finished)
         self._import_worker.error.connect(self._on_import_error)
         self._import_worker.start()
 
     @Slot(object)
     def _on_import_finished(self, result: dict) -> None:
-        added = result.get("added", 0)
-        failed = result.get("failed", 0)
+        # Apply mutations on main thread
+        paths_to_add = result.get("paths_to_add", [])
+        added = 0
+        failed = 0
+        for path in paths_to_add:
+            try:
+                self._database.add_song(path)
+                added += 1
+            except Exception:
+                failed += 1
+
+        if added > 0:
+            self._database.save()
+
         self.import_status.setText(f"Imported {added} files ({failed} failed)")
         self.import_btn.setEnabled(False)  # Can't re-import
 
@@ -307,15 +319,24 @@ class FilesPanel(QWidget):
         self.remove_btn.setEnabled(False)
         self.remove_status.setText(f"Removing {len(paths)} entries...")
 
-        self._remove_worker = RemoveWorker(self._database, paths)
+        self._remove_worker = RemoveWorker(paths)
         self._remove_worker.finished_work.connect(self._on_remove_finished)
         self._remove_worker.error.connect(self._on_remove_error)
         self._remove_worker.start()
 
     @Slot(object)
-    def _on_remove_finished(self, count: int) -> None:
+    def _on_remove_finished(self, result: dict) -> None:
+        # Apply mutations on main thread
+        paths_to_remove = result.get("paths_to_remove", [])
+        removed = 0
+        for path in paths_to_remove:
+            if self._database.remove_song(path):
+                removed += 1
+        if removed > 0:
+            self._database.save()
+
         self.remove_btn.setEnabled(True)
-        self.remove_status.setText(f"Removed {count} entries")
+        self.remove_status.setText(f"Removed {removed} entries")
         self._tracks = list(self._database.iter_songs()) if self._database else []
         self.database_changed.emit()
 
@@ -426,18 +447,33 @@ class FilesPanel(QWidget):
         self.remap_apply_btn.setEnabled(False)
         self.remap_status.setText("Remapping...")
 
-        self._remap_worker = RemapWorker(self._database, mappable, remapper)
+        self._remap_worker = RemapWorker(mappable, remapper)
         self._remap_worker.finished_work.connect(self._on_remap_finished)
         self._remap_worker.error.connect(self._on_remap_error)
         self._remap_worker.start()
 
     @Slot(object)
     def _on_remap_finished(self, result: dict) -> None:
+        # Apply mutations on main thread
+        remappings = result.get("remappings", [])
+        remapped = 0
+        failed = 0
+        for old_path, new_path in remappings:
+            try:
+                if self._database.remap_path(old_path, new_path):
+                    remapped += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+        if remapped > 0:
+            self._database.save()
+
         self.remap_apply_btn.setEnabled(True)
-        remapped = result.get("remapped", 0)
         self.remap_status.setText(
             f"Remapped {remapped}, skipped {result.get('skipped', 0)}, "
-            f"failed {result.get('failed', 0)}"
+            f"failed {failed}"
         )
         self._tracks = list(self._database.iter_songs()) if self._database else []
         self.database_changed.emit()

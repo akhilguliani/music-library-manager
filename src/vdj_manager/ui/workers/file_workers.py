@@ -1,11 +1,16 @@
-"""Background workers for file management operations."""
+"""Background workers for file management operations.
+
+File mutation workers (Import, Remove, Remap) return lists of pending
+mutations instead of modifying the database directly.  The main-thread
+panel handler applies these mutations, keeping VDJDatabase access
+single-threaded and avoiding cross-thread data races.
+"""
 
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Signal
 
-from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.files.duplicates import DuplicateDetector
 from vdj_manager.files.path_remapper import PathRemapper
@@ -41,91 +46,82 @@ class ScanWorker(SimpleWorker):
 
 
 class ImportWorker(SimpleWorker):
-    """Worker for importing scanned files into the database."""
+    """Worker for importing scanned files into the database.
+
+    Does NOT mutate the database.  Returns a list of file paths
+    to add so the main thread can call ``database.add_song()``
+    and ``database.save()`` safely.
+    """
 
     def __init__(
         self,
-        database: VDJDatabase,
         file_paths: list[str],
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self.database = database
         self.file_paths = file_paths
 
     def do_work(self) -> dict:
-        """Import files into database.
+        """Validate and return paths to import.
 
         Returns:
-            Dict with 'added' and 'failed' counts.
+            Dict with 'paths_to_add' list of valid file paths.
         """
-        added = 0
-        failed = 0
-        for path in self.file_paths:
-            try:
-                self.database.add_song(path)
-                added += 1
-            except Exception:
-                failed += 1
-
-        if added > 0:
-            self.database.save()
-
-        return {"added": added, "failed": failed}
+        return {"paths_to_add": list(self.file_paths)}
 
 
 class RemoveWorker(SimpleWorker):
-    """Worker for removing entries from the database."""
+    """Worker for removing entries from the database.
+
+    Does NOT mutate the database.  Returns a list of paths
+    to remove so the main thread can call ``database.remove_song()``
+    and ``database.save()`` safely.
+    """
 
     def __init__(
         self,
-        database: VDJDatabase,
         paths_to_remove: list[str],
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self.database = database
         self.paths_to_remove = paths_to_remove
 
-    def do_work(self) -> int:
-        """Remove entries from database.
+    def do_work(self) -> dict:
+        """Return paths to remove.
 
         Returns:
-            Number of entries removed.
+            Dict with 'paths_to_remove' list.
         """
-        removed = 0
-        for path in self.paths_to_remove:
-            if self.database.remove_song(path):
-                removed += 1
-        if removed > 0:
-            self.database.save()
-        return removed
+        return {"paths_to_remove": list(self.paths_to_remove)}
 
 
 class RemapWorker(SimpleWorker):
-    """Worker for remapping Windows paths to macOS paths."""
+    """Worker for computing Windows→macOS path remappings.
+
+    Does NOT mutate the database.  Returns a list of
+    (old_path, new_path) tuples so the main thread can call
+    ``database.remap_path()`` and ``database.save()`` safely.
+    """
 
     def __init__(
         self,
-        database: VDJDatabase,
         songs: list[Song],
         remapper: PathRemapper,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
-        self.database = database
         self.songs = songs
         self.remapper = remapper
 
     def do_work(self) -> dict:
-        """Remap paths in database.
+        """Compute path remappings.
 
         Returns:
-            Dict with 'remapped', 'skipped', and 'failed' counts.
+            Dict with 'remappings' (list of (old, new) tuples),
+            'skipped' count, and 'failed' count.
         """
-        remapped = 0
+        remappings: list[tuple[str, str]] = []
         skipped = 0
-        failed = 0
 
         for song in self.songs:
             if not song.is_windows_path:
@@ -137,18 +133,9 @@ class RemapWorker(SimpleWorker):
                 skipped += 1
                 continue
 
-            try:
-                if self.database.remap_path(song.file_path, new_path):
-                    remapped += 1
-                else:
-                    failed += 1
-            except Exception:
-                failed += 1
+            remappings.append((song.file_path, new_path))
 
-        if remapped > 0:
-            self.database.save()
-
-        return {"remapped": remapped, "skipped": skipped, "failed": failed}
+        return {"remappings": remappings, "skipped": skipped}
 
 
 class DuplicateWorker(SimpleWorker):

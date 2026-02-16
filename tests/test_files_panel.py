@@ -117,11 +117,9 @@ class TestScanWorker:
 class TestImportWorker:
     """Tests for ImportWorker."""
 
-    def test_import_calls_add_song(self, qapp):
-        mock_db = MagicMock()
-        mock_db.add_song.return_value = True
-
-        worker = ImportWorker(mock_db, ["/a.mp3", "/b.mp3"])
+    def test_import_returns_paths_to_add(self, qapp):
+        """ImportWorker should return paths without touching the database."""
+        worker = ImportWorker(["/a.mp3", "/b.mp3"])
         results = []
         worker.finished_work.connect(lambda r: results.append(r))
         worker.start()
@@ -129,19 +127,26 @@ class TestImportWorker:
         QCoreApplication.processEvents()
 
         assert len(results) == 1
-        assert results[0]["added"] == 2
-        assert results[0]["failed"] == 0
-        mock_db.save.assert_called_once()
+        assert results[0]["paths_to_add"] == ["/a.mp3", "/b.mp3"]
+
+    def test_import_does_not_mutate_database(self, qapp):
+        """ImportWorker must not reference or mutate any database object."""
+        worker = ImportWorker(["/a.mp3"])
+        assert not hasattr(worker, "database")
+        results = []
+        worker.finished_work.connect(lambda r: results.append(r))
+        worker.start()
+        worker.wait(5000)
+        QCoreApplication.processEvents()
+        assert results[0]["paths_to_add"] == ["/a.mp3"]
 
 
 class TestRemoveWorker:
     """Tests for RemoveWorker."""
 
-    def test_remove_calls_remove_song(self, qapp):
-        mock_db = MagicMock()
-        mock_db.remove_song.return_value = True
-
-        worker = RemoveWorker(mock_db, ["/a.mp3", "/b.mp3"])
+    def test_remove_returns_paths_to_remove(self, qapp):
+        """RemoveWorker should return paths without touching the database."""
+        worker = RemoveWorker(["/a.mp3", "/b.mp3"])
         results = []
         worker.finished_work.connect(lambda r: results.append(r))
         worker.start()
@@ -149,8 +154,18 @@ class TestRemoveWorker:
         QCoreApplication.processEvents()
 
         assert len(results) == 1
-        assert results[0] == 2
-        mock_db.save.assert_called_once()
+        assert results[0]["paths_to_remove"] == ["/a.mp3", "/b.mp3"]
+
+    def test_remove_does_not_mutate_database(self, qapp):
+        """RemoveWorker must not reference or mutate any database object."""
+        worker = RemoveWorker(["/a.mp3"])
+        assert not hasattr(worker, "database")
+        results = []
+        worker.finished_work.connect(lambda r: results.append(r))
+        worker.start()
+        worker.wait(5000)
+        QCoreApplication.processEvents()
+        assert results[0]["paths_to_remove"] == ["/a.mp3"]
 
 
 class TestDuplicateWorker:
@@ -206,7 +221,7 @@ class TestFilesPanelHandlers:
         assert len(panel._scanned_files) == 1
         assert "1 new" in panel.scan_status.text()
 
-    def test_import_finished_emits_signal(self, qapp):
+    def test_import_finished_applies_mutations_on_main_thread(self, qapp):
         panel = FilesPanel()
         panel._database = MagicMock()
         panel._database.iter_songs.return_value = iter([])
@@ -215,33 +230,44 @@ class TestFilesPanelHandlers:
         signals = []
         panel.database_changed.connect(lambda: signals.append(True))
 
-        panel._on_import_finished({"added": 1, "failed": 0})
+        panel._on_import_finished({"paths_to_add": ["/a.mp3"]})
 
         assert len(signals) == 1
         assert "Imported 1" in panel.import_status.text()
+        panel._database.add_song.assert_called_once_with("/a.mp3")
+        panel._database.save.assert_called_once()
 
-    def test_remove_finished_emits_signal(self, qapp):
+    def test_remove_finished_applies_mutations_on_main_thread(self, qapp):
         panel = FilesPanel()
         panel._database = MagicMock()
+        panel._database.remove_song.return_value = True
         panel._database.iter_songs.return_value = iter([])
 
         signals = []
         panel.database_changed.connect(lambda: signals.append(True))
 
-        panel._on_remove_finished(3)
+        panel._on_remove_finished({"paths_to_remove": ["/a.mp3", "/b.mp3", "/c.mp3"]})
 
         assert len(signals) == 1
         assert "Removed 3" in panel.remove_status.text()
+        assert panel._database.remove_song.call_count == 3
+        panel._database.save.assert_called_once()
 
-    def test_remap_finished_shows_counts(self, qapp):
+    def test_remap_finished_applies_mutations_on_main_thread(self, qapp):
         panel = FilesPanel()
         panel._database = MagicMock()
+        panel._database.remap_path.return_value = True
         panel._database.iter_songs.return_value = iter([])
 
-        panel._on_remap_finished({"remapped": 10, "skipped": 5, "failed": 1})
+        panel._on_remap_finished({
+            "remappings": [("D:/old.mp3", "/new.mp3")],
+            "skipped": 5,
+        })
 
-        assert "Remapped 10" in panel.remap_status.text()
+        assert "Remapped 1" in panel.remap_status.text()
         assert "skipped 5" in panel.remap_status.text()
+        panel._database.remap_path.assert_called_once_with("D:/old.mp3", "/new.mp3")
+        panel._database.save.assert_called_once()
 
     def test_dup_finished_shows_summary(self, qapp):
         panel = FilesPanel()

@@ -236,6 +236,8 @@ class TestFileScanImportFlow:
         assert panel.scan_results.row_count() == 1
         assert len(panel._scanned_files) == 1
 
-        # Step 2: Import
-        panel._on_import_finished({"added": 1, "failed": 0})
+        # Step 2: Import (new API returns paths_to_add, panel applies mutations)
+        panel._on_import_finished({"paths_to_add": ["/music/new_song.mp3"]})
         assert "Imported 1" in panel.import_status.text()
+        mock_db.add_song.assert_called_once_with("/music/new_song.mp3")
+        mock_db.save.assert_called_once()
