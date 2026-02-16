@@ -220,3 +220,47 @@ class TestWorkflowPanelRunLogic:
         assert hasattr(panel, "energy_progress")
         assert hasattr(panel, "mood_progress")
         assert hasattr(panel, "norm_progress")
+
+    @patch("vdj_manager.core.backup.BackupManager")
+    def test_run_no_eligible_tracks_resets_ui(self, MockBackup, qapp):
+        """When all checked ops have 0 eligible tracks, UI should reset (not get stuck)."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        db.db_path = Path("/tmp/test.xml")
+        # Non-audio extension — not eligible for any analysis
+        tracks = [_make_song("A", ext=".txt")]
+        panel.set_database(db, tracks)
+
+        panel.energy_check.setChecked(True)
+        panel.mood_check.setChecked(False)
+        panel.norm_check.setChecked(False)
+
+        panel._on_run_clicked()
+
+        # Run button should be re-enabled, not stuck disabled
+        assert panel.run_btn.isEnabled()
+        assert not panel.cancel_btn.isEnabled()
+        assert "No eligible" in panel.status_label.text()
+
+    def test_save_failure_shows_error_status(self, qapp):
+        """_save_if_needed should catch OSError and update status label."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        db.save.side_effect = OSError("disk full")
+        panel._database = db
+        panel._unsaved_count = 5
+
+        panel._save_if_needed()
+
+        assert "Failed to save" in panel.status_label.text()
+
+    def test_energy_finished_with_failures_shows_status(self, qapp):
+        """Progress should show failure count when energy analysis has failures."""
+        panel = WorkflowPanel()
+        panel._workers_running = 1
+        panel._database = MagicMock()
+        panel._unsaved_count = 0
+
+        panel._on_energy_finished({"analyzed": 5, "failed": 2, "results": []})
+
+        assert panel._workers_running == 0

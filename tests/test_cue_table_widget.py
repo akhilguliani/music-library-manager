@@ -125,3 +125,5 @@ class TestCueTableWidget:
         assert CueTableWidget._parse_position("0:10.500") == 10.5
         assert CueTableWidget._parse_position("42.5") == 42.5
         assert CueTableWidget._parse_position("invalid") is None
+        assert CueTableWidget._parse_position("-5.0") is None
+        assert CueTableWidget._parse_position("-1:30.000") is None

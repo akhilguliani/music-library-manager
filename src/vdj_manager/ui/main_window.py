@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
     def _create_workflow_tab(self) -> None:
         """Create the workflow dashboard tab."""
         self.workflow_panel = WorkflowPanel()
+        self.workflow_panel.database_changed.connect(self._on_workflow_database_changed)
         self.tab_widget.addTab(self.workflow_panel, "Workflow")
 
     def _setup_menu_bar(self) -> None:
@@ -268,6 +269,17 @@ class MainWindow(QMainWindow):
             return
         self._database.update_song_pois(file_path, cue_list)
         self._schedule_save()
+
+    @Slot()
+    def _on_workflow_database_changed(self) -> None:
+        """Refresh panels after workflow operations modify the database."""
+        if not self._database:
+            return
+        tracks = list(self._database.iter_songs())
+        self.database_panel.refresh_tracks(tracks)
+        self.normalization_panel.set_database(self._database, tracks)
+        self.analysis_panel.set_database(self._database)
+        self.statusBar().showMessage(f"Workflow complete — {len(tracks)} tracks")
 
     def _schedule_save(self) -> None:
         """Schedule a debounced save (5s delay to batch rapid changes)."""

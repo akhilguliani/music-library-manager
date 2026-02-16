@@ -276,7 +276,15 @@ class WorkflowPanel(QWidget):
         if "norm" in checked:
             self._start_norm()
 
-        self.status_label.setText(f"Running {len(checked)} operation(s)...")
+        # If no workers actually started (e.g. all checked ops have 0 eligible tracks),
+        # reset UI immediately instead of leaving it stuck.
+        if self._workers_running == 0:
+            self.run_btn.setEnabled(True)
+            self.cancel_btn.setEnabled(False)
+            self.status_label.setText("No eligible tracks for selected operations")
+            return
+
+        self.status_label.setText(f"Running {self._workers_running} operation(s)...")
 
     def _start_energy(self) -> None:
         """Start energy analysis worker."""
@@ -301,9 +309,6 @@ class WorkflowPanel(QWidget):
         self.energy_progress.setVisible(True)
         self._energy_worker.progress.connect(self.energy_progress.update_progress)
         self._energy_worker.status_changed.connect(self.energy_progress.on_status_changed)
-        self._energy_worker.finished_work.connect(
-            lambda _: self.energy_progress.on_finished(True, "Energy: Done")
-        )
         self.energy_progress.pause_requested.connect(self._energy_worker.pause)
         self.energy_progress.resume_requested.connect(self._energy_worker.resume)
         self.energy_progress.cancel_requested.connect(self._energy_worker.cancel)
@@ -341,9 +346,6 @@ class WorkflowPanel(QWidget):
         self.mood_progress.setVisible(True)
         self._mood_worker.progress.connect(self.mood_progress.update_progress)
         self._mood_worker.status_changed.connect(self.mood_progress.on_status_changed)
-        self._mood_worker.finished_work.connect(
-            lambda _: self.mood_progress.on_finished(True, "Mood: Done")
-        )
         self.mood_progress.pause_requested.connect(self._mood_worker.pause)
         self.mood_progress.resume_requested.connect(self._mood_worker.resume)
         self.mood_progress.cancel_requested.connect(self._mood_worker.cancel)
@@ -385,9 +387,6 @@ class WorkflowPanel(QWidget):
         self.norm_progress.setVisible(True)
         self._norm_worker.progress.connect(self.norm_progress.update_progress)
         self._norm_worker.status_changed.connect(self.norm_progress.on_status_changed)
-        self._norm_worker.finished_work.connect(
-            lambda *_: self.norm_progress.on_finished(True, "Normalization: Done")
-        )
         self.norm_progress.pause_requested.connect(self._norm_worker.pause)
         self.norm_progress.resume_requested.connect(self._norm_worker.resume)
         self.norm_progress.cancel_requested.connect(self._norm_worker.cancel)
@@ -405,16 +404,30 @@ class WorkflowPanel(QWidget):
 
     def _on_energy_finished(self, result: dict) -> None:
         """Handle energy worker completion."""
+        failed = result.get("failed", 0) if isinstance(result, dict) else 0
+        if failed > 0:
+            self.energy_progress.on_finished(False, f"Energy: {failed} failed")
+        else:
+            self.energy_progress.on_finished(True, "Energy: Done")
         self._workers_running -= 1
         self._check_all_done()
 
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood worker completion."""
+        failed = result.get("failed", 0) if isinstance(result, dict) else 0
+        if failed > 0:
+            self.mood_progress.on_finished(False, f"Mood: {failed} failed")
+        else:
+            self.mood_progress.on_finished(True, "Mood: Done")
         self._workers_running -= 1
         self._check_all_done()
 
     def _on_norm_finished(self, success, message="") -> None:
         """Handle normalization worker completion."""
+        if success:
+            self.norm_progress.on_finished(True, "Normalization: Done")
+        else:
+            self.norm_progress.on_finished(False, f"Normalization: {message or 'Failed'}")
         self._workers_running -= 1
         self._check_all_done()
 
@@ -431,8 +444,12 @@ class WorkflowPanel(QWidget):
     def _save_if_needed(self) -> None:
         """Save database if there are pending changes."""
         if self._unsaved_count > 0 and self._database is not None:
-            self._database.save()
-            self._unsaved_count = 0
+            try:
+                self._database.save()
+                self._unsaved_count = 0
+            except Exception:
+                logger.error("Failed to save database after workflow", exc_info=True)
+                self.status_label.setText("Failed to save database!")
 
     def _on_cancel_all_clicked(self) -> None:
         """Cancel all running workers."""

@@ -69,6 +69,19 @@ class TestMainWindowIntegration:
         names = [window.tab_widget.tabText(i) for i in range(7)]
         assert names == ["Database", "Normalization", "Files", "Analysis", "Export", "Player", "Workflow"]
 
+    def test_workflow_database_changed_refreshes_panels(self, qapp):
+        window = MainWindow()
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3")]
+        mock_db.iter_songs.return_value = iter(tracks)
+        mock_db.playlists = []
+        window._on_database_loaded(mock_db)
+
+        # Simulate workflow completion
+        mock_db.iter_songs.return_value = iter(tracks)
+        window._on_workflow_database_changed()
+        assert "Workflow complete" in window.statusBar().currentMessage()
+
     def test_status_bar_shows_track_selection(self, qapp):
         window = MainWindow()
         track = _make_song("/music/test.mp3")

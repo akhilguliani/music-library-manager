@@ -430,13 +430,14 @@ class DatabasePanel(QWidget):
         return tracks
 
     def get_selected_tracks(self) -> list[Song]:
-        """Get all currently selected tracks.
+        """Get all currently selected tracks in visual (top-to-bottom) order.
 
         Returns:
-            List of selected Song objects.
+            List of selected Song objects sorted by visual row position.
         """
+        rows = sorted(self.track_table.selectionModel().selectedRows(), key=lambda idx: idx.row())
         tracks = []
-        for proxy_index in self.track_table.selectionModel().selectedRows():
+        for proxy_index in rows:
             source_index = self.proxy_model.mapToSource(proxy_index)
             track = self.track_model.get_track(source_index.row())
             if track:
@@ -580,6 +581,19 @@ class DatabasePanel(QWidget):
         # Refresh track list
         self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
+
+    def refresh_tracks(self, tracks: list | None = None) -> None:
+        """Refresh the track table with updated data.
+
+        Args:
+            tracks: New track list.  If None, re-reads from the loaded database.
+        """
+        if tracks is not None:
+            self._tracks = tracks
+        elif self._database is not None:
+            self._tracks = list(self._database.iter_songs())
+        self.track_model.set_tracks(self._tracks)
+        self._update_result_count()
 
     def _log_operation(self, message: str) -> None:
         """Add a timestamped entry to the operation log.

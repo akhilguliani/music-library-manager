@@ -164,15 +164,16 @@ class CueTableWidget(QWidget):
 
     @staticmethod
     def _parse_position(text: str) -> float | None:
-        """Parse M:SS.mmm or plain seconds into float seconds. Returns None if invalid."""
+        """Parse M:SS.mmm or plain seconds into float seconds. Returns None if invalid or negative."""
         text = text.strip()
         try:
             if ":" in text:
                 parts = text.split(":", 1)
                 minutes = int(parts[0])
                 sec_part = float(parts[1])
-                return minutes * 60.0 + sec_part
+                result = minutes * 60.0 + sec_part
             else:
-                return float(text)
+                result = float(text)
+            return result if result >= 0.0 else None
         except (ValueError, IndexError):
             return None
