@@ -88,10 +88,10 @@ class TestMainWindow:
 
         assert isinstance(main_window.tab_widget, QTabWidget)
 
-    def test_main_window_has_six_tabs(self, main_window):
-        """Test that main window has all six tabs."""
+    def test_main_window_has_seven_tabs(self, main_window):
+        """Test that main window has all seven tabs."""
         tab_widget = main_window.tab_widget
-        assert tab_widget.count() == 6
+        assert tab_widget.count() == 7
 
         # Check tab names
         assert tab_widget.tabText(0) == "Database"
@@ -100,6 +100,7 @@ class TestMainWindow:
         assert tab_widget.tabText(3) == "Analysis"
         assert tab_widget.tabText(4) == "Export"
         assert tab_widget.tabText(5) == "Player"
+        assert tab_widget.tabText(6) == "Workflow"
 
     def test_main_window_has_menu_bar(self, main_window):
         """Test that main window has a menu bar."""
