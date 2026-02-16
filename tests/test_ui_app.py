@@ -157,6 +157,28 @@ class TestMainWindow:
             assert args[0][0] is main_window
             assert "About VDJ Manager" in args[0][1]
 
+    def test_flush_save_shows_status_on_failure(self, main_window, app):
+        """Save failure should display error message in status bar."""
+        mock_db = MagicMock()
+        mock_db.save.side_effect = OSError("disk full")
+        main_window._database = mock_db
+        main_window._save_pending = True
+
+        main_window._flush_save()
+
+        assert "Failed to save" in main_window.statusBar().currentMessage()
+
+    def test_flush_save_clears_pending_on_success(self, main_window, app):
+        """Successful save should clear the pending flag."""
+        mock_db = MagicMock()
+        main_window._database = mock_db
+        main_window._save_pending = True
+
+        main_window._flush_save()
+
+        assert main_window._save_pending is False
+        mock_db.save.assert_called_once()
+
 
 class TestMainEntry:
     """Tests for main entry point."""

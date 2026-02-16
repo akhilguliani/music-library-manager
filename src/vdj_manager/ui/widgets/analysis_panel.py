@@ -526,15 +526,16 @@ class AnalysisPanel(QWidget):
 
         Called on the main thread via signal connection, ensuring
         VDJDatabase is never mutated from a worker QThread.
+
+        Only updates in-memory state here; disk save is deferred to
+        ``_save_if_needed()`` which is called once when the worker
+        finishes, avoiding redundant I/O during batch processing.
         """
         tag_updates = result.get("tag_updates")
         if not tag_updates or self._database is None:
             return
         self._database.update_song_tags(result["file_path"], **tag_updates)
         self._unsaved_count += 1
-        if self._unsaved_count >= _SAVE_INTERVAL:
-            self._database.save()
-            self._unsaved_count = 0
 
     def _save_if_needed(self) -> None:
         """Save database if there are pending changes."""

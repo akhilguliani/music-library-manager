@@ -413,6 +413,28 @@ class TestAnalysisPanelHandlers:
         panel._on_energy_finished(result)
         assert len(signals) == 1
 
+    def test_apply_result_defers_save_to_completion(self, qapp):
+        """_apply_result_to_db should NOT call save(); save happens at completion."""
+        panel = AnalysisPanel()
+        mock_db = MagicMock()
+        panel.set_database(mock_db, [_make_song("/a.mp3")])
+
+        # Apply 30 results (more than _SAVE_INTERVAL of 25)
+        for i in range(30):
+            panel._apply_result_to_db({
+                "file_path": f"/song{i}.mp3",
+                "tag_updates": {"Grouping": str(i)},
+            })
+
+        # save() should NOT have been called during streaming
+        mock_db.save.assert_not_called()
+        assert panel._unsaved_count == 30
+
+        # Completion handler triggers save
+        panel._save_if_needed()
+        mock_db.save.assert_called_once()
+        assert panel._unsaved_count == 0
+
 
 class TestAnalysisPanelLimits:
     """Tests for track count limit and duration filter."""

@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
                 self._save_pending = False
             except Exception:
                 logger.error("Failed to save database", exc_info=True)
+                self.statusBar().showMessage("Failed to save database!", 10000)
 
     @Slot()
     def _on_about(self) -> None:
