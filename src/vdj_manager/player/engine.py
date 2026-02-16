@@ -291,6 +291,15 @@ class PlaybackEngine:
             self._queue.append(track)
             self._fire_queue_callbacks()
 
+    def insert_next(self, track: TrackInfo) -> None:
+        """Insert a track immediately after the current position in the queue."""
+        with self._lock:
+            if not self._queue or self._queue_index < 0:
+                self._queue.append(track)
+            else:
+                self._queue.insert(self._queue_index + 1, track)
+            self._fire_queue_callbacks()
+
     def remove_from_queue(self, index: int) -> None:
         """Remove a track from the queue by index."""
         with self._lock:

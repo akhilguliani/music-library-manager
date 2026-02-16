@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QLineEdit,
     QListWidget,
+    QMenu,
     QSpinBox,
     QSplitter,
 )
@@ -56,6 +57,8 @@ class DatabasePanel(QWidget):
     database_loaded = Signal(object)  # VDJDatabase
     track_selected = Signal(object)  # Song
     track_double_clicked = Signal(object)  # Song
+    play_next_requested = Signal(object)  # list[Song]
+    add_to_queue_requested = Signal(object)  # list[Song]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the database panel.
@@ -204,9 +207,11 @@ class DatabasePanel(QWidget):
         self.track_table.setModel(self.proxy_model)
         self.track_table.setAlternatingRowColors(True)
         self.track_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.track_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.track_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.track_table.setSortingEnabled(True)
         self.track_table.verticalHeader().setVisible(False)
+        self.track_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.track_table.customContextMenuRequested.connect(self._on_track_context_menu)
 
         # Set column resize modes
         header = self.track_table.horizontalHeader()
@@ -423,6 +428,53 @@ class DatabasePanel(QWidget):
             if track:
                 tracks.append(track)
         return tracks
+
+    def get_selected_tracks(self) -> list[Song]:
+        """Get all currently selected tracks.
+
+        Returns:
+            List of selected Song objects.
+        """
+        tracks = []
+        for proxy_index in self.track_table.selectionModel().selectedRows():
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            track = self.track_model.get_track(source_index.row())
+            if track:
+                tracks.append(track)
+        return tracks
+
+    @Slot()
+    def _on_track_context_menu(self, position) -> None:
+        """Show context menu for track table."""
+        selected = self.get_selected_tracks()
+        if not selected:
+            return
+
+        menu = QMenu(self)
+        count = len(selected)
+
+        if count == 1:
+            play_now_action = menu.addAction("Play Now")
+        else:
+            play_now_action = None
+
+        play_next_action = menu.addAction(
+            f"Play Next ({count} track{'s' if count > 1 else ''})"
+        )
+        add_queue_action = menu.addAction(
+            f"Add to Queue ({count} track{'s' if count > 1 else ''})"
+        )
+
+        action = menu.exec(self.track_table.viewport().mapToGlobal(position))
+        if action is None:
+            return
+
+        if action == play_now_action:
+            self.track_double_clicked.emit(selected[0])
+        elif action == play_next_action:
+            self.play_next_requested.emit(selected)
+        elif action == add_queue_action:
+            self.add_to_queue_requested.emit(selected)
 
     def _create_tag_edit_group(self) -> QGroupBox:
         """Create the tag editing group box."""

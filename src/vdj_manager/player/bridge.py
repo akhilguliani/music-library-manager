@@ -103,6 +103,10 @@ class PlaybackBridge(QObject):
     def add_to_queue(self, track: TrackInfo):
         self._engine.add_to_queue(track)
 
+    @Slot(object)
+    def insert_next(self, track: TrackInfo):
+        self._engine.insert_next(track)
+
     @Slot()
     def clear_queue(self):
         self._engine.clear_queue()
