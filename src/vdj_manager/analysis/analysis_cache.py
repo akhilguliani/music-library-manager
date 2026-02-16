@@ -161,6 +161,9 @@ class AnalysisCache:
     ) -> dict[str, str]:
         """Look up cached results for multiple files.
 
+        Uses a single ``WHERE IN`` query instead of N individual lookups,
+        then validates mtime/size against the filesystem.
+
         Args:
             file_paths: List of absolute file paths.
             analysis_type: Type of analysis.
@@ -168,11 +171,32 @@ class AnalysisCache:
         Returns:
             Dict mapping file_path → result_value for cache hits only.
         """
+        if not file_paths:
+            return {}
+
         hits: dict[str, str] = {}
-        for path in file_paths:
-            result = self.get(path, analysis_type)
-            if result is not None:
-                hits[path] = result
+        placeholders = ",".join("?" * len(file_paths))
+        params: list = list(file_paths) + [analysis_type]
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT file_path, mtime, file_size, result_value "
+                f"FROM analysis_results "
+                f"WHERE file_path IN ({placeholders}) AND analysis_type = ?",
+                params,
+            ).fetchall()
+
+        for row in rows:
+            fp = row["file_path"]
+            try:
+                stat = os.stat(fp)
+            except OSError:
+                continue
+            if row["mtime"] != stat.st_mtime or row["file_size"] != stat.st_size:
+                continue
+            if row["result_value"] is not None:
+                hits[fp] = row["result_value"]
+
         return hits
 
     def invalidate(self, file_path: str) -> None:

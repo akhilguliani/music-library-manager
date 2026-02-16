@@ -170,6 +170,9 @@ class MeasurementCache:
     ) -> dict[str, dict]:
         """Look up cached measurements for multiple files.
 
+        Uses a single ``WHERE IN`` query instead of N individual lookups,
+        then validates mtime/size against the filesystem.
+
         Args:
             file_paths: List of absolute file paths.
             target_lufs: The target LUFS.
@@ -177,11 +180,38 @@ class MeasurementCache:
         Returns:
             Dict mapping file_path → result dict for cache hits only.
         """
+        if not file_paths:
+            return {}
+
         hits: dict[str, dict] = {}
-        for path in file_paths:
-            result = self.get(path, target_lufs)
-            if result is not None:
-                hits[path] = result
+        placeholders = ",".join("?" * len(file_paths))
+        params: list = list(file_paths) + [target_lufs]
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT file_path, mtime, file_size, "
+                f"integrated_lufs, true_peak, lra, threshold, gain_db "
+                f"FROM measurements "
+                f"WHERE file_path IN ({placeholders}) AND target_lufs = ?",
+                params,
+            ).fetchall()
+
+        for row in rows:
+            fp = row["file_path"]
+            try:
+                stat = os.stat(fp)
+            except OSError:
+                continue
+            if row["mtime"] != stat.st_mtime or row["file_size"] != stat.st_size:
+                continue
+            hits[fp] = {
+                "integrated_lufs": row["integrated_lufs"],
+                "true_peak": row["true_peak"],
+                "lra": row["lra"],
+                "threshold": row["threshold"],
+                "gain_db": row["gain_db"],
+            }
+
         return hits
 
     def invalidate(self, file_path: str) -> None:

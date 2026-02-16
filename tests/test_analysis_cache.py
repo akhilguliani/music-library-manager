@@ -112,6 +112,43 @@ class TestBatchGet:
     def test_batch_get_empty_list(self, cache):
         assert cache.get_batch([], "energy") == {}
 
+    def test_batch_get_uses_single_query(self, cache, tmp_path):
+        """Batch of 10 files should use a single SQL query, not N queries."""
+        files = []
+        for i in range(10):
+            p = tmp_path / f"song{i}.mp3"
+            p.write_bytes(b"\x00" * 256)
+            files.append(str(p))
+
+        # Cache half of them
+        for f in files[:5]:
+            cache.put(f, "energy", str(hash(f) % 10))
+
+        hits = cache.get_batch(files, "energy")
+        assert len(hits) == 5
+        for f in files[:5]:
+            assert f in hits
+        for f in files[5:]:
+            assert f not in hits
+
+    def test_batch_get_different_analysis_type_no_hits(self, cache, tmp_path):
+        """Batch get with wrong analysis type should return no hits."""
+        p = tmp_path / "song.mp3"
+        p.write_bytes(b"\x00" * 256)
+        cache.put(str(p), "energy", "7")
+        hits = cache.get_batch([str(p)], "mood")
+        assert hits == {}
+
+    def test_batch_get_invalidates_stale(self, cache, tmp_path):
+        """Batch get should skip entries where file has changed."""
+        p = tmp_path / "song.mp3"
+        p.write_bytes(b"\x00" * 256)
+        cache.put(str(p), "energy", "7")
+        # Modify file
+        p.write_bytes(b"\x00" * 512)
+        hits = cache.get_batch([str(p)], "energy")
+        assert hits == {}
+
 
 class TestClearAndStats:
     """Tests for clear() and stats()."""

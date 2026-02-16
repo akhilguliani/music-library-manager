@@ -140,6 +140,41 @@ class TestBatchGet:
     def test_batch_get_empty_list(self, cache):
         assert cache.get_batch([], -14.0) == {}
 
+    def test_batch_get_10_files_mixed(self, cache, tmp_path):
+        """Batch of 10 files returns correct subset of hits."""
+        files = []
+        for i in range(10):
+            p = tmp_path / f"song{i}.mp3"
+            p.write_bytes(b"\x00" * 256)
+            files.append(str(p))
+
+        for f in files[:6]:
+            cache.put(f, -14.0, _sample_result(gain_db=float(hash(f) % 10)))
+
+        hits = cache.get_batch(files, -14.0)
+        assert len(hits) == 6
+        for f in files[:6]:
+            assert f in hits
+        for f in files[6:]:
+            assert f not in hits
+
+    def test_batch_get_wrong_target_lufs(self, cache, tmp_path):
+        """Batch with different target LUFS should not return hits."""
+        p = tmp_path / "song.mp3"
+        p.write_bytes(b"\x00" * 256)
+        cache.put(str(p), -14.0, _sample_result())
+        hits = cache.get_batch([str(p)], -16.0)
+        assert hits == {}
+
+    def test_batch_get_invalidates_stale(self, cache, tmp_path):
+        """Batch get should skip entries where file has changed."""
+        p = tmp_path / "song.mp3"
+        p.write_bytes(b"\x00" * 256)
+        cache.put(str(p), -14.0, _sample_result())
+        p.write_bytes(b"\x00" * 512)
+        hits = cache.get_batch([str(p)], -14.0)
+        assert hits == {}
+
 
 class TestClearAndStats:
     """Tests for clear() and stats()."""
