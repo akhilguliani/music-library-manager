@@ -31,7 +31,12 @@ class VDJDatabase:
         if not self.db_path.exists():
             raise FileNotFoundError(f"Database not found: {self.db_path}")
 
-        parser = etree.XMLParser(remove_blank_text=False, strip_cdata=False)
+        parser = etree.XMLParser(
+            remove_blank_text=False,
+            strip_cdata=False,
+            resolve_entities=False,
+            no_network=True,
+        )
         self._tree = etree.parse(str(self.db_path), parser)
         self._root = self._tree.getroot()
 

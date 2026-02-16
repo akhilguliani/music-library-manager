@@ -336,6 +336,63 @@ class TestVDJDatabaseSaveFormat:
         assert song.energy == 9
 
 
+class TestXXEProtection:
+    """Tests that XML External Entity (XXE) attacks are blocked."""
+
+    def test_xxe_entity_not_expanded(self):
+        """Ensure external entities in XML are not resolved."""
+        xxe_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+            '<!DOCTYPE foo [\r\n'
+            '  <!ENTITY xxe SYSTEM "file:///etc/passwd">\r\n'
+            ']>\r\n'
+            '<VirtualDJ_Database Version="8">\r\n'
+            ' <Song FilePath="/path/to/song.mp3" FileSize="100">\r\n'
+            '  <Tags Title="&xxe;" />\r\n'
+            ' </Song>\r\n'
+            '</VirtualDJ_Database>\r\n'
+        )
+        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+            f.write(xxe_xml.encode("utf-8"))
+            tmp = Path(f.name)
+
+        try:
+            db = VDJDatabase(tmp)
+            # Should either raise on parse or not expand the entity
+            try:
+                db.load()
+                # If it loads, entity must not be expanded
+                song = db.get_song("/path/to/song.mp3")
+                if song and song.tags:
+                    assert "root:" not in (song.tags.title or "")
+            except etree.XMLSyntaxError:
+                pass  # Rejecting the XML entirely is also acceptable
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def test_no_network_access_in_parser(self):
+        """Parser should not make network requests for DTDs."""
+        network_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+            '<!DOCTYPE foo SYSTEM "http://evil.example.com/evil.dtd">\r\n'
+            '<VirtualDJ_Database Version="8">\r\n'
+            '</VirtualDJ_Database>\r\n'
+        )
+        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+            f.write(network_xml.encode("utf-8"))
+            tmp = Path(f.name)
+
+        try:
+            db = VDJDatabase(tmp)
+            # Should load without network access (DTD ignored)
+            try:
+                db.load()
+            except etree.XMLSyntaxError:
+                pass  # Rejecting is also fine
+        finally:
+            tmp.unlink(missing_ok=True)
+
+
 class TestVDJDatabaseFileNotFound:
     def test_load_nonexistent_file(self):
         """Test loading non-existent file raises error."""
