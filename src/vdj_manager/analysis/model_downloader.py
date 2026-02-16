@@ -71,7 +71,14 @@ def _ensure_single_model(model_info: dict) -> Path:
     # Download to temp file, then rename (atomic-ish)
     tmp_path = dest.with_suffix(".tmp")
     try:
-        urllib.request.urlretrieve(url, str(tmp_path))
+        # 5-minute timeout prevents hanging on stalled connections
+        with urllib.request.urlopen(url, timeout=300) as response:
+            with open(tmp_path, "wb") as out:
+                while True:
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    out.write(chunk)
 
         # Verify hash if provided
         expected_hash = model_info.get("sha256")

@@ -1,5 +1,6 @@
 """Tests for model auto-downloader."""
 
+import io
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -14,6 +15,15 @@ from vdj_manager.analysis.model_downloader import (
     _ensure_single_model,
     _sha256,
 )
+
+
+def _fake_urlopen(content: bytes):
+    """Create a mock urlopen that returns the given content."""
+    mock_response = MagicMock()
+    mock_response.read.side_effect = [content, b""]
+    mock_response.__enter__ = lambda s: s
+    mock_response.__exit__ = lambda s, *a: None
+    return mock_response
 
 
 class TestModelsAvailable:
@@ -54,34 +64,36 @@ class TestEnsureModelFiles:
         assert cls == tmp_path / CLASSIFIER_MODEL["filename"]
 
     def test_downloads_missing_files(self, tmp_path):
-        def fake_urlretrieve(url, dest):
-            Path(dest).write_text("model-data")
+        content = b"model-data"
+
+        def fake_urlopen_fn(url, timeout=None):
+            return _fake_urlopen(content)
 
         with (
             patch("vdj_manager.analysis.model_downloader.MODELS_DIR", tmp_path),
             patch(
-                "vdj_manager.analysis.model_downloader.urllib.request.urlretrieve",
-                side_effect=fake_urlretrieve,
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
+                side_effect=fake_urlopen_fn,
             ),
         ):
             emb, cls = ensure_model_files()
 
         assert emb.exists()
         assert cls.exists()
-        assert emb.read_text() == "model-data"
-        assert cls.read_text() == "model-data"
+        assert emb.read_bytes() == content
+        assert cls.read_bytes() == content
 
     def test_creates_models_dir(self, tmp_path):
         models_dir = tmp_path / "subdir" / "models"
 
-        def fake_urlretrieve(url, dest):
-            Path(dest).write_text("data")
+        def fake_urlopen_fn(url, timeout=None):
+            return _fake_urlopen(b"data")
 
         with (
             patch("vdj_manager.analysis.model_downloader.MODELS_DIR", models_dir),
             patch(
-                "vdj_manager.analysis.model_downloader.urllib.request.urlretrieve",
-                side_effect=fake_urlretrieve,
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
+                side_effect=fake_urlopen_fn,
             ),
         ):
             ensure_model_files()
@@ -92,7 +104,7 @@ class TestEnsureModelFiles:
         with (
             patch("vdj_manager.analysis.model_downloader.MODELS_DIR", tmp_path),
             patch(
-                "vdj_manager.analysis.model_downloader.urllib.request.urlretrieve",
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
                 side_effect=OSError("network error"),
             ),
         ):
@@ -101,6 +113,22 @@ class TestEnsureModelFiles:
 
         # No temp files left behind
         assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_download_uses_timeout(self, tmp_path):
+        """urlopen is called with a timeout to prevent hanging."""
+        def fake_urlopen_fn(url, timeout=None):
+            assert timeout is not None
+            assert timeout > 0
+            return _fake_urlopen(b"data")
+
+        with (
+            patch("vdj_manager.analysis.model_downloader.MODELS_DIR", tmp_path),
+            patch(
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
+                side_effect=fake_urlopen_fn,
+            ),
+        ):
+            ensure_model_files()
 
 
 class TestEnsureSingleModel:
@@ -128,14 +156,14 @@ class TestEnsureSingleModel:
             "sha256": expected_hash,
         }
 
-        def fake_urlretrieve(url, dest):
-            Path(dest).write_bytes(content)
+        def fake_urlopen_fn(url, timeout=None):
+            return _fake_urlopen(content)
 
         with (
             patch("vdj_manager.analysis.model_downloader.MODELS_DIR", tmp_path),
             patch(
-                "vdj_manager.analysis.model_downloader.urllib.request.urlretrieve",
-                side_effect=fake_urlretrieve,
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
+                side_effect=fake_urlopen_fn,
             ),
         ):
             result = _ensure_single_model(model_info)
@@ -150,14 +178,14 @@ class TestEnsureSingleModel:
             "sha256": "wrong_hash",
         }
 
-        def fake_urlretrieve(url, dest):
-            Path(dest).write_text("data")
+        def fake_urlopen_fn(url, timeout=None):
+            return _fake_urlopen(b"data")
 
         with (
             patch("vdj_manager.analysis.model_downloader.MODELS_DIR", tmp_path),
             patch(
-                "vdj_manager.analysis.model_downloader.urllib.request.urlretrieve",
-                side_effect=fake_urlretrieve,
+                "vdj_manager.analysis.model_downloader.urllib.request.urlopen",
+                side_effect=fake_urlopen_fn,
             ),
         ):
             with pytest.raises(OSError, match="Hash mismatch"):

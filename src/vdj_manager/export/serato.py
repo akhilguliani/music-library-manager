@@ -93,9 +93,12 @@ class SeratoCrateWriter:
             track_entry = self.create_track_entry(path)
             content.extend(track_entry)
 
-        # Sanitize crate name to prevent path traversal
-        safe_name = Path(name).name.replace("..", "_")
-        if not safe_name:
+        # Sanitize crate name: strip path separators and filesystem-unsafe chars
+        import re
+        safe_name = re.sub(r'[/\\:*?"<>|]', "_", name)
+        # Remove path components (e.g. "../../evil" → "evil" after sub becomes "_.._evil")
+        safe_name = Path(safe_name).name
+        if not safe_name or safe_name == ".":
             safe_name = "unnamed"
 
         # Write crate file
