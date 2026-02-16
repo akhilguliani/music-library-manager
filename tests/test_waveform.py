@@ -50,6 +50,30 @@ class TestGenerateWaveformPeaks:
             peaks = generate_waveform_peaks("/fake.mp3", target_width=100)
             assert len(peaks) == 100
 
+    def test_vectorized_peaks_match_loop(self):
+        """Vectorized peak extraction should match a naive Python loop."""
+        np.random.seed(42)
+        fake_audio = np.random.randn(22050).astype(np.float32)
+        target_width = 100
+
+        # Compute expected peaks using the old Python loop
+        bin_size = max(1, len(fake_audio) // target_width)
+        expected = []
+        for i in range(0, len(fake_audio), bin_size):
+            chunk = fake_audio[i : i + bin_size]
+            expected.append(float(np.max(np.abs(chunk))))
+        expected = np.array(expected[:target_width])
+        if len(expected) < target_width:
+            expected = np.pad(expected, (0, target_width - len(expected)))
+        peak_max = expected.max()
+        if peak_max > 0:
+            expected = expected / peak_max
+
+        with patch("librosa.load", return_value=(fake_audio, 22050)):
+            actual = generate_waveform_peaks("/fake.mp3", target_width=target_width, sr=22050)
+
+        np.testing.assert_array_almost_equal(actual, expected, decimal=5)
+
 
 # =============================================================================
 # WaveformCache tests

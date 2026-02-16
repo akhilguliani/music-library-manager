@@ -7,7 +7,10 @@ MTG-Jamendo backend which employs a pre-trained deep learning model.
 Implements the MoodBackend protocol from mood_backend.py.
 """
 
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from .mood_backend import select_top_moods
 
@@ -57,6 +60,7 @@ class MoodAnalyzer:
             audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()
             return self._compute_heuristic_scores(audio)
         except Exception:
+            logger.warning("Mood analysis failed for %s", file_path, exc_info=True)
             return None
 
     def _compute_heuristic_scores(self, audio) -> dict[str, float]:
@@ -81,6 +85,7 @@ class MoodAnalyzer:
                 "dark": max(0.0, 1.0 - centroid / 3000),
             }
         except Exception:
+            logger.warning("Heuristic score computation failed", exc_info=True)
             return {"unknown": 0.0}
 
     def get_mood_tags(

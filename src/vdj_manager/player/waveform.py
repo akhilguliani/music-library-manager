@@ -140,13 +140,15 @@ def generate_waveform_peaks(
         return np.zeros(target_width)
 
     bin_size = max(1, len(y) // target_width)
-    peaks = []
-    for i in range(0, len(y), bin_size):
-        chunk = y[i : i + bin_size]
-        peaks.append(float(np.max(np.abs(chunk))))
+    n_bins = min(target_width, len(y) // bin_size)
 
-    # Trim or pad to exact target_width
-    peaks_array = np.array(peaks[:target_width])
+    # Vectorized: reshape into (n_bins, bin_size) and take max(abs) per row
+    if n_bins > 0:
+        peaks_array = np.abs(y[: n_bins * bin_size].reshape(n_bins, bin_size)).max(axis=1)
+    else:
+        peaks_array = np.array([], dtype=y.dtype)
+
+    # Pad to exact target_width if needed
     if len(peaks_array) < target_width:
         peaks_array = np.pad(peaks_array, (0, target_width - len(peaks_array)))
 

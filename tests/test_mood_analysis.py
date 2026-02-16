@@ -17,7 +17,7 @@ from PySide6.QtCore import QCoreApplication
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.analysis.mood import MoodAnalyzer
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
-from vdj_manager.ui.workers.analysis_workers import MoodWorker, _analyze_mood_single
+from vdj_manager.ui.workers.analysis_workers import MoodWorker, _analyze_mood_single, _process_cache
 
 # Use ThreadPoolExecutor in tests so mocks are visible (ProcessPoolExecutor
 # spawns subprocesses that don't share the parent's mock patches).
@@ -33,6 +33,14 @@ def qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def _clear_process_cache():
+    """Clear module-level _process_cache before each test."""
+    _process_cache.clear()
+    yield
+    _process_cache.clear()
 
 
 def _make_song(path: str, comment: str | None = None, user2: str | None = None) -> Song:
@@ -98,6 +106,18 @@ class TestMoodAnalyzerInit:
         result = analyzer.analyze("/fake/file.mp3")
         assert result is None
 
+    def test_analyze_logs_warning_on_exception(self, caplog):
+        """analyze() should log a warning when analysis fails."""
+        import logging
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        analyzer._essentia_available = True
+        analyzer._es = MagicMock()
+        analyzer._es.MonoLoader.return_value.side_effect = RuntimeError("load failed")
+        with caplog.at_level(logging.WARNING, logger="vdj_manager.analysis.mood"):
+            analyzer.analyze("/fake/file.mp3")
+        assert "Mood analysis failed" in caplog.text
+        assert "/fake/file.mp3" in caplog.text
+
     def test_compute_heuristic_scores_returns_dict(self):
         """_compute_heuristic_scores should return mood -> confidence dict."""
         analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
@@ -136,6 +156,20 @@ class TestMoodAnalyzerInit:
 
         assert "unknown" in result
         assert result["unknown"] == 0.0
+
+    def test_compute_heuristic_scores_logs_warning(self, caplog):
+        """_compute_heuristic_scores should log a warning on error."""
+        import logging
+        analyzer = MoodAnalyzer.__new__(MoodAnalyzer)
+        analyzer._essentia_available = True
+
+        mock_es = MagicMock()
+        analyzer._es = mock_es
+        mock_es.RhythmExtractor2013.return_value.side_effect = RuntimeError("bad audio")
+
+        with caplog.at_level(logging.WARNING, logger="vdj_manager.analysis.mood"):
+            analyzer._compute_heuristic_scores([0.0])
+        assert "Heuristic score computation failed" in caplog.text
 
     def test_analyze_full_flow_with_mocked_essentia(self):
         """Full analyze() flow with mocked essentia."""

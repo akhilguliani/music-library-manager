@@ -1,8 +1,11 @@
 """Energy level classification (1-10 scale)."""
 
+import logging
 from typing import Optional
 
 from ..config import ENERGY_WEIGHTS
+
+logger = logging.getLogger(__name__)
 
 
 class EnergyAnalyzer:
@@ -45,6 +48,7 @@ class EnergyAnalyzer:
             features = self.extractor.extract_features(file_path)
             return self.calculate_energy(features)
         except Exception:
+            logger.warning("Energy analysis failed for %s", file_path, exc_info=True)
             return None
 
     def calculate_energy(self, features: dict) -> int:
