@@ -92,7 +92,7 @@ Follow these guidelines:
 ### 3. Run Tests
 
 ```bash
-# Run all tests (806 tests)
+# Run all tests (838 tests)
 pytest tests/ -v
 
 # Run specific test file

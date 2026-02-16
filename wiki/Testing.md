@@ -7,7 +7,7 @@ This guide covers how to run tests, write new tests, and understand the testing 
 ### All Tests
 
 ```bash
-# Run all tests (806 tests)
+# Run all tests (838 tests)
 pytest tests/ -v
 
 # Run with short output
@@ -83,6 +83,10 @@ tests/
 ├── test_resume_dialog.py             # Resume dialog tests
 ├── test_track_model.py               # Qt model tests
 ├── test_online_mood.py               # Online mood lookup + retry tests
+├── test_energy.py                    # EnergyAnalyzer exception logging tests
+├── test_serato.py                    # Serato crate sanitization + writer tests
+├── test_waveform.py                  # Waveform peak generation + cache tests
+├── test_model_downloader.py          # Model download + timeout tests
 ├── test_ui_app.py                    # Main window tests
 ├── test_validator.py                 # File validation tests
 └── test_waveform_widget.py           # Waveform display + cue point tests
@@ -348,4 +352,4 @@ pytest tests/ --pdb
 | ui/workers/ | 80%+ |
 | ui/widgets/ | 70%+ |
 
-Current coverage: **806 tests passing**
+Current coverage: **838 tests passing**

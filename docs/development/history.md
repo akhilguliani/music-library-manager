@@ -532,7 +532,7 @@ Both use mtime + file_size for invalidation — if a file changes, cached result
 
 #### Real-Time Streaming Results
 
-Analysis workers now emit `result_ready = Signal(dict)` per-file during processing, with results appearing in the GUI table immediately rather than all at once when finished. Database saves happen every 25 results for crash resilience.
+Analysis workers now emit `result_ready = Signal(dict)` per-file during processing, with results appearing in the GUI table immediately rather than all at once when finished. The database is saved at task completion to avoid excessive I/O during analysis.
 
 #### Tag Storage Format Changes
 
@@ -626,6 +626,13 @@ Test count: **477 tests passing** (464 + 13 new)
 ## Commit History
 
 ```
+d52823b Add exception logging and vectorize waveform peak extraction
+cf571a3 Add download timeout and improve crate name sanitization
+befe4c0 Cache analysis objects at process level in worker functions
+622e431 Batch SQLite queries in cache get_batch() methods
+7152896 Fix save failure notification and debounce analysis saves
+07a8f26 Fix file worker thread safety — move DB mutations to main thread
+d891274 Fix XXE vulnerability in XML parser
 fc805bf Include Windows-path tracks in all analysis types (MyNVMe fix)
 cf1941b Retry on library-specific network errors (musicbrainzngs/pylast)
 031b807 Fix mood analysis: correct file count and eliminate "failed" status
@@ -681,6 +688,45 @@ c37f228 Add comprehensive unit tests
 ## Test Coverage
 
 Test count after Phase 8: **804 tests passing**
+
+---
+
+### Phase 9: Code Review Fixes — Security, Performance & Quality (February 2026)
+
+A comprehensive code review across all 78 commits identified security vulnerabilities, performance bottlenecks, and code quality issues. All fixes were organized into 7 commits:
+
+#### Security Fixes
+
+- **XXE vulnerability in XML parser**: Added `resolve_entities=False, no_network=True` to lxml XMLParser to prevent XML External Entity attacks
+- **Model download hash verification**: Added SHA-256 hash verification after downloading Essentia model files, with download timeout (300s)
+- **Serato crate name sanitization**: Regex-based replacement of unsafe filesystem characters (`/\:*?"<>|`) in crate names, preventing path traversal
+
+#### Performance Fixes
+
+- **Batch SQLite queries**: Rewrote `get_batch()` in both AnalysisCache and MeasurementCache to use single `WHERE IN` queries instead of N individual queries
+- **Process-level caching**: Module-level `_process_cache` dict in analysis workers caches EnergyAnalyzer, MoodBackend, and AnalysisCache objects across ProcessPoolExecutor calls within a single process
+- **Vectorized waveform peaks**: Replaced Python loop with NumPy `reshape().max(axis=1)` for peak extraction
+- **Debounced analysis saves**: Removed per-batch `database.save()` calls during analysis, saving once at task completion
+
+#### Code Quality Fixes
+
+- **File worker thread safety**: Refactored ImportWorker, RemoveWorker, RemapWorker to emit mutation signals instead of directly mutating the database from worker threads. Main thread now processes mutations via signal handlers.
+- **Save failure notification**: Added statusbar notification when `_flush_save()` fails in MainWindow
+- **Exception logging**: Added `logger.warning()` with `exc_info=True` to bare except blocks in energy.py and mood.py
+
+#### Test Coverage
+
+34 new tests across 6 files:
+- `test_database.py`: XXE protection test
+- `test_analysis_cache.py` / `test_measurement_cache.py`: Batch query tests
+- `test_analysis_panel.py`: Process-level caching tests
+- `test_energy.py` (new): Exception logging tests
+- `test_serato.py` (new): Crate name sanitization tests
+- `test_model_downloader.py`: Download timeout + urlopen mock tests
+- `test_waveform.py`: Vectorized peak verification test
+- `test_mood_analysis.py`: Exception logging tests
+
+Test count after Phase 9: **838 tests passing**
 
 ## Lessons Learned
 

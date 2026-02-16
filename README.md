@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-806%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-838%20passed-brightgreen.svg)]()
 
 A powerful Python tool for managing VirtualDJ music libraries, with both CLI and desktop GUI interfaces.
 

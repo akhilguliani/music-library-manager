@@ -224,7 +224,7 @@ Workers communicate with the UI through Qt signals:
 - `finished_work(result)`: Task completion
 - `error(message)`: Error reporting
 
-Analysis workers stream results in real-time via `result_ready`, so users see results appear immediately as each file is processed. The database is saved periodically (every 25 results) for crash resilience.
+Analysis workers stream results in real-time via `result_ready`, so users see results appear immediately as each file is processed. The database is saved at task completion to avoid excessive I/O during analysis.
 
 ## Troubleshooting
 
