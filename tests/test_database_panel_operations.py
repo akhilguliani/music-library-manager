@@ -245,7 +245,7 @@ class TestDatabasePanelTagEditing:
     def test_tag_edit_group_exists(self, qapp):
         panel = DatabasePanel()
         assert panel.tag_energy_spin is not None
-        assert panel.tag_key_input is not None
+        assert panel.tag_key_combo is not None
         assert panel.tag_comment_input is not None
         assert panel.tag_save_btn is not None
 
@@ -262,7 +262,7 @@ class TestDatabasePanelTagEditing:
         panel._populate_tag_fields(track)
 
         assert panel.tag_energy_spin.value() == 7
-        assert panel.tag_key_input.text() == "Am"
+        assert panel.tag_key_combo.currentText() == "Am"
         assert panel.tag_comment_input.text() == "Mood: happy"
         assert panel.tag_save_btn.isEnabled()
         assert "Artist - Title" in panel.tag_track_label.text()
@@ -273,7 +273,7 @@ class TestDatabasePanelTagEditing:
         panel._populate_tag_fields(track)
 
         assert panel.tag_energy_spin.value() == 0  # "None"
-        assert panel.tag_key_input.text() == ""
+        assert panel.tag_key_combo.currentText() == ""
         assert panel.tag_comment_input.text() == ""
 
     def test_tag_save_updates_database(self, qapp):
@@ -285,7 +285,7 @@ class TestDatabasePanelTagEditing:
         track = Song(file_path="/music/test.mp3", tags=Tags())
         panel._populate_tag_fields(track)
         panel.tag_energy_spin.setValue(5)
-        panel.tag_key_input.setText("Cm")
+        panel.tag_key_combo.setCurrentText("Cm")
         panel.tag_comment_input.setText("energetic")
 
         panel._on_tag_save_clicked()
@@ -321,6 +321,180 @@ class TestDatabasePanelTagEditing:
         panel = DatabasePanel()
         panel._on_tag_save_clicked()
         # Should not crash
+
+    def test_tag_tabs_count(self, qapp):
+        """Tag editor should have 3 tabs: Common, Extended, File Tags."""
+        panel = DatabasePanel()
+        assert panel.tag_tabs.count() == 3
+        assert panel.tag_tabs.tabText(0) == "Common"
+        assert panel.tag_tabs.tabText(1) == "Extended"
+        assert panel.tag_tabs.tabText(2) == "File Tags"
+
+    def test_common_tab_has_all_widgets(self, qapp):
+        """Common tab should have title, artist, album, genre, year, bpm, key, energy, rating, comment."""
+        panel = DatabasePanel()
+        assert hasattr(panel, "tag_title_input")
+        assert hasattr(panel, "tag_artist_input")
+        assert hasattr(panel, "tag_album_input")
+        assert hasattr(panel, "tag_genre_combo")
+        assert hasattr(panel, "tag_year_spin")
+        assert hasattr(panel, "tag_bpm_spin")
+        assert hasattr(panel, "tag_key_combo")
+        assert hasattr(panel, "tag_rating_spin")
+
+    def test_extended_tab_has_all_widgets(self, qapp):
+        """Extended tab should have mood, composer, remix, label, track_number, color, flag."""
+        panel = DatabasePanel()
+        assert hasattr(panel, "tag_mood_input")
+        assert hasattr(panel, "tag_composer_input")
+        assert hasattr(panel, "tag_remix_input")
+        assert hasattr(panel, "tag_label_input")
+        assert hasattr(panel, "tag_track_number_spin")
+        assert hasattr(panel, "tag_color_input")
+        assert hasattr(panel, "tag_flag_spin")
+
+    def test_populate_all_fields(self, qapp):
+        """_populate_tag_fields should fill all Common + Extended widgets."""
+        panel = DatabasePanel()
+        track = Song(
+            file_path="/music/test.mp3",
+            tags=Tags(
+                title="My Track", author="DJ Test", album="Album",
+                genre="House", year=2024, bpm=128.0, key="Am",
+                grouping="7", rating=4, comment="Nice",
+                user2="#happy #uplifting", composer="Comp",
+                remix="Extended Mix", label="Records",
+                track_number=5, color="0xFF0000", flag=1,
+            ),
+        )
+        panel._populate_tag_fields(track)
+
+        assert panel.tag_title_input.text() == "My Track"
+        assert panel.tag_artist_input.text() == "DJ Test"
+        assert panel.tag_album_input.text() == "Album"
+        assert panel.tag_genre_combo.currentText() == "House"
+        assert panel.tag_year_spin.value() == 2024
+        assert panel.tag_bpm_spin.value() == 128.0
+        assert panel.tag_key_combo.currentText() == "Am"
+        assert panel.tag_energy_spin.value() == 7
+        assert panel.tag_rating_spin.value() == 4
+        assert panel.tag_comment_input.text() == "Nice"
+        assert panel.tag_mood_input.text() == "#happy #uplifting"
+        assert panel.tag_composer_input.text() == "Comp"
+        assert panel.tag_remix_input.text() == "Extended Mix"
+        assert panel.tag_label_input.text() == "Records"
+        assert panel.tag_track_number_spin.value() == 5
+        assert panel.tag_color_input.text() == "0xFF0000"
+        assert panel.tag_flag_spin.value() == 1
+
+    def test_key_combo_has_standard_keys(self, qapp):
+        """Key combo should contain standard musical keys and Camelot notation."""
+        panel = DatabasePanel()
+        items = [panel.tag_key_combo.itemText(i) for i in range(panel.tag_key_combo.count())]
+        assert "Am" in items
+        assert "8A" in items
+        assert "12B" in items
+
+    def test_genre_combo_has_common_genres(self, qapp):
+        """Genre combo should contain common DJ genres."""
+        panel = DatabasePanel()
+        items = [panel.tag_genre_combo.itemText(i) for i in range(panel.tag_genre_combo.count())]
+        assert "House" in items
+        assert "Techno" in items
+        assert "Trance" in items
+
+    def test_revert_button_restores_values(self, qapp):
+        """Revert button should restore fields to the original track values."""
+        panel = DatabasePanel()
+        track = Song(
+            file_path="/music/test.mp3",
+            tags=Tags(title="Original", author="Artist", grouping="5"),
+        )
+        panel._populate_tag_fields(track)
+        panel.tag_title_input.setText("Changed")
+        panel.tag_energy_spin.setValue(9)
+
+        panel._on_tag_revert_clicked()
+
+        assert panel.tag_title_input.text() == "Original"
+        assert panel.tag_energy_spin.value() == 5
+
+    def test_tag_save_sends_correct_xml_aliases(self, qapp):
+        """Tag save should send correct XML alias names to update_song_tags."""
+        panel = DatabasePanel()
+        mock_db = MagicMock()
+        mock_db.iter_songs.return_value = iter([])
+        panel._database = mock_db
+
+        track = Song(file_path="/music/test.mp3", tags=Tags())
+        panel._populate_tag_fields(track)
+        panel.tag_title_input.setText("New Title")
+        panel.tag_artist_input.setText("New Artist")
+        panel.tag_mood_input.setText("#chill")
+
+        panel._on_tag_save_clicked()
+
+        kwargs = mock_db.update_song_tags.call_args[1]
+        assert kwargs.get("Title") == "New Title"
+        assert kwargs.get("Author") == "New Artist"
+        assert kwargs.get("User2") == "#chill"
+
+
+class TestDatabasePanelFileTags:
+    """Tests for File Tags tab in DatabasePanel."""
+
+    def test_file_tags_tab_exists(self, qapp):
+        """File Tags tab should be the 3rd tab."""
+        panel = DatabasePanel()
+        assert panel.tag_tabs.tabText(2) == "File Tags"
+
+    def test_file_tag_widgets_exist(self, qapp):
+        """File Tags tab should have all field widgets."""
+        panel = DatabasePanel()
+        assert hasattr(panel, "file_tag_title")
+        assert hasattr(panel, "file_tag_artist")
+        assert hasattr(panel, "file_tag_album")
+        assert hasattr(panel, "file_tag_genre")
+        assert hasattr(panel, "file_tag_year")
+        assert hasattr(panel, "file_tag_bpm")
+        assert hasattr(panel, "file_tag_key")
+        assert hasattr(panel, "file_tag_composer")
+        assert hasattr(panel, "file_tag_comment")
+
+    def test_file_tag_buttons_exist(self, qapp):
+        """File Tags tab should have read/write/sync buttons."""
+        panel = DatabasePanel()
+        assert hasattr(panel, "file_tag_read_btn")
+        assert hasattr(panel, "file_tag_save_btn")
+        assert hasattr(panel, "file_tag_sync_vdj_btn")
+        assert hasattr(panel, "file_tag_import_btn")
+
+    def test_file_tag_buttons_disabled_for_windows_path(self, qapp):
+        """File tag buttons should be disabled for Windows-path tracks."""
+        panel = DatabasePanel()
+        track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(title="Song"),
+        )
+        panel._populate_tag_fields(track)
+
+        assert not panel.file_tag_read_btn.isEnabled()
+        assert not panel.file_tag_save_btn.isEnabled()
+        assert not panel.file_tag_sync_vdj_btn.isEnabled()
+        assert not panel.file_tag_import_btn.isEnabled()
+
+    def test_file_tag_read_windows_path_shows_message(self, qapp):
+        """Reading file tags from a Windows-path track shows info message."""
+        panel = DatabasePanel()
+        track = Song(
+            file_path="D:\\Music\\song.mp3",
+            tags=Tags(title="Song"),
+        )
+        panel._editing_track = track
+
+        with patch.object(QMessageBox, "information") as mock_info:
+            panel._on_file_tag_read()
+            mock_info.assert_called_once()
 
 
 class TestDatabasePanelOperationLog:

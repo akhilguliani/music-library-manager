@@ -22,7 +22,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMenu,
     QSpinBox,
+    QDoubleSpinBox,
     QSplitter,
+    QTabWidget,
 )
 from PySide6.QtCore import Qt, Signal, Slot, QSortFilterProxyModel
 
@@ -477,96 +479,329 @@ class DatabasePanel(QWidget):
         elif action == add_queue_action:
             self.add_to_queue_requested.emit(selected)
 
+    # Standard musical keys for combo box
+    _STANDARD_KEYS = [
+        "", "C", "Cm", "C#", "C#m", "Db", "Dbm",
+        "D", "Dm", "D#", "D#m", "Eb", "Ebm",
+        "E", "Em", "F", "Fm", "F#", "F#m", "Gb", "Gbm",
+        "G", "Gm", "G#", "G#m", "Ab", "Abm",
+        "A", "Am", "A#", "A#m", "Bb", "Bbm",
+        "B", "Bm",
+        # Camelot notation
+        "1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B",
+        "5A", "5B", "6A", "6B", "7A", "7B", "8A", "8B",
+        "9A", "9B", "10A", "10B", "11A", "11B", "12A", "12B",
+    ]
+
+    # Common DJ genres for combo box
+    _COMMON_GENRES = [
+        "", "House", "Deep House", "Tech House", "Progressive House",
+        "Techno", "Minimal Techno", "Hard Techno",
+        "Trance", "Progressive Trance", "Psytrance",
+        "Drum & Bass", "Dubstep", "Bass Music",
+        "EDM", "Electro", "Breakbeat",
+        "Disco", "Nu-Disco", "Funk",
+        "Hip-Hop", "R&B", "Pop", "Rock",
+        "Ambient", "Downtempo", "Chillout",
+        "Afro House", "Melodic House", "Organic House",
+        "Garage", "UK Garage", "Jersey Club",
+        "Latin", "Reggaeton", "Dancehall",
+    ]
+
     def _create_tag_edit_group(self) -> QGroupBox:
-        """Create the tag editing group box."""
+        """Create the tag editing group box with Common, Extended, and File Tags tabs."""
         group = QGroupBox("Edit Tags")
         layout = QVBoxLayout(group)
 
-        form_layout = QFormLayout()
-
         self.tag_track_label = QLabel("No track selected")
-        form_layout.addRow("Track:", self.tag_track_label)
+        layout.addWidget(self.tag_track_label)
+
+        self.tag_tabs = QTabWidget()
+
+        # --- Common tab ---
+        common_widget = QWidget()
+        common_form = QFormLayout(common_widget)
+
+        self.tag_title_input = QLineEdit()
+        self.tag_title_input.setPlaceholderText("Track title")
+        common_form.addRow("Title:", self.tag_title_input)
+
+        self.tag_artist_input = QLineEdit()
+        self.tag_artist_input.setPlaceholderText("Artist name")
+        common_form.addRow("Artist:", self.tag_artist_input)
+
+        self.tag_album_input = QLineEdit()
+        self.tag_album_input.setPlaceholderText("Album name")
+        common_form.addRow("Album:", self.tag_album_input)
+
+        self.tag_genre_combo = QComboBox()
+        self.tag_genre_combo.setEditable(True)
+        self.tag_genre_combo.addItems(self._COMMON_GENRES)
+        common_form.addRow("Genre:", self.tag_genre_combo)
+
+        self.tag_year_spin = QSpinBox()
+        self.tag_year_spin.setRange(0, 2100)
+        self.tag_year_spin.setSpecialValueText("None")
+        common_form.addRow("Year:", self.tag_year_spin)
+
+        self.tag_bpm_spin = QDoubleSpinBox()
+        self.tag_bpm_spin.setRange(0.0, 999.0)
+        self.tag_bpm_spin.setDecimals(1)
+        self.tag_bpm_spin.setSpecialValueText("None")
+        common_form.addRow("BPM:", self.tag_bpm_spin)
+
+        self.tag_key_combo = QComboBox()
+        self.tag_key_combo.setEditable(True)
+        self.tag_key_combo.addItems(self._STANDARD_KEYS)
+        # Keep backward compat: expose as tag_key_input for tests
+        self.tag_key_input = self.tag_key_combo
+        common_form.addRow("Key:", self.tag_key_combo)
 
         self.tag_energy_spin = QSpinBox()
         self.tag_energy_spin.setRange(0, 10)
         self.tag_energy_spin.setSpecialValueText("None")
         self.tag_energy_spin.setToolTip("Energy level (1-10, 0 = clear)")
-        form_layout.addRow("Energy:", self.tag_energy_spin)
+        common_form.addRow("Energy:", self.tag_energy_spin)
 
-        self.tag_key_input = QLineEdit()
-        self.tag_key_input.setPlaceholderText("e.g. Am, Cm, 8A")
-        self.tag_key_input.setToolTip("Musical key")
-        form_layout.addRow("Key:", self.tag_key_input)
+        self.tag_rating_spin = QSpinBox()
+        self.tag_rating_spin.setRange(0, 5)
+        self.tag_rating_spin.setSpecialValueText("None")
+        common_form.addRow("Rating:", self.tag_rating_spin)
 
         self.tag_comment_input = QLineEdit()
-        self.tag_comment_input.setPlaceholderText("Comment / mood tag")
-        self.tag_comment_input.setToolTip("Comment field (also used for mood)")
-        form_layout.addRow("Comment:", self.tag_comment_input)
+        self.tag_comment_input.setPlaceholderText("Comment")
+        common_form.addRow("Comment:", self.tag_comment_input)
 
-        layout.addLayout(form_layout)
+        self.tag_tabs.addTab(common_widget, "Common")
 
-        # Save button
+        # --- Extended tab ---
+        extended_widget = QWidget()
+        extended_form = QFormLayout(extended_widget)
+
+        self.tag_mood_input = QLineEdit()
+        self.tag_mood_input.setPlaceholderText("#happy #uplifting #summer")
+        self.tag_mood_input.setToolTip("Mood/style hashtags (User2 field)")
+        extended_form.addRow("Mood:", self.tag_mood_input)
+
+        self.tag_composer_input = QLineEdit()
+        extended_form.addRow("Composer:", self.tag_composer_input)
+
+        self.tag_remix_input = QLineEdit()
+        extended_form.addRow("Remix:", self.tag_remix_input)
+
+        self.tag_label_input = QLineEdit()
+        extended_form.addRow("Label:", self.tag_label_input)
+
+        self.tag_track_number_spin = QSpinBox()
+        self.tag_track_number_spin.setRange(0, 999)
+        self.tag_track_number_spin.setSpecialValueText("None")
+        extended_form.addRow("Track #:", self.tag_track_number_spin)
+
+        self.tag_color_input = QLineEdit()
+        self.tag_color_input.setPlaceholderText("VDJ color value")
+        extended_form.addRow("Color:", self.tag_color_input)
+
+        self.tag_flag_spin = QSpinBox()
+        self.tag_flag_spin.setRange(0, 1)
+        self.tag_flag_spin.setSpecialValueText("None")
+        extended_form.addRow("Flag:", self.tag_flag_spin)
+
+        self.tag_tabs.addTab(extended_widget, "Extended")
+
+        # --- File Tags tab (populated in commit 3) ---
+        self._file_tags_widget = QWidget()
+        self._file_tags_form = QFormLayout(self._file_tags_widget)
+
+        self.file_tag_title = QLineEdit()
+        self._file_tags_form.addRow("Title:", self.file_tag_title)
+        self.file_tag_artist = QLineEdit()
+        self._file_tags_form.addRow("Artist:", self.file_tag_artist)
+        self.file_tag_album = QLineEdit()
+        self._file_tags_form.addRow("Album:", self.file_tag_album)
+        self.file_tag_genre = QLineEdit()
+        self._file_tags_form.addRow("Genre:", self.file_tag_genre)
+        self.file_tag_year = QLineEdit()
+        self._file_tags_form.addRow("Year:", self.file_tag_year)
+        self.file_tag_track_number = QLineEdit()
+        self._file_tags_form.addRow("Track #:", self.file_tag_track_number)
+        self.file_tag_bpm = QLineEdit()
+        self._file_tags_form.addRow("BPM:", self.file_tag_bpm)
+        self.file_tag_key = QLineEdit()
+        self._file_tags_form.addRow("Key:", self.file_tag_key)
+        self.file_tag_composer = QLineEdit()
+        self._file_tags_form.addRow("Composer:", self.file_tag_composer)
+        self.file_tag_comment = QLineEdit()
+        self._file_tags_form.addRow("Comment:", self.file_tag_comment)
+
+        file_tag_btn_layout = QHBoxLayout()
+        self.file_tag_read_btn = QPushButton("Read from File")
+        self.file_tag_read_btn.clicked.connect(self._on_file_tag_read)
+        file_tag_btn_layout.addWidget(self.file_tag_read_btn)
+
+        self.file_tag_save_btn = QPushButton("Save to File")
+        self.file_tag_save_btn.clicked.connect(self._on_file_tag_save)
+        file_tag_btn_layout.addWidget(self.file_tag_save_btn)
+
+        self.file_tag_sync_vdj_btn = QPushButton("VDJ \u2192 File")
+        self.file_tag_sync_vdj_btn.setToolTip("Write VDJ database tags to file")
+        self.file_tag_sync_vdj_btn.clicked.connect(self._on_sync_vdj_to_file)
+        file_tag_btn_layout.addWidget(self.file_tag_sync_vdj_btn)
+
+        self.file_tag_import_btn = QPushButton("File \u2192 VDJ")
+        self.file_tag_import_btn.setToolTip("Import file tags into VDJ database")
+        self.file_tag_import_btn.clicked.connect(self._on_sync_file_to_vdj)
+        file_tag_btn_layout.addWidget(self.file_tag_import_btn)
+
+        file_tag_btn_layout.addStretch()
+        self._file_tags_form.addRow(file_tag_btn_layout)
+
+        self.tag_tabs.addTab(self._file_tags_widget, "File Tags")
+
+        # Auto-read file tags when switching to File Tags tab
+        self.tag_tabs.currentChanged.connect(self._on_tag_tab_changed)
+
+        layout.addWidget(self.tag_tabs)
+
+        # Save / Revert buttons
         btn_layout = QHBoxLayout()
         self.tag_save_btn = QPushButton("Save Tags")
         self.tag_save_btn.setEnabled(False)
-        self.tag_save_btn.setToolTip("Save tag changes to database")
+        self.tag_save_btn.setToolTip("Save tag changes to VDJ database")
         self.tag_save_btn.clicked.connect(self._on_tag_save_clicked)
         btn_layout.addWidget(self.tag_save_btn)
+
+        self.tag_revert_btn = QPushButton("Revert")
+        self.tag_revert_btn.setEnabled(False)
+        self.tag_revert_btn.setToolTip("Revert to saved values")
+        self.tag_revert_btn.clicked.connect(self._on_tag_revert_clicked)
+        btn_layout.addWidget(self.tag_revert_btn)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         return group
 
     def _populate_tag_fields(self, track: Song) -> None:
-        """Populate tag editing fields from a track.
-
-        Args:
-            track: Song to populate from.
-        """
+        """Populate tag editing fields from a track."""
         self._tag_group.setVisible(True)
         self.tag_track_label.setText(track.display_name)
         self.tag_save_btn.setEnabled(True)
+        self.tag_revert_btn.setEnabled(True)
+        self._editing_track = track
+
+        tags = track.tags
+
+        # Common tab
+        self.tag_title_input.setText(tags.title or "" if tags else "")
+        self.tag_artist_input.setText(tags.author or "" if tags else "")
+        self.tag_album_input.setText(tags.album or "" if tags else "")
+
+        genre = tags.genre or "" if tags else ""
+        idx = self.tag_genre_combo.findText(genre)
+        if idx >= 0:
+            self.tag_genre_combo.setCurrentIndex(idx)
+        else:
+            self.tag_genre_combo.setCurrentText(genre)
+
+        self.tag_year_spin.setValue(tags.year or 0 if tags else 0)
+
+        bpm = tags.bpm if tags else None
+        self.tag_bpm_spin.setValue(bpm if bpm is not None else 0.0)
+
+        key = tags.key or "" if tags else ""
+        idx = self.tag_key_combo.findText(key)
+        if idx >= 0:
+            self.tag_key_combo.setCurrentIndex(idx)
+        else:
+            self.tag_key_combo.setCurrentText(key)
 
         energy = track.energy if track.energy is not None else 0
         self.tag_energy_spin.setValue(energy)
 
-        key = ""
-        if track.tags and track.tags.key:
-            key = track.tags.key
-        self.tag_key_input.setText(key)
+        self.tag_rating_spin.setValue(tags.rating or 0 if tags else 0)
+        self.tag_comment_input.setText(tags.comment or "" if tags else "")
 
-        comment = ""
-        if track.tags and track.tags.comment:
-            comment = track.tags.comment
-        self.tag_comment_input.setText(comment)
+        # Extended tab
+        self.tag_mood_input.setText(tags.user2 or "" if tags else "")
+        self.tag_composer_input.setText(tags.composer or "" if tags else "")
+        self.tag_remix_input.setText(tags.remix or "" if tags else "")
+        self.tag_label_input.setText(tags.label or "" if tags else "")
+        self.tag_track_number_spin.setValue(tags.track_number or 0 if tags else 0)
+        self.tag_color_input.setText(tags.color or "" if tags else "")
+        self.tag_flag_spin.setValue(tags.flag or 0 if tags else 0)
 
-        self._editing_track = track
+        # Enable/disable file tag buttons based on file accessibility
+        is_accessible = not track.is_windows_path and Path(track.file_path).exists()
+        self.file_tag_read_btn.setEnabled(is_accessible)
+        self.file_tag_save_btn.setEnabled(is_accessible)
+        self.file_tag_sync_vdj_btn.setEnabled(is_accessible)
+        self.file_tag_import_btn.setEnabled(is_accessible)
+
+    def _on_tag_revert_clicked(self) -> None:
+        """Revert tag fields to the current track's saved values."""
+        if self._editing_track is not None:
+            self._populate_tag_fields(self._editing_track)
 
     def _on_tag_save_clicked(self) -> None:
-        """Handle tag save button click."""
+        """Handle tag save button click — saves Common + Extended tabs to VDJ database."""
         if self._database is None or self._editing_track is None:
             return
 
         track = self._editing_track
-        updates = {}
+        tags = track.tags
+        updates: dict[str, str | int | float | None] = {}
+
+        # --- Helper to compare and build update ---
+        def _text_update(alias: str, widget_val: str, old_val: str | None) -> None:
+            val = widget_val.strip()
+            if val:
+                if val != (old_val or ""):
+                    updates[alias] = val
+            elif old_val:
+                updates[alias] = None
+
+        def _int_update(alias: str, widget_val: int, old_val: int | None) -> None:
+            if widget_val > 0:
+                if widget_val != (old_val or 0):
+                    updates[alias] = str(widget_val)
+            elif old_val is not None and old_val > 0:
+                updates[alias] = None
+
+        # Common tab
+        _text_update("Title", self.tag_title_input.text(), tags.title if tags else None)
+        _text_update("Author", self.tag_artist_input.text(), tags.author if tags else None)
+        _text_update("Album", self.tag_album_input.text(), tags.album if tags else None)
+        _text_update("Genre", self.tag_genre_combo.currentText(), tags.genre if tags else None)
+        _int_update("Year", self.tag_year_spin.value(), tags.year if tags else None)
+
+        bpm_val = self.tag_bpm_spin.value()
+        old_bpm = tags.bpm if tags else None
+        if bpm_val > 0.0:
+            if old_bpm is None or abs(bpm_val - old_bpm) > 0.05:
+                updates["Bpm"] = str(bpm_val)
+        elif old_bpm is not None and old_bpm > 0:
+            updates["Bpm"] = None
+
+        _text_update("Key", self.tag_key_combo.currentText(), tags.key if tags else None)
 
         energy_val = self.tag_energy_spin.value()
         if energy_val > 0:
-            updates["Grouping"] = str(energy_val)
+            if energy_val != (track.energy or 0):
+                updates["Grouping"] = str(energy_val)
         elif track.energy is not None:
             updates["Grouping"] = None
 
-        key_val = self.tag_key_input.text().strip()
-        if key_val:
-            updates["Key"] = key_val
-        elif track.tags and track.tags.key:
-            updates["Key"] = None
+        _int_update("Rating", self.tag_rating_spin.value(), tags.rating if tags else None)
+        _text_update("Comment", self.tag_comment_input.text(), tags.comment if tags else None)
 
-        comment_val = self.tag_comment_input.text().strip()
-        if comment_val:
-            updates["Comment"] = comment_val
-        elif track.tags and track.tags.comment:
-            updates["Comment"] = None
+        # Extended tab
+        _text_update("User2", self.tag_mood_input.text(), tags.user2 if tags else None)
+        _text_update("Composer", self.tag_composer_input.text(), tags.composer if tags else None)
+        _text_update("Remix", self.tag_remix_input.text(), tags.remix if tags else None)
+        _text_update("Label", self.tag_label_input.text(), tags.label if tags else None)
+        _int_update("TrackNumber", self.tag_track_number_spin.value(), tags.track_number if tags else None)
+        _text_update("Color", self.tag_color_input.text(), tags.color if tags else None)
+        _int_update("Flag", self.tag_flag_spin.value(), tags.flag if tags else None)
 
         if not updates:
             return
@@ -581,6 +816,147 @@ class DatabasePanel(QWidget):
         # Refresh track list
         self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
+
+    # --- File Tags tab handlers ---
+
+    def _on_tag_tab_changed(self, index: int) -> None:
+        """Auto-read file tags when switching to File Tags tab."""
+        if index == 2 and self._editing_track is not None:
+            self._on_file_tag_read()
+
+    def _on_file_tag_read(self) -> None:
+        """Read embedded tags from the audio file."""
+        if self._editing_track is None:
+            return
+
+        track = self._editing_track
+        if track.is_windows_path:
+            QMessageBox.information(
+                self, "Not Available",
+                "Cannot read file tags for Windows-path tracks."
+            )
+            return
+
+        file_path = track.file_path
+        if not Path(file_path).exists():
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{file_path}")
+            return
+
+        try:
+            from vdj_manager.files.id3_editor import FileTagEditor
+            editor = FileTagEditor()
+            file_tags = editor.read_tags(file_path)
+        except Exception as e:
+            QMessageBox.warning(self, "Read Error", f"Failed to read file tags:\n{e}")
+            return
+
+        self.file_tag_title.setText(file_tags.get("title") or "")
+        self.file_tag_artist.setText(file_tags.get("artist") or "")
+        self.file_tag_album.setText(file_tags.get("album") or "")
+        self.file_tag_genre.setText(file_tags.get("genre") or "")
+        self.file_tag_year.setText(file_tags.get("year") or "")
+        self.file_tag_track_number.setText(file_tags.get("track_number") or "")
+        self.file_tag_bpm.setText(file_tags.get("bpm") or "")
+        self.file_tag_key.setText(file_tags.get("key") or "")
+        self.file_tag_composer.setText(file_tags.get("composer") or "")
+        self.file_tag_comment.setText(file_tags.get("comment") or "")
+
+    def _on_file_tag_save(self) -> None:
+        """Write file tag fields to the audio file."""
+        if self._editing_track is None:
+            return
+
+        file_path = self._editing_track.file_path
+        if self._editing_track.is_windows_path or not Path(file_path).exists():
+            return
+
+        file_tags = {
+            "title": self.file_tag_title.text().strip() or None,
+            "artist": self.file_tag_artist.text().strip() or None,
+            "album": self.file_tag_album.text().strip() or None,
+            "genre": self.file_tag_genre.text().strip() or None,
+            "year": self.file_tag_year.text().strip() or None,
+            "track_number": self.file_tag_track_number.text().strip() or None,
+            "bpm": self.file_tag_bpm.text().strip() or None,
+            "key": self.file_tag_key.text().strip() or None,
+            "composer": self.file_tag_composer.text().strip() or None,
+            "comment": self.file_tag_comment.text().strip() or None,
+        }
+
+        try:
+            from vdj_manager.files.id3_editor import FileTagEditor
+            editor = FileTagEditor()
+            ok = editor.write_tags(file_path, file_tags)
+            if ok:
+                self.status_label.setText("File tags saved")
+                self.status_label.setStyleSheet("color: green;")
+                self._log_operation(f"File tags saved for {self._editing_track.display_name}")
+            else:
+                self.status_label.setText("File tags save failed")
+                self.status_label.setStyleSheet("color: red;")
+        except Exception as e:
+            QMessageBox.warning(self, "Write Error", f"Failed to write file tags:\n{e}")
+
+    def _on_sync_vdj_to_file(self) -> None:
+        """Sync VDJ database tags to the audio file."""
+        if self._editing_track is None or self._editing_track.is_windows_path:
+            return
+
+        reply = QMessageBox.question(
+            self, "Confirm Sync",
+            "Overwrite file tags with VDJ database values?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            from vdj_manager.files.id3_editor import FileTagEditor, vdj_tags_to_file_tags
+            file_tags = vdj_tags_to_file_tags(self._editing_track)
+            editor = FileTagEditor()
+            ok = editor.write_tags(self._editing_track.file_path, file_tags)
+            if ok:
+                self.status_label.setText("VDJ tags synced to file")
+                self.status_label.setStyleSheet("color: green;")
+                self._log_operation(f"VDJ \u2192 File sync for {self._editing_track.display_name}")
+                # Re-read to show updated values
+                self._on_file_tag_read()
+            else:
+                self.status_label.setText("Sync failed")
+                self.status_label.setStyleSheet("color: red;")
+        except Exception as e:
+            QMessageBox.warning(self, "Sync Error", f"Failed to sync:\n{e}")
+
+    def _on_sync_file_to_vdj(self) -> None:
+        """Import file tags into VDJ database."""
+        if self._editing_track is None or self._database is None:
+            return
+        if self._editing_track.is_windows_path:
+            return
+
+        reply = QMessageBox.question(
+            self, "Confirm Import",
+            "Overwrite VDJ database tags with values from the audio file?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            from vdj_manager.files.id3_editor import FileTagEditor, file_tags_to_vdj_kwargs
+            editor = FileTagEditor()
+            file_tags = editor.read_tags(self._editing_track.file_path)
+            vdj_kwargs = file_tags_to_vdj_kwargs(file_tags)
+            if vdj_kwargs:
+                self._database.update_song_tags(self._editing_track.file_path, **vdj_kwargs)
+                self._database.save()
+                self._tracks = list(self._database.iter_songs())
+                self.track_model.set_tracks(self._tracks)
+                self.status_label.setText("File tags imported to VDJ")
+                self.status_label.setStyleSheet("color: green;")
+                self._log_operation(f"File \u2192 VDJ import for {self._editing_track.display_name}")
+        except Exception as e:
+            QMessageBox.warning(self, "Import Error", f"Failed to import:\n{e}")
 
     def refresh_tracks(self, tracks: list | None = None) -> None:
         """Refresh the track table with updated data.
