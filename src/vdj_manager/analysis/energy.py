@@ -1,8 +1,14 @@
 """Energy level classification (1-10 scale)."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from ..config import ENERGY_WEIGHTS
+
+if TYPE_CHECKING:
+    from .audio_features import AudioFeatureExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +30,7 @@ class EnergyAnalyzer:
         self.weights = weights or ENERGY_WEIGHTS
 
         # Lazy import to avoid slow startup
-        self._extractor = None
+        self._extractor: AudioFeatureExtractor | None = None
 
     @property
     def extractor(self):

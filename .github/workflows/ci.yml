@@ -42,7 +42,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0 libegl1 libgl1
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 libegl1 libgl1 ffmpeg vlc libvlc-dev
 
       - name: Install Python dependencies
         run: pip install -e '.[dev,serato,online,player]'

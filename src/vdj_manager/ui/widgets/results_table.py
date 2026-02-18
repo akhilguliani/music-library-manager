@@ -133,12 +133,16 @@ class ResultsTable(QWidget):
         """
         results = []
         for row in range(self.table.rowCount()):
+            item0 = self.table.item(row, 0)
+            item1 = self.table.item(row, 1)
+            item2 = self.table.item(row, 2)
+            item3 = self.table.item(row, 3)
             result = {
-                "file": self.table.item(row, 0).text(),
-                "path": self.table.item(row, 0).toolTip(),
-                "lufs": self.table.item(row, 1).text(),
-                "gain": self.table.item(row, 2).text(),
-                "status": self.table.item(row, 3).text(),
+                "file": item0.text() if item0 else "",
+                "path": item0.toolTip() if item0 else "",
+                "lufs": item1.text() if item1 else "",
+                "gain": item2.text() if item2 else "",
+                "status": item3.text() if item3 else "",
             }
             results.append(result)
         return results

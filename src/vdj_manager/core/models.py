@@ -57,7 +57,7 @@ class Tags(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def energy_level(self) -> int | None:
         """Extract energy level from Grouping field.
@@ -110,7 +110,7 @@ class Scan(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def actual_bpm(self) -> float | None:
         """Convert VDJ BPM fraction to actual BPM (e.g., 0.5 -> 120)."""
@@ -140,31 +140,31 @@ class Song(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def path(self) -> Path:
         """Return file path as Path object."""
         return Path(self.file_path)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def extension(self) -> str:
         """Return lowercase file extension."""
         return Path(self.file_path).suffix.lower()
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_windows_path(self) -> bool:
         """Check if path is a Windows path."""
         return len(self.file_path) > 1 and self.file_path[1] == ":"
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_netsearch(self) -> bool:
         """Check if this is a streaming/netsearch entry."""
         return "://" in self.file_path and not self.file_path.startswith("file://")
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def display_name(self) -> str:
         """Return display name (artist - title or filename)."""

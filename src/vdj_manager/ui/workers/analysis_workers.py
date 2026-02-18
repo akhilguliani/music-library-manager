@@ -459,7 +459,7 @@ class EnergyWorker(PausableAnalysisWorker):
         analyzed = 0
         failed = 0
         cached = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         file_paths = [t.file_path for t in self._tracks]
@@ -542,7 +542,7 @@ class MIKImportWorker(PausableAnalysisWorker):
         """Import MIK tags for all tracks in parallel."""
         found = 0
         updated = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         # Build a lookup for existing energy tags (read-only snapshot)
@@ -658,7 +658,7 @@ class MoodWorker(PausableAnalysisWorker):
         analyzed = 0
         failed = 0
         cached = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         # Build read-only snapshots for artist/title and existing user2

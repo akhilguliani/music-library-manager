@@ -1,10 +1,17 @@
 """Workflow dashboard panel for launching parallel analysis operations."""
 
+from __future__ import annotations
+
 import logging
 import multiprocessing
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal, Slot
+
+if TYPE_CHECKING:
+    from vdj_manager.ui.workers.normalization_worker import NormalizationWorker
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -50,7 +57,7 @@ class WorkflowPanel(QWidget):
         self._tracks: list[Song] = []
         self._energy_worker: EnergyWorker | None = None
         self._mood_worker: MoodWorker | None = None
-        self._norm_worker = None
+        self._norm_worker: NormalizationWorker | None = None
         self._unsaved_count: int = 0
         self._workers_running: int = 0
 
@@ -442,10 +449,11 @@ class WorkflowPanel(QWidget):
 
         file_paths = [t.file_path for t in local_tracks]
         task_state = TaskState(
-            task_type=TaskType.NORMALIZATION,
+            task_id="workflow_norm",
+            task_type=TaskType.NORMALIZE,
             status=TaskStatus.RUNNING,
             total_items=len(file_paths),
-            pending_items=list(file_paths),
+            pending_paths=list(file_paths),
         )
 
         self._workers_running += 1

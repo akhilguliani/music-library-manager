@@ -64,7 +64,7 @@ class TrackTableModel(QAbstractTableModel):
         self._tracks = []
         self.endResetModel()
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
         """Return the number of rows (tracks).
 
         Args:
@@ -77,7 +77,7 @@ class TrackTableModel(QAbstractTableModel):
             return 0
         return len(self._tracks)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
         """Return the number of columns.
 
         Args:
@@ -90,7 +90,7 @@ class TrackTableModel(QAbstractTableModel):
             return 0
         return len(self.COLUMNS)
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:  # type: ignore[override]
         """Return data for a given index and role.
 
         Args:

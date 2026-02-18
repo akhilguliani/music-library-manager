@@ -557,7 +557,7 @@ class AnalysisPanel(QWidget):
             return ""
         from collections import Counter
 
-        fmt_counts = Counter()
+        fmt_counts: Counter[str] = Counter()
         for r in results:
             status = str(r.get("status", "")).lower()
             if status in ("failed", "none") or status.startswith("error"):

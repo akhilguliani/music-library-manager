@@ -29,7 +29,7 @@ def get_database(db_path: Path | None = None) -> VDJDatabase:
     return db
 
 
-def format_size(size_bytes: int) -> str:
+def format_size(size_bytes: int | float) -> str:
     """Format byte size as human-readable string."""
     for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024:
@@ -574,7 +574,7 @@ def files_remap(
 
         # Convert to list first to avoid modifying dict during iteration
         songs_list = list(db.songs.values())
-        for old_path, new_path, exists in remapper.remap_songs(iter(songs_list)):
+        for old_path, new_path, exists in remapper.remap_songs(iter(songs_list)):  # type: ignore[assignment]
             if dry_run:
                 status = "[green]exists[/green]" if exists else "[red]missing[/red]"
                 console.print(f"  {old_path}")

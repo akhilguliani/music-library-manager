@@ -121,7 +121,7 @@ class PathRemapper:
 
         for prefix, examples in prefixes.items():
             count = len(examples)
-            result["total_windows_paths"] += count
+            result["total_windows_paths"] += count  # type: ignore[operator]
 
             # Check if we have a mapping for this prefix
             has_mapping = any(
@@ -137,7 +137,7 @@ class PathRemapper:
                 if sample_mapped:
                     sample_exists = Path(sample_mapped).exists()
 
-            result["by_prefix"][prefix] = {
+            result["by_prefix"][prefix] = {  # type: ignore[index]
                 "count": count,
                 "has_mapping": has_mapping,
                 "sample_original": examples[0] if examples else None,
@@ -147,9 +147,9 @@ class PathRemapper:
             }
 
             if has_mapping:
-                result["mappable"] += count
+                result["mappable"] += count  # type: ignore[operator]
             else:
-                result["unmappable"] += count
+                result["unmappable"] += count  # type: ignore[operator]
 
         return result
 

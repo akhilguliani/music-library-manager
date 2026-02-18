@@ -1,6 +1,9 @@
 """Full-featured player panel (Tab 5)."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QImage, QPixmap
@@ -20,6 +23,9 @@ from PySide6.QtWidgets import (
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
+
+if TYPE_CHECKING:
+    from vdj_manager.ui.workers.player_workers import WaveformWorker
 from vdj_manager.ui.widgets.star_rating_widget import StarRatingWidget
 from vdj_manager.ui.widgets.waveform_widget import WaveformWidget
 
@@ -50,7 +56,7 @@ class PlayerPanel(QWidget):
         super().__init__(parent)
         self._bridge = bridge
         self._current_track: TrackInfo | None = None
-        self._waveform_worker = None
+        self._waveform_worker: WaveformWorker | None = None
         self._duration_s = 0.0
         self._syncing_cues = False
         self._setup_ui()

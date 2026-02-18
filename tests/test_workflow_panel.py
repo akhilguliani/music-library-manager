@@ -128,7 +128,10 @@ class TestWorkflowPanelRunLogic:
         mock_mood.isRunning.return_value = False
         MockMoodWorker.return_value = mock_mood
 
-        with patch.object(Path, "exists", return_value=True):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch("vdj_manager.ui.widgets.workflow_panel.get_lastfm_api_key", return_value=None),
+        ):
             panel._on_run_clicked()
 
         MockEnergyWorker.assert_called_once()
@@ -156,6 +159,7 @@ class TestWorkflowPanelRunLogic:
             patch("vdj_manager.ui.widgets.workflow_panel.EnergyWorker") as ME,
             patch("vdj_manager.ui.widgets.workflow_panel.MoodWorker") as MM,
             patch.object(Path, "exists", return_value=True),
+            patch("vdj_manager.ui.widgets.workflow_panel.get_lastfm_api_key", return_value=None),
         ):
             me = MagicMock()
             me.isRunning.return_value = False

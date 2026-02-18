@@ -316,6 +316,7 @@ class SeratoExporter:
         self.mapper = VDJToSeratoMapper()
         self.crate_writer = SeratoCrateWriter(serato_dir)
 
+        self.tag_writer: SeratoTagWriter | None
         try:
             self.tag_writer = SeratoTagWriter()
         except ImportError:

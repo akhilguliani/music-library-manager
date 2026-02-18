@@ -237,13 +237,13 @@ class FilesPanel(QWidget):
         failed = 0
         for path in paths_to_add:
             try:
-                self._database.add_song(path)
+                self._database.add_song(path)  # type: ignore[union-attr]
                 added += 1
             except Exception:
                 failed += 1
 
         if added > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.import_status.setText(f"Imported {added} files ({failed} failed)")
         self.import_btn.setEnabled(False)  # Can't re-import
@@ -339,10 +339,10 @@ class FilesPanel(QWidget):
         paths_to_remove = result.get("paths_to_remove", [])
         removed = 0
         for path in paths_to_remove:
-            if self._database.remove_song(path):
+            if self._database.remove_song(path):  # type: ignore[union-attr]
                 removed += 1
         if removed > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.remove_btn.setEnabled(True)
         self.remove_status.setText(f"Removed {removed} entries")
@@ -481,7 +481,7 @@ class FilesPanel(QWidget):
         failed = 0
         for old_path, new_path in remappings:
             try:
-                if self._database.remap_path(old_path, new_path):
+                if self._database.remap_path(old_path, new_path):  # type: ignore[union-attr]
                     remapped += 1
                 else:
                     failed += 1
@@ -489,7 +489,7 @@ class FilesPanel(QWidget):
                 failed += 1
 
         if remapped > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.remap_apply_btn.setEnabled(True)
         self.remap_status.setText(

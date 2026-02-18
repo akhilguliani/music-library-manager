@@ -336,7 +336,7 @@ class NormalizationProcessor:
         Returns:
             Dict with processing results
         """
-        results_dict = {
+        results_dict: dict[str, int | dict[str, float]] = {
             "processed": 0,
             "failed": 0,
             "skipped": 0,
@@ -345,11 +345,11 @@ class NormalizationProcessor:
 
         def result_callback(result: NormalizationResult):
             if result.success:
-                results_dict["processed"] += 1
+                results_dict["processed"] += 1  # type: ignore[operator]
                 if result.gain_db is not None:
-                    results_dict["gains"][result.file_path] = result.gain_db
+                    results_dict["gains"][result.file_path] = result.gain_db  # type: ignore[index]
             else:
-                results_dict["failed"] += 1
+                results_dict["failed"] += 1  # type: ignore[operator]
 
             if callback:
                 callback(result.file_path, result.success)
@@ -377,8 +377,9 @@ class NormalizationProcessor:
         if not successful:
             return {"error": "No files could be measured"}
 
-        lufs_values = [r.current_lufs for r in successful]
-        gains_needed = [r.gain_db for r in successful]
+        # current_lufs and gain_db are guaranteed non-None by the filter above
+        lufs_values: list[float] = [r.current_lufs for r in successful]  # type: ignore[misc]
+        gains_needed: list[float] = [r.gain_db for r in successful]  # type: ignore[misc]
 
         import statistics
 

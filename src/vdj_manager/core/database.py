@@ -435,7 +435,7 @@ class VDJDatabase:
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
 
-        song_elem = etree.SubElement(self._root, "Song")
+        song_elem = etree.SubElement(self._root, "Song")  # type: ignore[arg-type]
         song_elem.set("FilePath", file_path)
         if file_size is not None:
             song_elem.set("FileSize", str(file_size))
@@ -465,13 +465,13 @@ class VDJDatabase:
 
         # lxml produces single quotes and no space before />, so we post-process
         xml_bytes = etree.tostring(
-            self._tree,
+            self._tree,  # type: ignore[arg-type]
             encoding="UTF-8",
             xml_declaration=True,
             pretty_print=False,
         )
 
-        xml_str = xml_bytes.decode("utf-8")
+        xml_str: str = xml_bytes.decode("utf-8") if isinstance(xml_bytes, bytes) else xml_bytes
 
         # Fix XML declaration: single quotes → double quotes
         xml_str = xml_str.replace(
@@ -575,7 +575,7 @@ class VDJDatabase:
                 song_elem = other._filepath_to_elem.get(file_path)
                 if song_elem is not None:
                     new_elem = etree.fromstring(etree.tostring(song_elem))
-                    self._root.append(new_elem)
+                    self._root.append(new_elem)  # type: ignore[union-attr]
                     self._songs[file_path] = other_song
                     self._filepath_to_elem[file_path] = new_elem
                     stats["added"] += 1

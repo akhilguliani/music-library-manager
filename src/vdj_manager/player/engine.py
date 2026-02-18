@@ -139,10 +139,10 @@ class PlaybackEngine:
             import vlc
 
             self._vlc_instance = vlc.Instance("--no-xlib", "--quiet")
-            self._media_player = self._vlc_instance.media_player_new()
+            self._media_player = self._vlc_instance.media_player_new()  # type: ignore[attr-defined]
 
             # Register VLC end-reached event
-            em = self._media_player.event_manager()
+            em = self._media_player.event_manager()  # type: ignore[attr-defined]
             em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_vlc_end_reached)
 
             self._initialized = True
@@ -179,16 +179,16 @@ class PlaybackEngine:
 
             if track is not None:
                 self._load_track(track)
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
             elif self._state == PlaybackState.PAUSED:
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
             elif self._state == PlaybackState.STOPPED and self._current_track:
                 self._load_track(self._current_track)
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
 
@@ -198,7 +198,7 @@ class PlaybackEngine:
             if not self._initialized:
                 return
             if self._state == PlaybackState.PLAYING:
-                self._media_player.pause()
+                self._media_player.pause()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PAUSED)
 
     def stop(self) -> None:
@@ -206,7 +206,7 @@ class PlaybackEngine:
         with self._lock:
             if not self._initialized:
                 return
-            self._media_player.stop()
+            self._media_player.stop()  # type: ignore[attr-defined]
             self._stop_position_polling()
             self._position_s = 0.0
             self._set_state(PlaybackState.STOPPED)
