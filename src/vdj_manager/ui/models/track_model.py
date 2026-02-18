@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from vdj_manager.core.models import Song
 

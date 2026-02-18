@@ -1,7 +1,8 @@
 """Tests for VDJ Manager Desktop UI application."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 # Skip all tests if PySide6 is not available or display is not accessible
 pytest.importorskip("PySide6")
@@ -34,6 +35,7 @@ class TestCreateApplication:
     def test_application_properties(self):
         """Test application properties are set correctly."""
         from PySide6.QtWidgets import QApplication
+
         from vdj_manager.ui.app import create_application
 
         existing_app = QApplication.instance()
@@ -148,7 +150,6 @@ class TestMainWindow:
     def test_about_dialog(self, main_window, app):
         """Test that about action triggers about dialog."""
         from PySide6.QtWidgets import QMessageBox
-        from unittest.mock import patch
 
         with patch.object(QMessageBox, "about") as mock_about:
             main_window._on_about()
@@ -192,7 +193,7 @@ class TestMainEntry:
 
     def test_ui_package_exports(self):
         """Test that ui package exports expected items."""
-        from vdj_manager.ui import main, MainWindow
+        from vdj_manager.ui import MainWindow, main
 
         assert callable(main)
         assert MainWindow is not None

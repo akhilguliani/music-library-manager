@@ -2,10 +2,9 @@
 
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
-from lxml import etree
 
 from vdj_manager.core.database import VDJDatabase
 
@@ -19,8 +18,8 @@ def db_with_song(tmp_path):
         '<VirtualDJ_Database Version="2024">\r\n'
         '  <Song FilePath="/test/song.mp3">\r\n'
         '    <Tags Author="Artist" Title="Title" />\r\n'
-        '  </Song>\r\n'
-        '</VirtualDJ_Database>\r\n'
+        "  </Song>\r\n"
+        "</VirtualDJ_Database>\r\n"
     )
     db_path.write_bytes(xml.encode("utf-8"))
     db = VDJDatabase(db_path)
@@ -67,7 +66,7 @@ class TestAtomicSave:
         original_content = db_with_song.db_path.read_bytes()
 
         # Make write_bytes fail on the temp file
-        with patch.object(Path, "write_bytes", side_effect=IOError("write failed")):
+        with patch.object(Path, "write_bytes", side_effect=OSError("write failed")):
             with pytest.raises(IOError):
                 db_with_song.save()
 

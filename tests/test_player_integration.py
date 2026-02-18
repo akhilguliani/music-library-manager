@@ -1,13 +1,11 @@
 """Integration tests for the music player feature."""
 
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QCoreApplication
 
-from vdj_manager.core.models import Song, Tags, Infos
+from vdj_manager.core.models import Infos, Song, Tags
 from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.main_window import MainWindow
 

@@ -2,20 +2,19 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.workers.file_workers import (
-    ScanWorker,
+    DuplicateWorker,
     ImportWorker,
     RemoveWorker,
-    RemapWorker,
-    DuplicateWorker,
+    ScanWorker,
 )
 
 
@@ -213,7 +212,12 @@ class TestFilesPanelHandlers:
     def test_scan_finished_populates_results(self, qapp):
         panel = FilesPanel()
         files = [
-            {"name": "song.mp3", "file_path": "/music/song.mp3", "file_size": 5000, "extension": ".mp3"},
+            {
+                "name": "song.mp3",
+                "file_path": "/music/song.mp3",
+                "file_size": 5000,
+                "extension": ".mp3",
+            },
         ]
         panel._on_scan_finished(files)
 
@@ -259,10 +263,12 @@ class TestFilesPanelHandlers:
         panel._database.remap_path.return_value = True
         panel._database.iter_songs.return_value = iter([])
 
-        panel._on_remap_finished({
-            "remappings": [("D:/old.mp3", "/new.mp3")],
-            "skipped": 5,
-        })
+        panel._on_remap_finished(
+            {
+                "remappings": [("D:/old.mp3", "/new.mp3")],
+                "skipped": 5,
+            }
+        )
 
         assert "Remapped 1" in panel.remap_status.text()
         assert "skipped 5" in panel.remap_status.text()

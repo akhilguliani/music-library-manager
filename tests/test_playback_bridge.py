@@ -1,7 +1,5 @@
 """Tests for PlaybackBridge Qt signal adapter."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 from PySide6.QtCore import QCoreApplication
 

@@ -1,14 +1,12 @@
 """Tests for WorkflowPanel — unified parallel workflow launcher."""
 
-import gc
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QCoreApplication
 
-from vdj_manager.core.models import Song, Tags, Infos
+from vdj_manager.core.models import Infos, Song, Tags
 from vdj_manager.ui.widgets.workflow_panel import WorkflowPanel
 
 
@@ -154,9 +152,11 @@ class TestWorkflowPanelRunLogic:
         mock_backup = MagicMock()
         MockBackup.return_value = mock_backup
 
-        with patch("vdj_manager.ui.widgets.workflow_panel.EnergyWorker") as ME, \
-             patch("vdj_manager.ui.widgets.workflow_panel.MoodWorker") as MM, \
-             patch.object(Path, "exists", return_value=True):
+        with (
+            patch("vdj_manager.ui.widgets.workflow_panel.EnergyWorker") as ME,
+            patch("vdj_manager.ui.widgets.workflow_panel.MoodWorker") as MM,
+            patch.object(Path, "exists", return_value=True),
+        ):
             me = MagicMock()
             me.isRunning.return_value = False
             ME.return_value = me

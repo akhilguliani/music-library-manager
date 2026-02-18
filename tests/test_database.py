@@ -1,13 +1,12 @@
 """Tests for VDJ database parser."""
 
-import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+
+import pytest
 from lxml import etree
 
 from vdj_manager.core.database import VDJDatabase
-from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType
-
 
 SAMPLE_DB_XML = (
     '<?xml version="1.0" encoding="UTF-8"?>\r\n'
@@ -19,25 +18,25 @@ SAMPLE_DB_XML = (
     '  <Poi Type="cue" Pos="0.5" Num="1" Name="Intro" />\r\n'
     '  <Poi Type="cue" Pos="30.0" Num="2" Name="Drop" />\r\n'
     '  <Poi Type="beatgrid" Pos="0.0" Bpm="0.5" />\r\n'
-    ' </Song>\r\n'
+    " </Song>\r\n"
     ' <Song FilePath="/path/to/track2.mp3" FileSize="4000000">\r\n'
     '  <Tags Author="Artist Two" Title="Track Two" />\r\n'
     '  <Scan Bpm="0.4" Key="Cm" />\r\n'
-    ' </Song>\r\n'
+    " </Song>\r\n"
     ' <Song FilePath="D:/Windows/track3.mp3" FileSize="3000000">\r\n'
     '  <Tags Author="Artist Three" Title="Track Three" />\r\n'
-    ' </Song>\r\n'
+    " </Song>\r\n"
     ' <Song FilePath="netsearch://spotify/track123" FileSize="0">\r\n'
     '  <Tags Title="Streaming Track" />\r\n'
-    ' </Song>\r\n'
-    '</VirtualDJ_Database>\r\n'
+    " </Song>\r\n"
+    "</VirtualDJ_Database>\r\n"
 )
 
 
 @pytest.fixture
 def temp_db_file():
     """Create a temporary database file for testing."""
-    with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+    with NamedTemporaryFile(mode="wb", suffix=".xml", delete=False) as f:
         f.write(SAMPLE_DB_XML.encode("utf-8"))
         f.flush()
         yield Path(f.name)
@@ -260,7 +259,8 @@ class TestVDJDatabaseSaveFormat:
         # All /> should be preceded by a space
         assert "/>" in content
         import re
-        no_space = re.findall(r'[^ ]/>',  content)
+
+        no_space = re.findall(r"[^ ]/>", content)
         assert no_space == [], f"Found '/>' without preceding space: {no_space}"
 
     def test_save_ends_with_crlf(self, temp_db_file):
@@ -290,10 +290,10 @@ class TestVDJDatabaseSaveFormat:
             '<VirtualDJ_Database Version="8">\r\n'
             ' <Song FilePath="/path/to/it&apos;s a track.mp3" FileSize="100">\r\n'
             '  <Tags Author="Rock&apos;n Roll" Title="Test" />\r\n'
-            ' </Song>\r\n'
-            '</VirtualDJ_Database>\r\n'
+            " </Song>\r\n"
+            "</VirtualDJ_Database>\r\n"
         )
-        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+        with NamedTemporaryFile(mode="wb", suffix=".xml", delete=False) as f:
             f.write(xml.encode("utf-8"))
             tmp = Path(f.name)
         try:
@@ -343,16 +343,16 @@ class TestXXEProtection:
         """Ensure external entities in XML are not resolved."""
         xxe_xml = (
             '<?xml version="1.0" encoding="UTF-8"?>\r\n'
-            '<!DOCTYPE foo [\r\n'
+            "<!DOCTYPE foo [\r\n"
             '  <!ENTITY xxe SYSTEM "file:///etc/passwd">\r\n'
-            ']>\r\n'
+            "]>\r\n"
             '<VirtualDJ_Database Version="8">\r\n'
             ' <Song FilePath="/path/to/song.mp3" FileSize="100">\r\n'
             '  <Tags Title="&xxe;" />\r\n'
-            ' </Song>\r\n'
-            '</VirtualDJ_Database>\r\n'
+            " </Song>\r\n"
+            "</VirtualDJ_Database>\r\n"
         )
-        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+        with NamedTemporaryFile(mode="wb", suffix=".xml", delete=False) as f:
             f.write(xxe_xml.encode("utf-8"))
             tmp = Path(f.name)
 
@@ -376,9 +376,9 @@ class TestXXEProtection:
             '<?xml version="1.0" encoding="UTF-8"?>\r\n'
             '<!DOCTYPE foo SYSTEM "http://evil.example.com/evil.dtd">\r\n'
             '<VirtualDJ_Database Version="8">\r\n'
-            '</VirtualDJ_Database>\r\n'
+            "</VirtualDJ_Database>\r\n"
         )
-        with NamedTemporaryFile(mode='wb', suffix='.xml', delete=False) as f:
+        with NamedTemporaryFile(mode="wb", suffix=".xml", delete=False) as f:
             f.write(network_xml.encode("utf-8"))
             tmp = Path(f.name)
 

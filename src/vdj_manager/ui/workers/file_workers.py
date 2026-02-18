@@ -9,8 +9,6 @@ single-threaded and avoiding cross-thread data races.
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Signal
-
 from vdj_manager.core.models import Song
 from vdj_manager.files.duplicates import DuplicateDetector
 from vdj_manager.files.path_remapper import PathRemapper
@@ -40,9 +38,7 @@ class ScanWorker(SimpleWorker):
             List of file metadata dicts.
         """
         scanner = DirectoryScanner()
-        return scanner.find_new_files(
-            self.directory, self.existing_paths, self.recursive
-        )
+        return scanner.find_new_files(self.directory, self.existing_paths, self.recursive)
 
 
 class ImportWorker(SimpleWorker):
@@ -162,6 +158,4 @@ class DuplicateWorker(SimpleWorker):
             Dict from DuplicateDetector.find_all_duplicates().
         """
         detector = DuplicateDetector()
-        return detector.find_all_duplicates(
-            self.tracks, include_hash=self.by_hash
-        )
+        return detector.find_all_duplicates(self.tracks, include_hash=self.by_hash)

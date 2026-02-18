@@ -1,7 +1,6 @@
 """VirtualDJ to Serato metadata mapping."""
 
-from typing import Optional
-from ..core.models import Song, Poi, PoiType
+from ..core.models import Poi, PoiType, Song
 
 
 class VDJToSeratoMapper:
@@ -50,7 +49,7 @@ class VDJToSeratoMapper:
         """
         return int(pos_seconds * 1000)
 
-    def convert_key(self, vdj_key: Optional[str]) -> Optional[str]:
+    def convert_key(self, vdj_key: str | None) -> str | None:
         """Convert VDJ key notation to Serato-compatible format.
 
         VDJ and Serato both support standard key notation (Am, Gb, etc.)
@@ -195,7 +194,7 @@ class VDJToSeratoMapper:
         """
         # This is a simplified version - full implementation would use
         # the serato-tools library or implement the full binary format
-        mapped = self.map_song(song)
+        self.map_song(song)
 
         # For now, return empty markers - full implementation in serato.py
         return b""

@@ -1,9 +1,8 @@
 """Tests for MTG-Jamendo MoodTheme backend."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from vdj_manager.analysis.mood_mtg_jamendo import (
     CLASS_NAMES,
@@ -89,9 +88,7 @@ class TestMTGJamendoAnalyzeMocked:
 
         # Mock classifier — 10 frames, 56 classes
         fake_predictions = np.random.rand(10, 56).astype(np.float32)
-        backend._es.TensorflowPredict2D.return_value = MagicMock(
-            return_value=fake_predictions
-        )
+        backend._es.TensorflowPredict2D.return_value = MagicMock(return_value=fake_predictions)
 
         with patch(
             "vdj_manager.analysis.model_downloader.ensure_model_files",
@@ -121,9 +118,7 @@ class TestMTGJamendoAnalyzeMocked:
         predictions[1, 0] = 0.4  # action frame 1
         predictions[0, 26] = 1.0  # happy frame 0
         predictions[1, 26] = 0.6  # happy frame 1
-        backend._es.TensorflowPredict2D.return_value = MagicMock(
-            return_value=predictions
-        )
+        backend._es.TensorflowPredict2D.return_value = MagicMock(return_value=predictions)
 
         with patch(
             "vdj_manager.analysis.model_downloader.ensure_model_files",
@@ -157,9 +152,7 @@ class TestMTGJamendoAnalyzeMocked:
             return_value=fake_embeddings
         )
         fake_predictions = np.random.rand(1, 56).astype(np.float32)
-        backend._es.TensorflowPredict2D.return_value = MagicMock(
-            return_value=fake_predictions
-        )
+        backend._es.TensorflowPredict2D.return_value = MagicMock(return_value=fake_predictions)
 
         with patch(
             "vdj_manager.analysis.model_downloader.ensure_model_files",
@@ -186,9 +179,7 @@ class TestMTGJamendoAnalyzeMocked:
         predictions[0, 26] = 0.9  # happy
         predictions[0, 38] = 0.7  # party
         predictions[0, 54] = 0.3  # upbeat
-        backend._es.TensorflowPredict2D.return_value = MagicMock(
-            return_value=predictions
-        )
+        backend._es.TensorflowPredict2D.return_value = MagicMock(return_value=predictions)
 
         with patch(
             "vdj_manager.analysis.model_downloader.ensure_model_files",
@@ -214,9 +205,7 @@ class TestMTGJamendoAnalyzeMocked:
 
         # Many high scores
         predictions = np.full((1, 56), 0.5, dtype=np.float32)
-        backend._es.TensorflowPredict2D.return_value = MagicMock(
-            return_value=predictions
-        )
+        backend._es.TensorflowPredict2D.return_value = MagicMock(return_value=predictions)
 
         with patch(
             "vdj_manager.analysis.model_downloader.ensure_model_files",

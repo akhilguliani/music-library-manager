@@ -2,22 +2,23 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 try:
     import librosa
     import numpy as np
+
     LIBROSA_AVAILABLE = True
 except ImportError:
     LIBROSA_AVAILABLE = False
 
 try:
     from mutagen import File as MutagenFile
+    from mutagen.flac import FLAC
     from mutagen.id3 import ID3
     from mutagen.mp4 import MP4
-    from mutagen.flac import FLAC
+
     MUTAGEN_AVAILABLE = True
 except ImportError:
     MUTAGEN_AVAILABLE = False
@@ -39,7 +40,7 @@ class AudioFeatureExtractor:
         self.sample_rate = sample_rate
         self.duration = duration
 
-    def load_audio(self, file_path: str, offset: Optional[float] = None) -> tuple:
+    def load_audio(self, file_path: str, offset: float | None = None) -> tuple:
         """Load audio file.
 
         Uses soundfile directly when possible to avoid librosa's audioread
@@ -67,8 +68,9 @@ class AudioFeatureExtractor:
             start_frame = int(offset * info.samplerate)
             n_frames = int(min(self.duration, total_duration - offset) * info.samplerate)
 
-            data, sr = sf.read(file_path, start=start_frame, frames=n_frames,
-                               dtype="float32", always_2d=False)
+            data, sr = sf.read(
+                file_path, start=start_frame, frames=n_frames, dtype="float32", always_2d=False
+            )
             # Convert to mono if stereo
             if data.ndim > 1:
                 data = np.mean(data, axis=1)

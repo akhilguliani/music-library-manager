@@ -1,17 +1,16 @@
 """Editable cue point table widget for the Player tab."""
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QPushButton,
-    QHeaderView,
-    QAbstractItemView,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal
-
 
 MAX_CUES = 8
 

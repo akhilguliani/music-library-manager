@@ -1,7 +1,7 @@
 """File validation utilities."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from ..config import AUDIO_EXTENSIONS, NON_AUDIO_EXTENSIONS
 from ..core.models import Song

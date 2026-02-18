@@ -1,13 +1,11 @@
 """Base worker class with pause/resume/cancel support."""
 
-import threading
 from abc import abstractmethod
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
-from PySide6.QtCore import QThread, Signal, QMutex, QWaitCondition
+from PySide6.QtCore import QMutex, QThread, QWaitCondition, Signal
 
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus
-
 
 T = TypeVar("T")  # Result type
 

@@ -1,7 +1,6 @@
 """Tests for Pydantic models."""
 
-import pytest
-from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType, DatabaseStats
+from vdj_manager.core.models import DatabaseStats, Poi, PoiType, Scan, Song, Tags
 
 
 class TestTags:

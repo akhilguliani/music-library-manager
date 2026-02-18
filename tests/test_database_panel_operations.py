@@ -5,12 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
-from vdj_manager.ui.workers.database_worker import BackupWorker, ValidateWorker, CleanWorker
+from vdj_manager.ui.workers.database_worker import BackupWorker, ValidateWorker
 
 
 @pytest.fixture(scope="module")
@@ -257,7 +257,9 @@ class TestDatabasePanelTagEditing:
         panel = DatabasePanel()
         track = Song(
             file_path="/music/test.mp3",
-            tags=Tags(author="Artist", title="Title", grouping="7", key="Am", comment="Mood: happy"),
+            tags=Tags(
+                author="Artist", title="Title", grouping="7", key="Am", comment="Mood: happy"
+            ),
         )
         panel._populate_tag_fields(track)
 
@@ -359,12 +361,23 @@ class TestDatabasePanelTagEditing:
         track = Song(
             file_path="/music/test.mp3",
             tags=Tags(
-                title="My Track", author="DJ Test", album="Album",
-                genre="House", year=2024, bpm=128.0, key="Am",
-                grouping="7", rating=4, comment="Nice",
-                user2="#happy #uplifting", composer="Comp",
-                remix="Extended Mix", label="Records",
-                track_number=5, color="0xFF0000", flag=1,
+                title="My Track",
+                author="DJ Test",
+                album="Album",
+                genre="House",
+                year=2024,
+                bpm=128.0,
+                key="Am",
+                grouping="7",
+                rating=4,
+                comment="Nice",
+                user2="#happy #uplifting",
+                composer="Comp",
+                remix="Extended Mix",
+                label="Records",
+                track_number=5,
+                color="0xFF0000",
+                flag=1,
             ),
         )
         panel._populate_tag_fields(track)
@@ -542,8 +555,12 @@ class TestDatabasePanelOperationLog:
     def test_validate_logs_operation(self, qapp):
         panel = DatabasePanel()
         report = {
-            "total": 10, "audio_valid": 8, "audio_missing": 2,
-            "non_audio": 0, "windows_paths": 0, "netsearch": 0,
+            "total": 10,
+            "audio_valid": 8,
+            "audio_missing": 2,
+            "non_audio": 0,
+            "windows_paths": 0,
+            "netsearch": 0,
         }
         with patch.object(QMessageBox, "information"):
             panel._on_validate_finished(report)

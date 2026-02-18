@@ -8,7 +8,7 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from vdj_manager.core.models import Song, Tags, Scan, Infos
+from vdj_manager.core.models import Infos, Scan, Song, Tags
 from vdj_manager.ui.models.track_model import TrackTableModel
 
 

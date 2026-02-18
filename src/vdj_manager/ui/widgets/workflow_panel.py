@@ -4,21 +4,21 @@ import logging
 import multiprocessing
 from pathlib import Path
 
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QGroupBox,
-    QCheckBox,
-    QSpinBox,
-    QDoubleSpinBox,
-    QComboBox,
     QMessageBox,
+    QPushButton,
     QScrollArea,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
@@ -199,12 +199,14 @@ class WorkflowPanel(QWidget):
         self.energy_current_file.setVisible(False)
         layout.addWidget(self.energy_current_file)
 
-        self.energy_results_table = ConfigurableResultsTable(columns=[
-            {"name": "Track", "key": "file_path"},
-            {"name": "Fmt", "key": "format", "width": 50},
-            {"name": "Energy", "key": "energy", "width": 60},
-            {"name": "Status", "key": "status", "width": 80},
-        ])
+        self.energy_results_table = ConfigurableResultsTable(
+            columns=[
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Energy", "key": "energy", "width": 60},
+                {"name": "Status", "key": "status", "width": 80},
+            ]
+        )
         self.energy_results_table.setMaximumHeight(200)
         self.energy_results_table.setVisible(False)
         layout.addWidget(self.energy_results_table)
@@ -219,12 +221,14 @@ class WorkflowPanel(QWidget):
         self.mood_current_file.setVisible(False)
         layout.addWidget(self.mood_current_file)
 
-        self.mood_results_table = ConfigurableResultsTable(columns=[
-            {"name": "Track", "key": "file_path"},
-            {"name": "Fmt", "key": "format", "width": 50},
-            {"name": "Mood", "key": "mood", "width": 150},
-            {"name": "Status", "key": "status", "width": 80},
-        ])
+        self.mood_results_table = ConfigurableResultsTable(
+            columns=[
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Mood", "key": "mood", "width": 150},
+                {"name": "Status", "key": "status", "width": 80},
+            ]
+        )
         self.mood_results_table.setMaximumHeight(200)
         self.mood_results_table.setVisible(False)
         layout.addWidget(self.mood_results_table)
@@ -239,12 +243,14 @@ class WorkflowPanel(QWidget):
         self.norm_current_file.setVisible(False)
         layout.addWidget(self.norm_current_file)
 
-        self.norm_results_table = ConfigurableResultsTable(columns=[
-            {"name": "Track", "key": "file_path"},
-            {"name": "LUFS", "key": "current_lufs", "width": 70},
-            {"name": "Gain dB", "key": "gain_db", "width": 70},
-            {"name": "Status", "key": "status", "width": 80},
-        ])
+        self.norm_results_table = ConfigurableResultsTable(
+            columns=[
+                {"name": "Track", "key": "file_path"},
+                {"name": "LUFS", "key": "current_lufs", "width": 70},
+                {"name": "Gain dB", "key": "gain_db", "width": 70},
+                {"name": "Status", "key": "status", "width": 80},
+            ]
+        )
         self.norm_results_table.setMaximumHeight(200)
         self.norm_results_table.setVisible(False)
         layout.addWidget(self.norm_results_table)
@@ -271,9 +277,7 @@ class WorkflowPanel(QWidget):
                 f"{len(untagged)} without energy"
             )
         else:
-            self.info_label.setText(
-                f"{len(audio)} audio tracks, {len(untagged)} without energy"
-            )
+            self.info_label.setText(f"{len(audio)} audio tracks, {len(untagged)} without energy")
 
     def _get_audio_tracks(self) -> list[Song]:
         """Get audio tracks eligible for analysis."""
@@ -323,6 +327,7 @@ class WorkflowPanel(QWidget):
         # Auto-backup ONCE
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_workflow")
         except Exception:
             logger.warning("Auto-backup failed before workflow", exc_info=True)
@@ -366,9 +371,7 @@ class WorkflowPanel(QWidget):
         self._energy_worker.result_ready.connect(self._apply_result_to_db)
         self._energy_worker.result_ready.connect(self._on_energy_result)
         self._energy_worker.finished_work.connect(self._on_energy_finished)
-        self._energy_worker.error.connect(
-            lambda e: self.status_label.setText(f"Energy error: {e}")
-        )
+        self._energy_worker.error.connect(lambda e: self.status_label.setText(f"Energy error: {e}"))
 
         self.energy_progress.reset()
         self.energy_progress.start(len(tracks))
@@ -409,9 +412,7 @@ class WorkflowPanel(QWidget):
         self._mood_worker.result_ready.connect(self._apply_result_to_db)
         self._mood_worker.result_ready.connect(self._on_mood_result)
         self._mood_worker.finished_work.connect(self._on_mood_finished)
-        self._mood_worker.error.connect(
-            lambda e: self.status_label.setText(f"Mood error: {e}")
-        )
+        self._mood_worker.error.connect(lambda e: self.status_label.setText(f"Mood error: {e}"))
 
         self.mood_progress.reset()
         self.mood_progress.start(len(tracks))

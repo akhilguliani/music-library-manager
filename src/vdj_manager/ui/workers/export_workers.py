@@ -1,9 +1,8 @@
 """Workers for export operations."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.workers.base_worker import SimpleWorker
 
@@ -19,7 +18,7 @@ class SeratoExportWorker(SimpleWorker):
         self,
         tracks: list[Song],
         cues_only: bool = False,
-        serato_dir: Optional[Path] = None,
+        serato_dir: Path | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -45,22 +44,28 @@ class SeratoExportWorker(SimpleWorker):
                 success = exporter.export_song(track, cues_only=self._cues_only)
                 if success:
                     exported += 1
-                    results.append({
-                        "file_path": track.file_path,
-                        "status": "exported",
-                    })
+                    results.append(
+                        {
+                            "file_path": track.file_path,
+                            "status": "exported",
+                        }
+                    )
                 else:
                     failed += 1
-                    results.append({
-                        "file_path": track.file_path,
-                        "status": "skipped",
-                    })
+                    results.append(
+                        {
+                            "file_path": track.file_path,
+                            "status": "skipped",
+                        }
+                    )
             except Exception as e:
                 failed += 1
-                results.append({
-                    "file_path": track.file_path,
-                    "status": f"error: {e}",
-                })
+                results.append(
+                    {
+                        "file_path": track.file_path,
+                        "status": f"error: {e}",
+                    }
+                )
 
         return {"exported": exported, "failed": failed, "results": results}
 
@@ -72,7 +77,7 @@ class CrateExportWorker(SimpleWorker):
         self,
         crate_name: str,
         file_paths: list[str],
-        serato_dir: Optional[Path] = None,
+        serato_dir: Path | None = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)

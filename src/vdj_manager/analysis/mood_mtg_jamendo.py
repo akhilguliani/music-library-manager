@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from .mood_backend import MOOD_CLASSES, select_top_moods
+from .mood_backend import select_top_moods
 
 logger = logging.getLogger(__name__)
 

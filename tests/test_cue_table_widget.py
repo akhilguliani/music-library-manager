@@ -2,9 +2,8 @@
 
 import pytest
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
 
-from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget, MAX_CUES
+from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
 
 
 @pytest.fixture(scope="module")

@@ -1,19 +1,16 @@
 """Tests for model auto-downloader."""
 
-import io
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from vdj_manager.analysis.model_downloader import (
-    MODELS_DIR,
-    EMBEDDING_MODEL,
     CLASSIFIER_MODEL,
-    models_available,
-    ensure_model_files,
+    EMBEDDING_MODEL,
     _ensure_single_model,
     _sha256,
+    ensure_model_files,
+    models_available,
 )
 
 
@@ -116,6 +113,7 @@ class TestEnsureModelFiles:
 
     def test_download_uses_timeout(self, tmp_path):
         """urlopen is called with a timeout to prevent hanging."""
+
         def fake_urlopen_fn(url, timeout=None):
             assert timeout is not None
             assert timeout > 0
@@ -148,6 +146,7 @@ class TestEnsureSingleModel:
     def test_hash_verification_passes(self, tmp_path):
         content = b"model-content"
         import hashlib
+
         expected_hash = hashlib.sha256(content).hexdigest()
 
         model_info = {
@@ -201,6 +200,7 @@ class TestSha256:
 
     def test_correct_hash(self, tmp_path):
         import hashlib
+
         content = b"hello world"
         expected = hashlib.sha256(content).hexdigest()
 
@@ -211,6 +211,7 @@ class TestSha256:
 
     def test_empty_file(self, tmp_path):
         import hashlib
+
         expected = hashlib.sha256(b"").hexdigest()
 
         f = tmp_path / "empty.bin"

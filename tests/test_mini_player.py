@@ -1,7 +1,5 @@
 """Tests for the MiniPlayer widget."""
 
-from unittest.mock import MagicMock
-
 import pytest
 from PySide6.QtWidgets import QApplication
 

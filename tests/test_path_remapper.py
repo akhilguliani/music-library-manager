@@ -1,8 +1,7 @@
 """Tests for path remapper."""
 
-import pytest
-from vdj_manager.files.path_remapper import PathRemapper
 from vdj_manager.core.models import Song
+from vdj_manager.files.path_remapper import PathRemapper
 
 
 class TestPathRemapper:

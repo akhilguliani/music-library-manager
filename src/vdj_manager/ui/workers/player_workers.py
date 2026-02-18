@@ -1,6 +1,5 @@
 """Background workers for the player panel."""
 
-import numpy as np
 from PySide6.QtCore import QThread, Signal
 
 
@@ -22,7 +21,7 @@ class WaveformWorker(QThread):
 
     def run(self) -> None:
         try:
-            from vdj_manager.player.waveform import generate_waveform_peaks, WaveformCache
+            from vdj_manager.player.waveform import WaveformCache, generate_waveform_peaks
 
             cache = WaveformCache()
             cached = cache.get(self._file_path, self._width)

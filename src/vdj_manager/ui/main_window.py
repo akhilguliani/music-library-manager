@@ -2,14 +2,14 @@
 
 import logging
 
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QAction, QKeySequence
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,7 @@ class MainWindow(QMainWindow):
 
         # Mini player at bottom
         self.mini_player = MiniPlayer(self._playback_bridge)
-        self.mini_player.expand_requested.connect(
-            lambda: self.tab_widget.setCurrentIndex(5)
-        )
+        self.mini_player.expand_requested.connect(lambda: self.tab_widget.setCurrentIndex(5))
         if not vlc_available:
             self.mini_player.set_vlc_unavailable()
         central_layout.addWidget(self.mini_player)
@@ -161,7 +159,9 @@ class MainWindow(QMainWindow):
         for name, shortcut, idx in tab_names:
             action = QAction(name, self)
             action.setShortcut(QKeySequence(shortcut))
-            action.triggered.connect(lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i))
+            action.triggered.connect(
+                lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i)
+            )
             view_menu.addAction(action)
 
         # Playback menu

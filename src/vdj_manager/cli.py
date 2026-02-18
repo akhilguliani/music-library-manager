@@ -1,30 +1,27 @@
 """Command-line interface for VDJ Manager."""
 
 import logging
-import sys
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 import click
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from rich.panel import Panel
 
 from .config import LOCAL_VDJ_DB, MYNVME_VDJ_DB, config
 from .core.backup import BackupManager
 from .core.database import VDJDatabase
-from .files.validator import FileValidator
-from .files.scanner import DirectoryScanner
-from .files.path_remapper import PathRemapper
 from .files.duplicates import DuplicateDetector
+from .files.path_remapper import PathRemapper
+from .files.scanner import DirectoryScanner
+from .files.validator import FileValidator
 
 console = Console()
 
 
-def get_database(db_path: Optional[Path] = None) -> VDJDatabase:
+def get_database(db_path: Path | None = None) -> VDJDatabase:
     """Load the VDJ database."""
     path = db_path or config.primary_db
     db = VDJDatabase(path)
@@ -43,11 +40,17 @@ def format_size(size_bytes: int) -> str:
 
 @click.group()
 @click.version_option(version="0.1.0")
-@click.option("--verbose", "-v", is_flag=True, envvar="VDJ_VERBOSE",
-              help="Enable debug logging to console and log file.")
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    envvar="VDJ_VERBOSE",
+    help="Enable debug logging to console and log file.",
+)
 def cli(verbose: bool):
     """VirtualDJ Library Manager - organize, analyze, and normalize your DJ music library."""
     from .config import setup_logging
+
     setup_logging(verbose=verbose)
 
 
@@ -141,7 +144,7 @@ def db_status(db_choice: str, check_files: bool):
 @click.option("--mynvme", "db_choice", flag_value="mynvme", help="Backup MyNVMe database")
 @click.option("--both", "db_choice", flag_value="both", default=True, help="Backup both databases")
 @click.option("--label", "-l", help="Optional label for the backup")
-def db_backup(db_choice: str, label: Optional[str]):
+def db_backup(db_choice: str, label: str | None):
     """Create a backup of the database."""
     backup_mgr = BackupManager()
 
@@ -202,12 +205,21 @@ def db_validate(db_choice: str, verbose: bool):
 
     table.add_row("Total entries", str(report["total"]), "")
     table.add_row("Audio files (valid)", str(report["audio_valid"]), "[green]✓[/green]")
-    table.add_row("Audio files (missing)", str(report["audio_missing"]),
-                  "[red]✗[/red]" if report["audio_missing"] > 0 else "[green]✓[/green]")
-    table.add_row("Non-audio entries", str(report["non_audio"]),
-                  "[yellow]![/yellow]" if report["non_audio"] > 0 else "[green]✓[/green]")
-    table.add_row("Windows paths", str(report["windows_paths"]),
-                  "[yellow]![/yellow]" if report["windows_paths"] > 0 else "[green]✓[/green]")
+    table.add_row(
+        "Audio files (missing)",
+        str(report["audio_missing"]),
+        "[red]✗[/red]" if report["audio_missing"] > 0 else "[green]✓[/green]",
+    )
+    table.add_row(
+        "Non-audio entries",
+        str(report["non_audio"]),
+        "[yellow]![/yellow]" if report["non_audio"] > 0 else "[green]✓[/green]",
+    )
+    table.add_row(
+        "Windows paths",
+        str(report["windows_paths"]),
+        "[yellow]![/yellow]" if report["windows_paths"] > 0 else "[green]✓[/green]",
+    )
     table.add_row("Netsearch entries", str(report["netsearch"]), "[dim]-[/dim]")
 
     console.print(table)
@@ -238,7 +250,9 @@ def db_validate(db_choice: str, verbose: bool):
 
     # Show non-audio files
     if verbose and report["non_audio_files"]:
-        console.print(f"\n[bold yellow]Non-audio files ({len(report['non_audio_files'])}):[/bold yellow]")
+        console.print(
+            f"\n[bold yellow]Non-audio files ({len(report['non_audio_files'])}):[/bold yellow]"
+        )
         for path in report["non_audio_files"][:20]:
             console.print(f"  [dim]{path}[/dim]")
         if len(report["non_audio_files"]) > 20:
@@ -366,7 +380,9 @@ def files_scan(directory: str, recursive: bool):
 @click.option("--recursive/--no-recursive", default=True, help="Scan subdirectories")
 @click.option("--dry-run", is_flag=True, help="Show what would be imported")
 @click.option("--local", "db_choice", flag_value="local", help="Import to local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Import to MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Import to MyNVMe database"
+)
 def files_import(directory: str, recursive: bool, dry_run: bool, db_choice: str):
     """Add new files to the database."""
     dir_path = Path(directory)
@@ -421,7 +437,9 @@ def files_import(directory: str, recursive: bool, dry_run: bool, db_choice: str)
 @click.option("--missing", is_flag=True, help="Remove entries with missing files")
 @click.option("--dry-run", is_flag=True, help="Show what would be removed")
 @click.option("--local", "db_choice", flag_value="local", help="Remove from local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Remove from MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Remove from MyNVMe database"
+)
 def files_remove(missing: bool, dry_run: bool, db_choice: str):
     """Remove entries from the database."""
     if not missing:
@@ -478,10 +496,12 @@ def files_remove(missing: bool, dry_run: bool, db_choice: str):
 @click.option("--apply", is_flag=True, help="Apply path remappings")
 @click.option("--dry-run", is_flag=True, help="Show what would be remapped")
 @click.option("--local", "db_choice", flag_value="local", help="Remap in local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Remap in MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Remap in MyNVMe database"
+)
 def files_remap(
-    windows_prefix: Optional[str],
-    mac_prefix: Optional[str],
+    windows_prefix: str | None,
+    mac_prefix: str | None,
     detect: bool,
     interactive: bool,
     apply: bool,
@@ -501,7 +521,7 @@ def files_remap(
     if detect:
         analysis = remapper.detect_mappable_paths(db.iter_songs())
 
-        console.print(f"\n[bold]Windows Path Analysis[/bold]")
+        console.print("\n[bold]Windows Path Analysis[/bold]")
         console.print(f"Total Windows paths: {analysis['total_windows_paths']}")
         console.print(f"Mappable: {analysis['mappable']}")
         console.print(f"Unmappable: {analysis['unmappable']}")
@@ -579,7 +599,9 @@ def files_remap(
 @files.command("duplicates")
 @click.option("--by-hash", is_flag=True, help="Find exact duplicates by file hash (slow)")
 @click.option("--local", "db_choice", flag_value="local", help="Check local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Check MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Check MyNVMe database"
+)
 def files_duplicates(by_hash: bool, db_choice: str):
     """Find duplicate entries."""
     path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
@@ -596,7 +618,7 @@ def files_duplicates(by_hash: bool, db_choice: str):
     songs_list = list(db.songs.values())
     results = detector.find_all_duplicates(songs_list, include_hash=by_hash)
 
-    console.print(f"\n[bold]Duplicate Analysis[/bold]")
+    console.print("\n[bold]Duplicate Analysis[/bold]")
     console.print(f"By artist+title: {results['summary']['metadata_groups']} groups")
     console.print(f"By filename: {results['summary']['filename_groups']} groups")
 
@@ -629,7 +651,9 @@ def analyze():
 @click.option("--untagged", is_flag=True, help="Only tracks without energy")
 @click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
 def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: str):
     """Analyze tracks for energy levels."""
     # Import here to avoid slow import on CLI startup
@@ -701,16 +725,42 @@ def analyze_energy(analyze_all: bool, untagged: bool, dry_run: bool, db_choice: 
 @analyze.command("mood")
 @click.option("--all", "analyze_all", is_flag=True, help="Analyze all tracks")
 @click.option("--untagged", is_flag=True, help="Only tracks without mood tags")
-@click.option("--update-unknown", is_flag=True, help="Re-analyze tracks with #unknown mood using online lookup")
-@click.option("--online/--no-online", default=True, help="Enable online mood lookup (Last.fm/MusicBrainz)")
+@click.option(
+    "--update-unknown",
+    is_flag=True,
+    help="Re-analyze tracks with #unknown mood using online lookup",
+)
+@click.option(
+    "--online/--no-online", default=True, help="Enable online mood lookup (Last.fm/MusicBrainz)"
+)
 @click.option("--lastfm-key", help="Last.fm API key (overrides env var)")
-@click.option("--model", type=click.Choice(["mtg-jamendo", "heuristic"]), default="mtg-jamendo", help="Mood analysis model")
-@click.option("--threshold", type=float, default=0.1, help="Min confidence for mood tags (0.01-0.50)")
+@click.option(
+    "--model",
+    type=click.Choice(["mtg-jamendo", "heuristic"]),
+    default="mtg-jamendo",
+    help="Mood analysis model",
+)
+@click.option(
+    "--threshold", type=float, default=0.1, help="Min confidence for mood tags (0.01-0.50)"
+)
 @click.option("--max-tags", type=int, default=5, help="Max mood tags per track (1-10)")
 @click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online: bool, lastfm_key: Optional[str], model: str, threshold: float, max_tags: int, dry_run: bool, db_choice: str):
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
+def analyze_mood(
+    analyze_all: bool,
+    untagged: bool,
+    update_unknown: bool,
+    online: bool,
+    lastfm_key: str | None,
+    model: str,
+    threshold: float,
+    max_tags: int,
+    dry_run: bool,
+    db_choice: str,
+):
     """Tag tracks with mood/emotion (multi-label).
 
     Uses online databases (Last.fm, MusicBrainz) when available, with
@@ -718,8 +768,8 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
     heuristic backend. Assigns multiple mood tags per track based on
     confidence threshold.
     """
+    from .analysis.mood_backend import MOOD_CLASSES_SET, MoodModel, get_backend
     from .config import get_lastfm_api_key
-    from .analysis.mood_backend import MoodModel, get_backend, MOOD_CLASSES_SET
 
     path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
 
@@ -734,7 +784,9 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
     if online and api_key:
         console.print("[cyan]Online mood lookup enabled (Last.fm + MusicBrainz)[/cyan]")
     elif online:
-        console.print("[yellow]Online lookup enabled but no Last.fm API key set (MusicBrainz only)[/yellow]")
+        console.print(
+            "[yellow]Online lookup enabled but no Last.fm API key set (MusicBrainz only)[/yellow]"
+        )
         console.print("[dim]Set LASTFM_API_KEY env var or use --lastfm-key for Last.fm[/dim]")
 
     # Check local backend availability
@@ -745,7 +797,9 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
 
     if not online and not local_available:
         console.print(f"[red]Neither online lookup nor {model} backend is available.[/red]")
-        console.print("Install with: pip install 'vdj-manager[mood]' or pip install 'vdj-manager[online]'")
+        console.print(
+            "Install with: pip install 'vdj-manager[mood]' or pip install 'vdj-manager[online]'"
+        )
         return
 
     # Known mood hashtags for cleanup during re-analysis
@@ -790,7 +844,8 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
 
     # Invalidate cache for update-unknown tracks
     if update_unknown:
-        from .analysis.analysis_cache import AnalysisCache, DEFAULT_ANALYSIS_CACHE_PATH
+        from .analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH, AnalysisCache
+
         cache = AnalysisCache(db_path=DEFAULT_ANALYSIS_CACHE_PATH)
         for song in to_analyze:
             cache.invalidate(song.file_path)
@@ -816,6 +871,7 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
                 # Try online first
                 if online and artist and title:
                     from .analysis.online_mood import lookup_online_mood
+
                     mood, source = lookup_online_mood(artist, title, api_key)
                     if mood:
                         mood_tags = [mood]
@@ -826,7 +882,6 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
                     local_tags = backend.get_mood_tags(song.file_path, threshold, max_tags)
                     if local_tags:
                         mood_tags = local_tags
-                        source = f"local:{model}"
 
                 if mood_tags:
                     existing = (song.tags.user2 or "") if song and song.tags else ""
@@ -853,7 +908,9 @@ def analyze_mood(analyze_all: bool, untagged: bool, update_unknown: bool, online
 @analyze.command("import-mik")
 @click.option("--dry-run", is_flag=True, help="Show what would be imported")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
 def analyze_import_mik(dry_run: bool, db_choice: str):
     """Import existing Mixed In Key tags from audio files."""
     try:
@@ -933,7 +990,9 @@ def tag():
 @click.argument("tag_type", type=click.Choice(["energy", "mood", "key"]))
 @click.argument("value")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
 def tag_set(file_path: str, tag_type: str, value: str, db_choice: str):
     """Set a tag value manually."""
     path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
@@ -991,11 +1050,25 @@ def normalize():
 @normalize.command("measure")
 @click.option("--all", "measure_all", is_flag=True, help="Measure all tracks")
 @click.option("--export", "export_csv", type=click.Path(), help="Export results to CSV")
-@click.option("--workers", "-w", type=int, default=None, help="Number of parallel workers (default: CPU count - 1)")
+@click.option(
+    "--workers",
+    "-w",
+    type=int,
+    default=None,
+    help="Number of parallel workers (default: CPU count - 1)",
+)
 @click.option("--limit", "-n", type=int, default=None, help="Limit number of tracks to measure")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Optional[int], limit: Optional[int], db_choice: str):
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
+def normalize_measure(
+    measure_all: bool,
+    export_csv: str | None,
+    workers: int | None,
+    limit: int | None,
+    db_choice: str,
+):
     """Measure current loudness levels using parallel processing."""
     try:
         from .normalize.processor import NormalizationProcessor
@@ -1024,7 +1097,9 @@ def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Opt
     if limit:
         to_measure = to_measure[:limit]
 
-    console.print(f"Measuring [bold]{len(to_measure)}[/bold] tracks using [bold]{processor.max_workers}[/bold] workers")
+    console.print(
+        f"Measuring [bold]{len(to_measure)}[/bold] tracks using [bold]{processor.max_workers}[/bold] workers"
+    )
 
     file_paths = [s.file_path for s in to_measure]
     results_data = []
@@ -1043,13 +1118,15 @@ def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Opt
             if result.success:
                 # Find song info
                 song = db.songs.get(result.file_path)
-                results_data.append({
-                    "file_path": result.file_path,
-                    "artist": song.tags.author if song and song.tags else "",
-                    "title": song.tags.title if song and song.tags else "",
-                    "lufs": result.current_lufs,
-                    "gain_needed": result.gain_db,
-                })
+                results_data.append(
+                    {
+                        "file_path": result.file_path,
+                        "artist": song.tags.author if song and song.tags else "",
+                        "title": song.tags.title if song and song.tags else "",
+                        "lufs": result.current_lufs,
+                        "gain_needed": result.gain_db,
+                    }
+                )
                 progress.update(task, status=f"LUFS: {result.current_lufs:.1f}")
 
         processor.measure_batch_parallel(file_paths, callback=on_result)
@@ -1059,12 +1136,13 @@ def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Opt
         lufs_values = [r["lufs"] for r in results_data if r["lufs"] is not None]
         if lufs_values:
             import statistics
-            console.print(f"\n[bold]Loudness Summary[/bold]")
+
+            console.print("\n[bold]Loudness Summary[/bold]")
             console.print(f"Measured: {len(lufs_values)} tracks")
             console.print(f"Average: {statistics.mean(lufs_values):.1f} LUFS")
             console.print(f"Median: {statistics.median(lufs_values):.1f} LUFS")
             console.print(f"Range: {min(lufs_values):.1f} to {max(lufs_values):.1f} LUFS")
-            console.print(f"Target: -14.0 LUFS (streaming standard)")
+            console.print("Target: -14.0 LUFS (streaming standard)")
 
             # Count tracks needing adjustment
             gains = [r["gain_needed"] for r in results_data if r["gain_needed"] is not None]
@@ -1073,8 +1151,11 @@ def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Opt
 
     if export_csv and results_data:
         import csv
+
         with open(export_csv, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["file_path", "artist", "title", "lufs", "gain_needed"])
+            writer = csv.DictWriter(
+                f, fieldnames=["file_path", "artist", "title", "lufs", "gain_needed"]
+            )
             writer.writeheader()
             writer.writerows(results_data)
         console.print(f"[green]✓[/green] Exported to {export_csv}")
@@ -1084,11 +1165,26 @@ def normalize_measure(measure_all: bool, export_csv: Optional[str], workers: Opt
 @click.argument("target", type=float, default=-14.0)
 @click.option("--destructive", is_flag=True, help="Rewrite files (default: adjust VDJ volume)")
 @click.option("--dry-run", is_flag=True, help="Show what would be done")
-@click.option("--workers", "-w", type=int, default=None, help="Number of parallel workers (default: CPU count - 1)")
+@click.option(
+    "--workers",
+    "-w",
+    type=int,
+    default=None,
+    help="Number of parallel workers (default: CPU count - 1)",
+)
 @click.option("--limit", "-n", type=int, default=None, help="Limit number of tracks to process")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
-def normalize_apply(target: float, destructive: bool, dry_run: bool, workers: Optional[int], limit: Optional[int], db_choice: str):
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
+def normalize_apply(
+    target: float,
+    destructive: bool,
+    dry_run: bool,
+    workers: int | None,
+    limit: int | None,
+    db_choice: str,
+):
     """Apply loudness normalization using parallel processing."""
     try:
         from .normalize.processor import NormalizationProcessor
@@ -1158,13 +1254,14 @@ def normalize_apply(target: float, destructive: bool, dry_run: bool, workers: Op
                 successful += 1
                 if not destructive and result.gain_db is not None:
                     # Store gain in VDJ Volume field for non-destructive mode
-                    import math
                     volume = 10 ** (result.gain_db / 20)
                     db.update_song_scan(result.file_path, Volume=round(volume, 4))
                 progress.update(task, status=f"OK: {result.gain_db:+.1f}dB")
             else:
                 failed += 1
-                progress.update(task, status=f"FAIL: {result.error[:30] if result.error else 'Unknown'}")
+                progress.update(
+                    task, status=f"FAIL: {result.error[:30] if result.error else 'Unknown'}"
+                )
 
         if destructive:
             processor.normalize_batch_parallel(file_paths, backup=True, callback=on_result)
@@ -1196,10 +1293,12 @@ def export():
 @click.option("--cues-only", is_flag=True, help="Only export cue points/beatgrid")
 @click.option("--dry-run", is_flag=True, help="Preview what would be exported")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
-@click.option("--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
 def export_serato(
     export_all: bool,
-    playlist: Optional[str],
+    playlist: str | None,
     cues_only: bool,
     dry_run: bool,
     db_choice: str,
@@ -1241,7 +1340,8 @@ def export_serato(
     else:
         # Export all valid songs
         songs = [
-            s for s in db.songs.values()
+            s
+            for s in db.songs.values()
             if not s.is_windows_path and not s.is_netsearch and Path(s.file_path).exists()
         ]
         console.print(f"Exporting {len(songs)} tracks")

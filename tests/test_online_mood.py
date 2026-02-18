@@ -6,16 +6,15 @@ import pytest
 
 from vdj_manager.analysis.online_mood import (
     TAG_TO_MOOD,
-    TagToMoodMapper,
     LastFmLookup,
     MusicBrainzLookup,
-    lookup_online_mood,
+    TagToMoodMapper,
     _cached_online_lookup,
     _clean_artist,
     _clean_title,
     _retry_on_network_error,
+    lookup_online_mood,
 )
-
 
 # =============================================================================
 # TagToMoodMapper tests
@@ -113,6 +112,7 @@ class TestLastFmLookup:
 
         with patch.dict("sys.modules", {"pylast": MagicMock()}):
             import pylast
+
             pylast.LastFMNetwork.return_value = mock_network
             lookup = LastFmLookup(api_key="test_key")
             result = lookup.get_mood("Artist", "Title")
@@ -120,8 +120,9 @@ class TestLastFmLookup:
 
     def test_get_mood_track_not_found(self):
         """Should return None when track is not found."""
-        with patch.dict("sys.modules", {"pylast": MagicMock()}) as mods:
+        with patch.dict("sys.modules", {"pylast": MagicMock()}):
             import pylast
+
             pylast.WSError = type("WSError", (Exception,), {})
             pylast.NetworkError = type("NetworkError", (Exception,), {})
             pylast.MalformedResponseError = type("MalformedResponseError", (Exception,), {})
@@ -134,14 +135,13 @@ class TestLastFmLookup:
 
     def test_get_mood_network_error(self):
         """Should return None on network errors."""
-        with patch.dict("sys.modules", {"pylast": MagicMock()}) as mods:
+        with patch.dict("sys.modules", {"pylast": MagicMock()}):
             import pylast
+
             pylast.WSError = type("WSError", (Exception,), {})
             pylast.NetworkError = type("NetworkError", (Exception,), {})
             pylast.MalformedResponseError = type("MalformedResponseError", (Exception,), {})
-            pylast.LastFMNetwork.return_value.get_track.side_effect = pylast.NetworkError(
-                "timeout"
-            )
+            pylast.LastFMNetwork.return_value.get_track.side_effect = pylast.NetworkError("timeout")
             lookup = LastFmLookup(api_key="test_key")
             result = lookup.get_mood("Artist", "Title")
             assert result is None
@@ -175,8 +175,9 @@ class TestMusicBrainzLookup:
             ]
         }
 
-        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods:
+        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}):
             import musicbrainzngs
+
             musicbrainzngs.search_recordings.return_value = mock_result
             lookup = MusicBrainzLookup()
             result = lookup.get_mood("Artist", "Title")
@@ -184,8 +185,9 @@ class TestMusicBrainzLookup:
 
     def test_get_mood_no_results(self):
         """Should return None when no recordings found."""
-        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods:
+        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}):
             import musicbrainzngs
+
             musicbrainzngs.search_recordings.return_value = {"recording-list": []}
             lookup = MusicBrainzLookup()
             result = lookup.get_mood("Unknown", "Track")
@@ -213,8 +215,10 @@ class TestLookupOnlineMood:
 
     def test_lastfm_success_skips_mb(self):
         """Should return Last.fm result and skip MusicBrainz."""
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb,
+        ):
             MockLfm.return_value.get_mood.return_value = "happy"
             mood, source = lookup_online_mood("Artist", "Title", "api_key")
             assert mood == "happy"
@@ -224,8 +228,10 @@ class TestLookupOnlineMood:
     def test_lastfm_track_fails_tries_artist(self):
         """Should fall back to artist tags when track tags are empty."""
         _cached_online_lookup.cache_clear()
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb,
+        ):
             MockLfm.return_value.get_mood.return_value = None
             MockLfm.return_value.get_mood_from_artist.return_value = "party"
             mood, source = lookup_online_mood("Artist", "Title2", "api_key")
@@ -236,8 +242,10 @@ class TestLookupOnlineMood:
     def test_lastfm_all_fail_tries_mb(self):
         """Should fall back to MusicBrainz when all Last.fm lookups fail."""
         _cached_online_lookup.cache_clear()
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb,
+        ):
             MockLfm.return_value.get_mood.return_value = None
             MockLfm.return_value.get_mood_from_artist.return_value = None
             MockMb.return_value.get_mood.return_value = "energetic"
@@ -248,8 +256,10 @@ class TestLookupOnlineMood:
     def test_all_fail_returns_none(self):
         """Should return (None, 'none') when all services fail."""
         _cached_online_lookup.cache_clear()
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb,
+        ):
             MockLfm.return_value.get_mood.return_value = None
             MockLfm.return_value.get_mood_from_artist.return_value = None
             MockMb.return_value.get_mood.return_value = None
@@ -270,8 +280,10 @@ class TestLookupOnlineMood:
     def test_no_api_key_skips_lastfm(self):
         """Should skip Last.fm when no API key provided."""
         _cached_online_lookup.cache_clear()
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb:
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup") as MockMb,
+        ):
             MockMb.return_value.get_mood.return_value = "relaxing"
             mood, source = lookup_online_mood("Artist", "Title4", None)
             assert mood == "relaxing"
@@ -281,16 +293,14 @@ class TestLookupOnlineMood:
     def test_cleaning_applied_before_lookup(self):
         """Metadata should be cleaned before querying online services."""
         _cached_online_lookup.cache_clear()
-        with patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm, \
-             patch("vdj_manager.analysis.online_mood.MusicBrainzLookup"):
+        with (
+            patch("vdj_manager.analysis.online_mood.LastFmLookup") as MockLfm,
+            patch("vdj_manager.analysis.online_mood.MusicBrainzLookup"),
+        ):
             MockLfm.return_value.get_mood.return_value = "happy"
-            lookup_online_mood(
-                "Jason Derulo feat. Nicki Minaj", "Swalla (Remix)", "key"
-            )
+            lookup_online_mood("Jason Derulo feat. Nicki Minaj", "Swalla (Remix)", "key")
             # Should have been called with cleaned values
-            MockLfm.return_value.get_mood.assert_called_once_with(
-                "Jason Derulo", "Swalla"
-            )
+            MockLfm.return_value.get_mood.assert_called_once_with("Jason Derulo", "Swalla")
 
 
 # =============================================================================
@@ -388,9 +398,9 @@ class TestTagToMoodDict:
         from vdj_manager.analysis.mood_backend import MOOD_CLASSES_SET
 
         for tag, mood in TAG_TO_MOOD.items():
-            assert mood in MOOD_CLASSES_SET, (
-                f"Tag '{tag}' maps to '{mood}' which is not in MOOD_CLASSES"
-            )
+            assert (
+                mood in MOOD_CLASSES_SET
+            ), f"Tag '{tag}' maps to '{mood}' which is not in MOOD_CLASSES"
 
     def test_all_keys_are_lowercase(self):
         for tag in TAG_TO_MOOD:
@@ -495,9 +505,9 @@ class TestRetryOnNetworkError:
                 base_delay=1.0,
             )
         assert mock_sleep.call_count == 3
-        mock_sleep.assert_any_call(1.0)   # attempt 0: 1.0 * 2^0
-        mock_sleep.assert_any_call(2.0)   # attempt 1: 1.0 * 2^1
-        mock_sleep.assert_any_call(4.0)   # attempt 2: 1.0 * 2^2
+        mock_sleep.assert_any_call(1.0)  # attempt 0: 1.0 * 2^0
+        mock_sleep.assert_any_call(2.0)  # attempt 1: 1.0 * 2^1
+        mock_sleep.assert_any_call(4.0)  # attempt 2: 1.0 * 2^2
 
     def test_zero_retries_returns_none_on_error(self):
         """With max_retries=0, should try once and return None on error."""
@@ -514,6 +524,7 @@ class TestRetryOnNetworkError:
 
     def test_extra_exceptions_are_retried(self):
         """Custom exception types passed via extra_exceptions should be retried."""
+
         class LibraryNetworkError(Exception):
             pass
 
@@ -527,14 +538,13 @@ class TestRetryOnNetworkError:
             return "recovered"
 
         with patch("vdj_manager.analysis.online_mood.time.sleep"):
-            result = _retry_on_network_error(
-                flaky, extra_exceptions=(LibraryNetworkError,)
-            )
+            result = _retry_on_network_error(flaky, extra_exceptions=(LibraryNetworkError,))
         assert result == "recovered"
         assert call_count == 3
 
     def test_extra_exceptions_not_retried_without_param(self):
         """Custom exceptions should NOT be retried if not passed to extra_exceptions."""
+
         class LibraryNetworkError(Exception):
             pass
 
@@ -574,9 +584,12 @@ class TestLastFmRetryIntegration:
 
         mock_network.get_track.side_effect = flaky_get_track
 
-        with patch.dict("sys.modules", {"pylast": MagicMock()}), \
-             patch("vdj_manager.analysis.online_mood.time.sleep"):
+        with (
+            patch.dict("sys.modules", {"pylast": MagicMock()}),
+            patch("vdj_manager.analysis.online_mood.time.sleep"),
+        ):
             import pylast
+
             # Set up real exception classes so except clauses work
             pylast.NetworkError = type("NetworkError", (Exception,), {})
             pylast.WSError = type("WSError", (Exception,), {})
@@ -608,9 +621,12 @@ class TestLastFmRetryIntegration:
 
         mock_network.get_artist.side_effect = flaky_get_artist
 
-        with patch.dict("sys.modules", {"pylast": MagicMock()}), \
-             patch("vdj_manager.analysis.online_mood.time.sleep"):
+        with (
+            patch.dict("sys.modules", {"pylast": MagicMock()}),
+            patch("vdj_manager.analysis.online_mood.time.sleep"),
+        ):
             import pylast
+
             # Set up real exception classes so except clauses work
             pylast.NetworkError = type("NetworkError", (Exception,), {})
             pylast.WSError = type("WSError", (Exception,), {})
@@ -629,14 +645,15 @@ class TestMusicBrainzRetryIntegration:
         """MusicBrainz should retry on ConnectionResetError."""
         call_count = 0
         mock_result = {
-            "recording-list": [{
-                "tag-list": [{"name": "electronic"}, {"name": "dance"}]
-            }]
+            "recording-list": [{"tag-list": [{"name": "electronic"}, {"name": "dance"}]}]
         }
 
-        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
-             patch("vdj_manager.analysis.online_mood.time.sleep"):
+        with (
+            patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}),
+            patch("vdj_manager.analysis.online_mood.time.sleep"),
+        ):
             import musicbrainzngs
+
             # Set up real exception class so except clause works
             musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
 
@@ -657,14 +674,15 @@ class TestMusicBrainzRetryIntegration:
         """MusicBrainz should retry on musicbrainzngs.NetworkError (wraps URLError)."""
         call_count = 0
         mock_result = {
-            "recording-list": [{
-                "tag-list": [{"name": "electronic"}, {"name": "dance"}]
-            }]
+            "recording-list": [{"tag-list": [{"name": "electronic"}, {"name": "dance"}]}]
         }
 
-        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
-             patch("vdj_manager.analysis.online_mood.time.sleep"):
+        with (
+            patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}),
+            patch("vdj_manager.analysis.online_mood.time.sleep"),
+        ):
             import musicbrainzngs
+
             # Create a real-ish NetworkError class (like the library does)
             musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
 
@@ -685,9 +703,12 @@ class TestMusicBrainzRetryIntegration:
 
     def test_musicbrainz_all_retries_exhausted(self):
         """MusicBrainz should return None when all retries fail."""
-        with patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}) as mods, \
-             patch("vdj_manager.analysis.online_mood.time.sleep"):
+        with (
+            patch.dict("sys.modules", {"musicbrainzngs": MagicMock()}),
+            patch("vdj_manager.analysis.online_mood.time.sleep"),
+        ):
             import musicbrainzngs
+
             musicbrainzngs.NetworkError = type("NetworkError", (Exception,), {})
             musicbrainzngs.search_recordings.side_effect = musicbrainzngs.NetworkError(
                 "caused by: <urlopen error [Errno 54] Connection reset by peer>"

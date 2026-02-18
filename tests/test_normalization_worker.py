@@ -1,11 +1,12 @@
 """Tests for normalization worker."""
 
-import pytest
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Skip all tests if PySide6 is not available
 pytest.importorskip("PySide6")
@@ -13,13 +14,13 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
+from vdj_manager.normalize.processor import NormalizationResult
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.workers.normalization_worker import (
-    NormalizationWorker,
     MeasureWorker,
+    NormalizationWorker,
 )
-from vdj_manager.normalize.processor import NormalizationResult
 
 # Patch ProcessPoolExecutor → ThreadPoolExecutor so forked subprocesses
 # don't collide with Qt threads (causes bus errors on macOS).
@@ -98,6 +99,7 @@ class TestNormalizationWorker:
     def test_worker_parallel_workers_config(self, app, task_state, checkpoint_manager):
         """Test worker respects max_workers configuration."""
         import multiprocessing
+
         cpu_count = multiprocessing.cpu_count()
 
         # Default workers should be CPU count - 1
@@ -171,9 +173,7 @@ class TestNormalizationWorker:
         assert result_dict["error"] == "Custom error"
 
     @patch("vdj_manager.ui.workers.normalization_worker.NormalizationProcessor")
-    def test_worker_processes_items(
-        self, mock_processor_cls, app, task_state, checkpoint_manager
-    ):
+    def test_worker_processes_items(self, mock_processor_cls, app, task_state, checkpoint_manager):
         """Test worker processes all items."""
         # Mock the processor
         mock_processor = MagicMock()

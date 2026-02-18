@@ -11,7 +11,6 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from ..config import CHECKPOINT_DIR
 
@@ -46,7 +45,7 @@ class MeasurementCache:
                  Defaults to ``~/.vdj_manager/measurements.db``.
     """
 
-    def __init__(self, db_path: Optional[Path] = None) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or DEFAULT_CACHE_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -80,7 +79,7 @@ class MeasurementCache:
     # Public API
     # ------------------------------------------------------------------
 
-    def get(self, file_path: str, target_lufs: float) -> Optional[dict]:
+    def get(self, file_path: str, target_lufs: float) -> dict | None:
         """Look up a cached measurement.
 
         Returns the cached result dict if the file has not been modified
@@ -165,9 +164,7 @@ class MeasurementCache:
                 ),
             )
 
-    def get_batch(
-        self, file_paths: list[str], target_lufs: float
-    ) -> dict[str, dict]:
+    def get_batch(self, file_paths: list[str], target_lufs: float) -> dict[str, dict]:
         """Look up cached measurements for multiple files.
 
         Uses a single ``WHERE IN`` query instead of N individual lookups,

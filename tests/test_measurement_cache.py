@@ -1,7 +1,6 @@
 """Tests for MeasurementCache SQLite backend."""
 
 import os
-import tempfile
 import time
 from pathlib import Path
 

@@ -1,14 +1,13 @@
 """Tests for FileTagEditor — read/write embedded audio file tags."""
 
 from unittest.mock import MagicMock, patch
-import pytest
 
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.files.id3_editor import (
-    FileTagEditor,
     SUPPORTED_FIELDS,
-    vdj_tags_to_file_tags,
+    FileTagEditor,
     file_tags_to_vdj_kwargs,
+    vdj_tags_to_file_tags,
 )
 
 # Patch target: mutagen.File is lazy-imported inside methods as MutagenFile

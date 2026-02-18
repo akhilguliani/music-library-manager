@@ -48,4 +48,6 @@ jobs:
         run: pip install -e '.[dev,serato,online,player]'
 
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: xvfb-run pytest tests/ -v --tb=short

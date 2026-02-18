@@ -15,7 +15,7 @@ from vdj_manager.normalize.processor import (
     _measure_single_file,
     _normalize_single_file,
 )
-from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
+from vdj_manager.ui.models.task_state import TaskState, TaskStatus
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.workers.base_worker import PausableWorker
 
@@ -221,17 +221,13 @@ class NormalizationWorker(PausableWorker):
         """
         # Prepare arguments for parallel processing (cache DB path included)
         args_list = [
-            (path, self.target_lufs, self.ffmpeg_path, self._cache_db_path)
-            for path in batch
+            (path, self.target_lufs, self.ffmpeg_path, self._cache_db_path) for path in batch
         ]
 
         # Process batch in parallel using ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all jobs
-            futures = {
-                executor.submit(_measure_single_file, args): args[0]
-                for args in args_list
-            }
+            futures = {executor.submit(_measure_single_file, args): args[0] for args in args_list}
 
             # Collect results as they complete
             for future in as_completed(futures):
@@ -331,9 +327,7 @@ class ApplyNormalizationWorker(PausableWorker):
     def process_item(self, path: str) -> NormalizationResult:
         """Apply normalization to a single file (fallback only)."""
         if self.destructive:
-            results = self._processor.normalize_batch_parallel(
-                [path], backup=self.backup
-            )
+            results = self._processor.normalize_batch_parallel([path], backup=self.backup)
         else:
             results = self._processor.measure_batch_parallel([path])
 
@@ -466,14 +460,10 @@ class ApplyNormalizationWorker(PausableWorker):
 
         # Measure uncached files in parallel
         if uncached:
-            args_list = [
-                (p, self.target_lufs, "ffmpeg", self._cache_db_path)
-                for p in uncached
-            ]
+            args_list = [(p, self.target_lufs, "ffmpeg", self._cache_db_path) for p in uncached]
             with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
                 futures = {
-                    executor.submit(_measure_single_file, args): args[0]
-                    for args in args_list
+                    executor.submit(_measure_single_file, args): args[0] for args in args_list
                 }
                 for future in as_completed(futures):
                     path = futures[future]
@@ -483,9 +473,7 @@ class ApplyNormalizationWorker(PausableWorker):
                         if result.success:
                             self.task_state.mark_completed(path, result_dict)
                         else:
-                            self.task_state.mark_failed(
-                                path, result.error or "Unknown error"
-                            )
+                            self.task_state.mark_failed(path, result.error or "Unknown error")
                         self.result_ready.emit(path, result_dict)
                     except Exception as e:
                         error_msg = str(e)
@@ -500,14 +488,10 @@ class ApplyNormalizationWorker(PausableWorker):
     def _process_batch_destructive(self, batch: list[str], total: int) -> None:
         """Process a destructive batch in parallel."""
         args_list = [
-            (p, self.target_lufs, "ffmpeg", self.backup, self._cache_db_path)
-            for p in batch
+            (p, self.target_lufs, "ffmpeg", self.backup, self._cache_db_path) for p in batch
         ]
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(_normalize_single_file, args): args[0]
-                for args in args_list
-            }
+            futures = {executor.submit(_normalize_single_file, args): args[0] for args in args_list}
             for future in as_completed(futures):
                 path = futures[future]
                 try:
@@ -516,9 +500,7 @@ class ApplyNormalizationWorker(PausableWorker):
                     if result.success:
                         self.task_state.mark_completed(path, result_dict)
                     else:
-                        self.task_state.mark_failed(
-                            path, result.error or "Unknown error"
-                        )
+                        self.task_state.mark_failed(path, result.error or "Unknown error")
                     self.result_ready.emit(path, result_dict)
                 except Exception as e:
                     error_msg = str(e)

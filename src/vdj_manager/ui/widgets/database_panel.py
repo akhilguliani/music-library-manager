@@ -2,42 +2,41 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
+from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QTableView,
-    QGroupBox,
-    QFormLayout,
-    QComboBox,
-    QHeaderView,
     QAbstractItemView,
+    QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
-    QMessageBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
     QLineEdit,
     QListWidget,
     QMenu,
+    QMessageBox,
+    QPushButton,
     QSpinBox,
-    QDoubleSpinBox,
     QSplitter,
+    QTableView,
     QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSortFilterProxyModel
 
 from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
-from vdj_manager.core.models import Song, DatabaseStats
+from vdj_manager.core.models import DatabaseStats, Song
 from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.workers.database_worker import (
-    DatabaseLoadWorker,
-    DatabaseLoadResult,
     BackupWorker,
-    ValidateWorker,
     CleanWorker,
+    DatabaseLoadResult,
+    DatabaseLoadWorker,
+    ValidateWorker,
 )
 
 
@@ -222,9 +221,7 @@ class DatabasePanel(QWidget):
         header.setDefaultSectionSize(100)
 
         # Connect selection
-        self.track_table.selectionModel().currentRowChanged.connect(
-            self._on_track_selected
-        )
+        self.track_table.selectionModel().currentRowChanged.connect(self._on_track_selected)
         self.track_table.doubleClicked.connect(self._on_track_double_clicked)
 
         layout.addWidget(self.track_table)
@@ -357,9 +354,7 @@ class DatabasePanel(QWidget):
             parts.append(f"{stats.netsearch:,} streaming")
 
         self.stats_summary_label.setText("  |  ".join(parts))
-        self.stats_summary_label.setStyleSheet(
-            "color: #666; font-size: 11px; padding: 2px 4px;"
-        )
+        self.stats_summary_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 4px;")
 
     @Slot(str)
     def _on_search_changed(self, text: str) -> None:
@@ -423,9 +418,7 @@ class DatabasePanel(QWidget):
         """
         tracks = []
         for row in range(self.proxy_model.rowCount()):
-            source_index = self.proxy_model.mapToSource(
-                self.proxy_model.index(row, 0)
-            )
+            source_index = self.proxy_model.mapToSource(self.proxy_model.index(row, 0))
             track = self.track_model.get_track(source_index.row())
             if track:
                 tracks.append(track)
@@ -461,12 +454,8 @@ class DatabasePanel(QWidget):
         else:
             play_now_action = None
 
-        play_next_action = menu.addAction(
-            f"Play Next ({count} track{'s' if count > 1 else ''})"
-        )
-        add_queue_action = menu.addAction(
-            f"Add to Queue ({count} track{'s' if count > 1 else ''})"
-        )
+        play_next_action = menu.addAction(f"Play Next ({count} track{'s' if count > 1 else ''})")
+        add_queue_action = menu.addAction(f"Add to Queue ({count} track{'s' if count > 1 else ''})")
 
         action = menu.exec(self.track_table.viewport().mapToGlobal(position))
         if action is None:
@@ -481,31 +470,106 @@ class DatabasePanel(QWidget):
 
     # Standard musical keys for combo box
     _STANDARD_KEYS = [
-        "", "C", "Cm", "C#", "C#m", "Db", "Dbm",
-        "D", "Dm", "D#", "D#m", "Eb", "Ebm",
-        "E", "Em", "F", "Fm", "F#", "F#m", "Gb", "Gbm",
-        "G", "Gm", "G#", "G#m", "Ab", "Abm",
-        "A", "Am", "A#", "A#m", "Bb", "Bbm",
-        "B", "Bm",
+        "",
+        "C",
+        "Cm",
+        "C#",
+        "C#m",
+        "Db",
+        "Dbm",
+        "D",
+        "Dm",
+        "D#",
+        "D#m",
+        "Eb",
+        "Ebm",
+        "E",
+        "Em",
+        "F",
+        "Fm",
+        "F#",
+        "F#m",
+        "Gb",
+        "Gbm",
+        "G",
+        "Gm",
+        "G#",
+        "G#m",
+        "Ab",
+        "Abm",
+        "A",
+        "Am",
+        "A#",
+        "A#m",
+        "Bb",
+        "Bbm",
+        "B",
+        "Bm",
         # Camelot notation
-        "1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B",
-        "5A", "5B", "6A", "6B", "7A", "7B", "8A", "8B",
-        "9A", "9B", "10A", "10B", "11A", "11B", "12A", "12B",
+        "1A",
+        "1B",
+        "2A",
+        "2B",
+        "3A",
+        "3B",
+        "4A",
+        "4B",
+        "5A",
+        "5B",
+        "6A",
+        "6B",
+        "7A",
+        "7B",
+        "8A",
+        "8B",
+        "9A",
+        "9B",
+        "10A",
+        "10B",
+        "11A",
+        "11B",
+        "12A",
+        "12B",
     ]
 
     # Common DJ genres for combo box
     _COMMON_GENRES = [
-        "", "House", "Deep House", "Tech House", "Progressive House",
-        "Techno", "Minimal Techno", "Hard Techno",
-        "Trance", "Progressive Trance", "Psytrance",
-        "Drum & Bass", "Dubstep", "Bass Music",
-        "EDM", "Electro", "Breakbeat",
-        "Disco", "Nu-Disco", "Funk",
-        "Hip-Hop", "R&B", "Pop", "Rock",
-        "Ambient", "Downtempo", "Chillout",
-        "Afro House", "Melodic House", "Organic House",
-        "Garage", "UK Garage", "Jersey Club",
-        "Latin", "Reggaeton", "Dancehall",
+        "",
+        "House",
+        "Deep House",
+        "Tech House",
+        "Progressive House",
+        "Techno",
+        "Minimal Techno",
+        "Hard Techno",
+        "Trance",
+        "Progressive Trance",
+        "Psytrance",
+        "Drum & Bass",
+        "Dubstep",
+        "Bass Music",
+        "EDM",
+        "Electro",
+        "Breakbeat",
+        "Disco",
+        "Nu-Disco",
+        "Funk",
+        "Hip-Hop",
+        "R&B",
+        "Pop",
+        "Rock",
+        "Ambient",
+        "Downtempo",
+        "Chillout",
+        "Afro House",
+        "Melodic House",
+        "Organic House",
+        "Garage",
+        "UK Garage",
+        "Jersey Club",
+        "Latin",
+        "Reggaeton",
+        "Dancehall",
     ]
 
     def _create_tag_edit_group(self) -> QGroupBox:
@@ -799,7 +863,9 @@ class DatabasePanel(QWidget):
         _text_update("Composer", self.tag_composer_input.text(), tags.composer if tags else None)
         _text_update("Remix", self.tag_remix_input.text(), tags.remix if tags else None)
         _text_update("Label", self.tag_label_input.text(), tags.label if tags else None)
-        _int_update("TrackNumber", self.tag_track_number_spin.value(), tags.track_number if tags else None)
+        _int_update(
+            "TrackNumber", self.tag_track_number_spin.value(), tags.track_number if tags else None
+        )
         _text_update("Color", self.tag_color_input.text(), tags.color if tags else None)
         _int_update("Flag", self.tag_flag_spin.value(), tags.flag if tags else None)
 
@@ -832,8 +898,7 @@ class DatabasePanel(QWidget):
         track = self._editing_track
         if track.is_windows_path:
             QMessageBox.information(
-                self, "Not Available",
-                "Cannot read file tags for Windows-path tracks."
+                self, "Not Available", "Cannot read file tags for Windows-path tracks."
             )
             return
 
@@ -844,6 +909,7 @@ class DatabasePanel(QWidget):
 
         try:
             from vdj_manager.files.id3_editor import FileTagEditor
+
             editor = FileTagEditor()
             file_tags = editor.read_tags(file_path)
         except Exception as e:
@@ -885,6 +951,7 @@ class DatabasePanel(QWidget):
 
         try:
             from vdj_manager.files.id3_editor import FileTagEditor
+
             editor = FileTagEditor()
             ok = editor.write_tags(file_path, file_tags)
             if ok:
@@ -903,7 +970,8 @@ class DatabasePanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Sync",
+            self,
+            "Confirm Sync",
             "Overwrite file tags with VDJ database values?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -912,6 +980,7 @@ class DatabasePanel(QWidget):
 
         try:
             from vdj_manager.files.id3_editor import FileTagEditor, vdj_tags_to_file_tags
+
             file_tags = vdj_tags_to_file_tags(self._editing_track)
             editor = FileTagEditor()
             ok = editor.write_tags(self._editing_track.file_path, file_tags)
@@ -935,7 +1004,8 @@ class DatabasePanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Import",
+            self,
+            "Confirm Import",
             "Overwrite VDJ database tags with values from the audio file?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -944,6 +1014,7 @@ class DatabasePanel(QWidget):
 
         try:
             from vdj_manager.files.id3_editor import FileTagEditor, file_tags_to_vdj_kwargs
+
             editor = FileTagEditor()
             file_tags = editor.read_tags(self._editing_track.file_path)
             vdj_kwargs = file_tags_to_vdj_kwargs(file_tags)
@@ -954,7 +1025,9 @@ class DatabasePanel(QWidget):
                 self.track_model.set_tracks(self._tracks)
                 self.status_label.setText("File tags imported to VDJ")
                 self.status_label.setStyleSheet("color: green;")
-                self._log_operation(f"File \u2192 VDJ import for {self._editing_track.display_name}")
+                self._log_operation(
+                    f"File \u2192 VDJ import for {self._editing_track.display_name}"
+                )
         except Exception as e:
             QMessageBox.warning(self, "Import Error", f"Failed to import:\n{e}")
 
@@ -1067,9 +1140,7 @@ class DatabasePanel(QWidget):
         if netsearch > 0:
             detail_lines.append(f"Streaming entries: {netsearch}")
 
-        QMessageBox.information(
-            self, "Validation Results", "\n".join(detail_lines)
-        )
+        QMessageBox.information(self, "Validation Results", "\n".join(detail_lines))
         self._log_operation(summary)
 
     @Slot(str)
@@ -1089,6 +1160,7 @@ class DatabasePanel(QWidget):
 
         # Determine what to clean
         from vdj_manager.files.validator import FileValidator
+
         validator = FileValidator()
         categories = validator.categorize_entries(iter(self._tracks))
 
@@ -1098,8 +1170,7 @@ class DatabasePanel(QWidget):
 
         if not to_remove:
             QMessageBox.information(
-                self, "Nothing to Clean",
-                "No invalid entries found in the database."
+                self, "Nothing to Clean", "No invalid entries found in the database."
             )
             return
 
@@ -1111,7 +1182,9 @@ class DatabasePanel(QWidget):
             f"A backup will be created first. Continue?"
         )
         reply = QMessageBox.question(
-            self, "Confirm Clean", msg,
+            self,
+            "Confirm Clean",
+            msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1120,6 +1193,7 @@ class DatabasePanel(QWidget):
         # Create backup first
         try:
             from vdj_manager.core.backup import BackupManager
+
             manager = BackupManager()
             manager.create_backup(self._database.db_path, label="pre_clean")
         except Exception as e:

@@ -1,7 +1,8 @@
 """Tests for normalization panel."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 # Skip all tests if PySide6 is not available
 pytest.importorskip("PySide6")
@@ -175,6 +176,7 @@ class TestNormalizationPanel:
     def test_workers_spinner(self, app):
         """Test parallel workers spinner configuration."""
         import multiprocessing
+
         cpu_count = multiprocessing.cpu_count()
 
         panel = NormalizationPanel()

@@ -5,7 +5,6 @@ Supports MP3 (ID3), M4A/MP4, FLAC, OGG Vorbis, WAV, and AIFF.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from vdj_manager.core.models import Song
 
@@ -13,8 +12,16 @@ logger = logging.getLogger(__name__)
 
 # Fields supported for read/write
 SUPPORTED_FIELDS = [
-    "title", "artist", "album", "genre", "year",
-    "track_number", "bpm", "key", "composer", "comment",
+    "title",
+    "artist",
+    "album",
+    "genre",
+    "year",
+    "track_number",
+    "bpm",
+    "key",
+    "composer",
+    "comment",
 ]
 
 # MP3 ID3 frame mapping
@@ -66,7 +73,7 @@ class FileTagEditor:
     Uses mutagen (lazy-imported) to support MP3, M4A, FLAC, OGG, WAV, AIFF.
     """
 
-    def read_tags(self, file_path: str) -> dict[str, Optional[str]]:
+    def read_tags(self, file_path: str) -> dict[str, str | None]:
         """Read tags from an audio file.
 
         Args:
@@ -75,10 +82,11 @@ class FileTagEditor:
         Returns:
             Dict with SUPPORTED_FIELDS keys, values are strings or None.
         """
-        result: dict[str, Optional[str]] = {f: None for f in SUPPORTED_FIELDS}
+        result: dict[str, str | None] = {f: None for f in SUPPORTED_FIELDS}
 
         try:
             from mutagen import File as MutagenFile
+
             audio = MutagenFile(file_path)
         except Exception:
             logger.warning("Failed to open %s for tag reading", file_path, exc_info=True)
@@ -101,7 +109,7 @@ class FileTagEditor:
 
         return result
 
-    def write_tags(self, file_path: str, tags: dict[str, Optional[str]]) -> bool:
+    def write_tags(self, file_path: str, tags: dict[str, str | None]) -> bool:
         """Write tags to an audio file.
 
         Args:
@@ -113,6 +121,7 @@ class FileTagEditor:
         """
         try:
             from mutagen import File as MutagenFile
+
             audio = MutagenFile(file_path)
         except Exception:
             logger.error("Failed to open %s for tag writing", file_path, exc_info=True)
@@ -169,7 +178,7 @@ class FileTagEditor:
 
     def _write_id3(self, audio, tags: dict) -> None:
         """Write ID3 tags to an MP3/WAV/AIFF file."""
-        from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON, TDRC, TRCK, TBPM, TKEY, TCOM, COMM
+        from mutagen.id3 import COMM, TALB, TBPM, TCOM, TCON, TDRC, TIT2, TKEY, TPE1, TRCK
 
         id3_tags = audio.tags
         if id3_tags is None:
@@ -178,9 +187,15 @@ class FileTagEditor:
             id3_tags = audio.tags
 
         frame_classes = {
-            "title": TIT2, "artist": TPE1, "album": TALB,
-            "genre": TCON, "year": TDRC, "track_number": TRCK,
-            "bpm": TBPM, "key": TKEY, "composer": TCOM,
+            "title": TIT2,
+            "artist": TPE1,
+            "album": TALB,
+            "genre": TCON,
+            "year": TDRC,
+            "track_number": TRCK,
+            "bpm": TBPM,
+            "key": TKEY,
+            "composer": TCOM,
         }
 
         for field, value in tags.items():
@@ -297,7 +312,7 @@ class FileTagEditor:
                 del audio[key]
 
 
-def vdj_tags_to_file_tags(song: Song) -> dict[str, Optional[str]]:
+def vdj_tags_to_file_tags(song: Song) -> dict[str, str | None]:
     """Map VDJ database tags to FileTagEditor field dict.
 
     Args:
@@ -324,7 +339,7 @@ def vdj_tags_to_file_tags(song: Song) -> dict[str, Optional[str]]:
     }
 
 
-def file_tags_to_vdj_kwargs(file_tags: dict[str, Optional[str]]) -> dict[str, Optional[str]]:
+def file_tags_to_vdj_kwargs(file_tags: dict[str, str | None]) -> dict[str, str | None]:
     """Map file tags to update_song_tags() kwargs using XML aliases.
 
     Args:
@@ -346,7 +361,7 @@ def file_tags_to_vdj_kwargs(file_tags: dict[str, Optional[str]]) -> dict[str, Op
         "comment": "Comment",
     }
 
-    result: dict[str, Optional[str]] = {}
+    result: dict[str, str | None] = {}
     for file_key, vdj_alias in mapping.items():
         value = file_tags.get(file_key)
         if value is not None and value.strip():

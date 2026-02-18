@@ -2,19 +2,19 @@
 
 import csv
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QAbstractItemView,
+    QHeaderView,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QColor
 
 
 class ResultsTable(QWidget):
@@ -265,9 +265,7 @@ class ConfigurableResultsTable(QWidget):
             if "alignment" in col:
                 item.setTextAlignment(col["alignment"])
             elif i > 0:
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
             # Smart color coding for status column
             if col["key"] == "status" and value is not None:

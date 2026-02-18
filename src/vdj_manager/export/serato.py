@@ -3,21 +3,20 @@
 import logging
 import struct
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 try:
-    from mutagen import File as MutagenFile
-    from mutagen.id3 import ID3, TXXX, TKEY, TBPM, GEOB
-    from mutagen.mp4 import MP4
     from mutagen.flac import FLAC
+    from mutagen.id3 import GEOB, ID3, TBPM, TKEY, TXXX
+    from mutagen.mp4 import MP4
+
     MUTAGEN_AVAILABLE = True
 except ImportError:
     MUTAGEN_AVAILABLE = False
 
+from ..config import SERATO_LOCAL
 from ..core.models import Song
-from ..config import SERATO_LOCAL, SERATO_MYNVME
 from .mapper import VDJToSeratoMapper
 
 
@@ -27,7 +26,7 @@ class SeratoCrateWriter:
     # Serato crate file header
     CRATE_HEADER = b"vrsn\x00\x00\x00\x008\x00.\x001\x00/\x00S\x00e\x00r\x00a\x00t\x00o\x00 \x00S\x00c\x00r\x00a\x00t\x00c\x00h\x00L\x00i\x00v\x00e\x00 \x00C\x00r\x00a\x00t\x00e"
 
-    def __init__(self, serato_dir: Optional[Path] = None):
+    def __init__(self, serato_dir: Path | None = None):
         """Initialize crate writer.
 
         Args:
@@ -95,6 +94,7 @@ class SeratoCrateWriter:
 
         # Sanitize crate name: strip path separators and filesystem-unsafe chars
         import re
+
         safe_name = re.sub(r'[/\\:*?"<>|]', "_", name)
         # Remove path components (e.g. "../../evil" → "evil" after sub becomes "_.._evil")
         safe_name = Path(safe_name).name
@@ -142,10 +142,10 @@ class SeratoTagWriter:
     def write_tags(
         self,
         file_path: str,
-        bpm: Optional[float] = None,
-        key: Optional[str] = None,
-        cue_points: Optional[list] = None,
-        comment: Optional[str] = None,
+        bpm: float | None = None,
+        key: str | None = None,
+        cue_points: list | None = None,
+        comment: str | None = None,
     ) -> bool:
         """Write Serato-compatible tags to an audio file.
 
@@ -178,10 +178,10 @@ class SeratoTagWriter:
     def _write_mp3_tags(
         self,
         file_path: str,
-        bpm: Optional[float],
-        key: Optional[str],
-        cue_points: Optional[list],
-        comment: Optional[str],
+        bpm: float | None,
+        key: str | None,
+        cue_points: list | None,
+        comment: str | None,
     ) -> bool:
         """Write tags to MP3 file."""
         try:
@@ -210,12 +210,14 @@ class SeratoTagWriter:
         if cue_points:
             markers_data = self._create_serato_markers2(cue_points)
             audio.delall("GEOB:Serato Markers2")
-            audio.add(GEOB(
-                encoding=0,
-                mime="application/octet-stream",
-                desc="Serato Markers2",
-                data=markers_data,
-            ))
+            audio.add(
+                GEOB(
+                    encoding=0,
+                    mime="application/octet-stream",
+                    desc="Serato Markers2",
+                    data=markers_data,
+                )
+            )
 
         audio.save(file_path)
         return True
@@ -223,9 +225,9 @@ class SeratoTagWriter:
     def _write_mp4_tags(
         self,
         file_path: str,
-        bpm: Optional[float],
-        key: Optional[str],
-        comment: Optional[str],
+        bpm: float | None,
+        key: str | None,
+        comment: str | None,
     ) -> bool:
         """Write tags to M4A/AAC file."""
         audio = MP4(file_path)
@@ -245,9 +247,9 @@ class SeratoTagWriter:
     def _write_flac_tags(
         self,
         file_path: str,
-        bpm: Optional[float],
-        key: Optional[str],
-        comment: Optional[str],
+        bpm: float | None,
+        key: str | None,
+        comment: str | None,
     ) -> bool:
         """Write tags to FLAC file."""
         audio = FLAC(file_path)
@@ -305,7 +307,7 @@ class SeratoTagWriter:
 class SeratoExporter:
     """Export VDJ library to Serato format."""
 
-    def __init__(self, serato_dir: Optional[Path] = None):
+    def __init__(self, serato_dir: Path | None = None):
         """Initialize Serato exporter.
 
         Args:

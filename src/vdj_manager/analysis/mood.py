@@ -8,7 +8,6 @@ Implements the MoodBackend protocol from mood_backend.py.
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,7 @@ class MoodAnalyzer:
             return None
         return select_top_moods(scores, threshold, max_tags)
 
-    def get_mood_tag(self, file_path: str) -> Optional[str]:
+    def get_mood_tag(self, file_path: str) -> str | None:
         """Get the single top mood tag for a file.
 
         Backward-compatible convenience method.

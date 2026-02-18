@@ -1,8 +1,8 @@
 """Path remapping utilities for Windows to macOS conversion."""
 
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from ..config import DEFAULT_PATH_MAPPINGS
 from ..core.models import Song
@@ -63,7 +63,7 @@ class PathRemapper:
         for win_prefix in self._sorted_prefixes:
             if normalized.startswith(win_prefix):
                 mac_prefix = self.mappings[win_prefix]
-                return mac_prefix + normalized[len(win_prefix):]
+                return mac_prefix + normalized[len(win_prefix) :]
 
         return None
 

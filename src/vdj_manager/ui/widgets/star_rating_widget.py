@@ -1,8 +1,8 @@
 """Clickable 5-star rating widget."""
 
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPainter, QColor, QPen, QMouseEvent
 
 
 class StarRatingWidget(QWidget):
@@ -97,10 +97,10 @@ class StarRatingWidget(QWidget):
 
     def _draw_star(self, painter: QPainter, x: int, y: int, size: int, filled: bool) -> None:
         """Draw a single star at the given position."""
-        from PySide6.QtGui import QPolygonF
-        from PySide6.QtCore import QPointF
-
         import math
+
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QPolygonF
 
         cx = x + size / 2
         cy = y + size / 2

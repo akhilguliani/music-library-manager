@@ -1,7 +1,5 @@
 """Tests for Serato crate writer and name sanitization."""
 
-from pathlib import Path
-
 import pytest
 
 from vdj_manager.export.serato import SeratoCrateWriter

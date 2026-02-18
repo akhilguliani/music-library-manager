@@ -3,23 +3,22 @@
 import logging
 import multiprocessing
 from pathlib import Path
-from typing import Any
 
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QGroupBox,
-    QTabWidget,
-    QSpinBox,
-    QDoubleSpinBox,
-    QComboBox,
-    QCheckBox,
     QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
@@ -28,12 +27,10 @@ from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
-    _SAVE_INTERVAL,
     EnergyWorker,
     MIKImportWorker,
     MoodWorker,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +155,9 @@ class AnalysisPanel(QWidget):
         self.energy_untagged_btn = QPushButton("Analyze Untagged")
         self.energy_untagged_btn.setEnabled(False)
         self.energy_untagged_btn.setToolTip("Only analyze tracks without energy tags")
-        self.energy_untagged_btn.clicked.connect(lambda: self._on_energy_clicked(untagged_only=True))
+        self.energy_untagged_btn.clicked.connect(
+            lambda: self._on_energy_clicked(untagged_only=True)
+        )
         controls_layout.addWidget(self.energy_untagged_btn)
 
         controls_layout.addStretch()
@@ -174,12 +173,14 @@ class AnalysisPanel(QWidget):
         layout.addWidget(self.energy_progress)
 
         # Results table
-        self.energy_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path"},
-            {"name": "Fmt", "key": "format", "width": 50},
-            {"name": "Energy", "key": "energy", "width": 80},
-            {"name": "Status", "key": "status", "width": 100},
-        ])
+        self.energy_results = ConfigurableResultsTable(
+            [
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Energy", "key": "energy", "width": 80},
+                {"name": "Status", "key": "status", "width": 100},
+            ]
+        )
         layout.addWidget(self.energy_results)
 
         self.sub_tabs.addTab(tab, "Energy")
@@ -216,13 +217,15 @@ class AnalysisPanel(QWidget):
         layout.addWidget(self.mik_progress)
 
         # Results table
-        self.mik_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path"},
-            {"name": "Fmt", "key": "format", "width": 50},
-            {"name": "Energy", "key": "energy", "width": 80},
-            {"name": "Key", "key": "key", "width": 100},
-            {"name": "Status", "key": "status", "width": 100},
-        ])
+        self.mik_results = ConfigurableResultsTable(
+            [
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Energy", "key": "energy", "width": 80},
+                {"name": "Key", "key": "key", "width": 100},
+                {"name": "Status", "key": "status", "width": 100},
+            ]
+        )
         layout.addWidget(self.mik_results)
 
         self.sub_tabs.addTab(tab, "MIK Import")
@@ -296,9 +299,7 @@ class AnalysisPanel(QWidget):
 
         self.mood_reanalyze_btn = QPushButton("Re-analyze Unknown")
         self.mood_reanalyze_btn.setEnabled(False)
-        self.mood_reanalyze_btn.setToolTip(
-            "Re-analyze tracks tagged #unknown using online lookup"
-        )
+        self.mood_reanalyze_btn.setToolTip("Re-analyze tracks tagged #unknown using online lookup")
         self.mood_reanalyze_btn.clicked.connect(self._on_mood_reanalyze_clicked)
         controls_layout.addWidget(self.mood_reanalyze_btn)
 
@@ -323,12 +324,14 @@ class AnalysisPanel(QWidget):
         layout.addWidget(self.mood_progress)
 
         # Results table
-        self.mood_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path"},
-            {"name": "Fmt", "key": "format", "width": 50},
-            {"name": "Mood", "key": "mood", "width": 120},
-            {"name": "Status", "key": "status", "width": 100},
-        ])
+        self.mood_results = ConfigurableResultsTable(
+            [
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Mood", "key": "mood", "width": 120},
+                {"name": "Status", "key": "status", "width": 100},
+            ]
+        )
         layout.addWidget(self.mood_results)
 
         self.sub_tabs.addTab(tab, "Mood")
@@ -373,7 +376,8 @@ class AnalysisPanel(QWidget):
         mood_local = [t for t in mood_tracks if not t.is_windows_path]
         mood_remote = [t for t in mood_tracks if t.is_windows_path]
         unknown_mood = [
-            t for t in mood_tracks
+            t
+            for t in mood_tracks
             if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
         ]
         if mood_remote:
@@ -411,7 +415,8 @@ class AnalysisPanel(QWidget):
         max_duration = self.max_duration_spin.value() * 60
         if max_duration > 0:
             tracks = [
-                t for t in tracks
+                t
+                for t in tracks
                 if not (t.infos and t.infos.song_length and t.infos.song_length > max_duration)
             ]
 
@@ -444,7 +449,8 @@ class AnalysisPanel(QWidget):
         max_duration = self.max_duration_spin.value() * 60
         if max_duration > 0:
             tracks = [
-                t for t in tracks
+                t
+                for t in tracks
                 if not (t.infos and t.infos.song_length and t.infos.song_length > max_duration)
             ]
 
@@ -482,6 +488,7 @@ class AnalysisPanel(QWidget):
         # Auto-backup before modifying
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_energy")
         except Exception:
             logger.warning("Auto-backup failed before analysis", exc_info=True)
@@ -549,6 +556,7 @@ class AnalysisPanel(QWidget):
         if failed_count == 0:
             return ""
         from collections import Counter
+
         fmt_counts = Counter()
         for r in results:
             status = str(r.get("status", "")).lower()
@@ -607,6 +615,7 @@ class AnalysisPanel(QWidget):
         # Auto-backup before modifying
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_mik")
         except Exception:
             logger.warning("Auto-backup failed before analysis", exc_info=True)
@@ -679,6 +688,7 @@ class AnalysisPanel(QWidget):
         # Auto-backup before modifying
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_mood")
         except Exception:
             logger.warning("Auto-backup failed before analysis", exc_info=True)
@@ -735,19 +745,20 @@ class AnalysisPanel(QWidget):
         # Filter to tracks with #unknown in User2
         all_tracks = self._get_mood_tracks()
         tracks = [
-            t for t in all_tracks
+            t
+            for t in all_tracks
             if t.tags and t.tags.user2 and "#unknown" in (t.tags.user2 or "").split()
         ]
         if not tracks:
             QMessageBox.information(
-                self, "No Unknown Tracks",
-                "No tracks with #unknown mood tag found."
+                self, "No Unknown Tracks", "No tracks with #unknown mood tag found."
             )
             return
 
         # Auto-backup
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze")
         except Exception:
             logger.warning("Auto-backup failed before analysis", exc_info=True)
@@ -808,7 +819,8 @@ class AnalysisPanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Re-analyze All",
+            self,
+            "Re-analyze All",
             f"This will re-analyze mood for all {len(tracks)} audio tracks, "
             "invalidating existing mood cache.\n\nContinue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -819,12 +831,14 @@ class AnalysisPanel(QWidget):
 
         # Invalidate all mood cache entries
         from vdj_manager.analysis.analysis_cache import AnalysisCache
+
         cache = AnalysisCache(db_path=DEFAULT_ANALYSIS_CACHE_PATH)
         cache.invalidate_by_type_prefix("mood:")
 
         # Auto-backup
         try:
             from vdj_manager.core.backup import BackupManager
+
             BackupManager().create_backup(self._database.db_path, label="pre_mood_reanalyze_all")
         except Exception:
             logger.warning("Auto-backup failed before analysis", exc_info=True)

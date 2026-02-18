@@ -4,10 +4,10 @@ import pytest
 
 from vdj_manager.player.engine import PlaybackEngine, TrackInfo
 
-
 # ---------------------------------------------------------------------------
 # Engine: insert_next
 # ---------------------------------------------------------------------------
+
 
 def _make_track(name: str) -> TrackInfo:
     return TrackInfo(file_path=f"/music/{name}.mp3", title=name)
@@ -54,12 +54,14 @@ class TestInsertNext:
 # Bridge: insert_next delegation
 # ---------------------------------------------------------------------------
 
+
 class TestBridgeInsertNext:
     """Tests for PlaybackBridge.insert_next()."""
 
     @pytest.fixture
     def qapp(self):
         from PySide6.QtWidgets import QApplication
+
         app = QApplication.instance()
         if app is None:
             app = QApplication([])
@@ -67,6 +69,7 @@ class TestBridgeInsertNext:
 
     def test_bridge_insert_next(self, qapp):
         from vdj_manager.player.bridge import PlaybackBridge
+
         bridge = PlaybackBridge()
         track = _make_track("A")
         bridge.insert_next(track)
@@ -77,12 +80,14 @@ class TestBridgeInsertNext:
 # DatabasePanel: context menu & multi-select
 # ---------------------------------------------------------------------------
 
+
 class TestDatabasePanelContextMenu:
     """Tests for DatabasePanel context menu and multi-select."""
 
     @pytest.fixture
     def qapp(self):
         from PySide6.QtWidgets import QApplication
+
         app = QApplication.instance()
         if app is None:
             app = QApplication([])
@@ -91,7 +96,9 @@ class TestDatabasePanelContextMenu:
     def test_extended_selection_mode(self, qapp):
         """Track table should use ExtendedSelection."""
         from PySide6.QtWidgets import QAbstractItemView
+
         from vdj_manager.ui.widgets.database_panel import DatabasePanel
+
         panel = DatabasePanel()
         mode = panel.track_table.selectionMode()
         assert mode == QAbstractItemView.SelectionMode.ExtendedSelection
@@ -99,7 +106,9 @@ class TestDatabasePanelContextMenu:
     def test_no_context_menu_without_selection(self, qapp):
         """_on_track_context_menu should be a no-op when nothing is selected."""
         from PySide6.QtCore import QPoint
+
         from vdj_manager.ui.widgets.database_panel import DatabasePanel
+
         panel = DatabasePanel()
         # Should not raise
         panel._on_track_context_menu(QPoint(0, 0))
@@ -107,6 +116,7 @@ class TestDatabasePanelContextMenu:
     def test_panel_has_queue_signals(self, qapp):
         """DatabasePanel should have play_next_requested and add_to_queue_requested signals."""
         from vdj_manager.ui.widgets.database_panel import DatabasePanel
+
         panel = DatabasePanel()
         assert hasattr(panel, "play_next_requested")
         assert hasattr(panel, "add_to_queue_requested")

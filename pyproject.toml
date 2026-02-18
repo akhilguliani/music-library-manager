@@ -73,7 +73,16 @@ target-version = ["py310"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
+ignore = [
+    "E402",   # module-import-not-at-top (lazy imports for optional deps)
+    "E501",   # line-too-long (black handles formatting)
+    "N802",   # invalid-function-name (Qt camelCase overrides)
+    "N803",   # invalid-argument-name (Mock* params in tests)
+    "N806",   # non-lowercase-variable-in-function (Mock* vars in tests)
+]
 
 [tool.mypy]
 python_version = "3.10"

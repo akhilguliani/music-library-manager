@@ -2,12 +2,13 @@
 
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional, Iterator
+
 from lxml import etree
 
-from .models import Song, Tags, Infos, Scan, Poi, PoiType, Link, Playlist, DatabaseStats
-from ..config import AUDIO_EXTENSIONS, NON_AUDIO_EXTENSIONS
+from ..config import AUDIO_EXTENSIONS
+from .models import DatabaseStats, Infos, Link, Playlist, Poi, PoiType, Scan, Song, Tags
 
 
 class VDJDatabase:
@@ -15,8 +16,8 @@ class VDJDatabase:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self._tree: Optional[etree._ElementTree] = None
-        self._root: Optional[etree._Element] = None
+        self._tree: etree._ElementTree | None = None
+        self._root: etree._Element | None = None
         self._songs: dict[str, Song] = {}
         self._playlists: list[Playlist] = []
         self._filepath_to_elem: dict[str, etree._Element] = {}
@@ -56,7 +57,7 @@ class VDJDatabase:
             if playlist:
                 self._playlists.append(playlist)
 
-    def _parse_song(self, elem: etree._Element) -> Optional[Song]:
+    def _parse_song(self, elem: etree._Element) -> Song | None:
         """Parse a Song element into a Song model."""
         file_path = elem.get("FilePath")
         if not file_path:
@@ -149,7 +150,7 @@ class VDJDatabase:
             links=links,
         )
 
-    def _parse_playlist(self, elem: etree._Element) -> Optional[Playlist]:
+    def _parse_playlist(self, elem: etree._Element) -> Playlist | None:
         """Parse a MyList element into a Playlist model."""
         name = elem.get("Name")
         if not name:
@@ -164,7 +165,7 @@ class VDJDatabase:
         return Playlist(Name=name, file_paths=file_paths)
 
     @staticmethod
-    def _safe_int(value: Optional[str]) -> Optional[int]:
+    def _safe_int(value: str | None) -> int | None:
         """Safely convert string to int."""
         if value is None:
             return None
@@ -174,7 +175,7 @@ class VDJDatabase:
             return None
 
     @staticmethod
-    def _safe_float(value: Optional[str]) -> Optional[float]:
+    def _safe_float(value: str | None) -> float | None:
         """Safely convert string to float."""
         if value is None:
             return None
@@ -193,7 +194,7 @@ class VDJDatabase:
         """Return all playlists."""
         return self._playlists
 
-    def get_song(self, file_path: str) -> Optional[Song]:
+    def get_song(self, file_path: str) -> Song | None:
         """Get a song by file path."""
         return self._songs.get(file_path)
 
@@ -429,7 +430,7 @@ class VDJDatabase:
             return True
         return False
 
-    def add_song(self, file_path: str, file_size: Optional[int] = None) -> etree._Element:
+    def add_song(self, file_path: str, file_size: int | None = None) -> etree._Element:
         """Add a new song to the database."""
         if not self.is_loaded:
             raise RuntimeError("Database not loaded")
@@ -446,7 +447,7 @@ class VDJDatabase:
 
         return song_elem
 
-    def save(self, output_path: Optional[Path] = None) -> None:
+    def save(self, output_path: Path | None = None) -> None:
         """Save the database to file.
 
         VDJ database format (verified from actual VDJ-created files):
@@ -483,6 +484,7 @@ class VDJDatabase:
         # differs from VDJ's format). [^"<>] prevents matching across tags.
         def _escape_apos_in_attrs(match: re.Match) -> str:
             return match.group(0).replace("'", "&apos;")
+
         xml_str = re.sub(r'"[^"<>]*\'[^"<>]*"', _escape_apos_in_attrs, xml_str)
 
         # Restore entities in text content (between > and <).
@@ -494,6 +496,7 @@ class VDJDatabase:
             text = text.replace("'", "&apos;")
             text = text.replace('"', "&quot;")
             return ">" + text + "<"
+
         xml_str = re.sub(r">([^<]+)<", _fix_text_content, xml_str)
 
         # Add space before /> in self-closing tags (VDJ format).

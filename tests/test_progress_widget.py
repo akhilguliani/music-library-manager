@@ -7,8 +7,8 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
-from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.models.task_state import TaskStatus
+from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 
 
 @pytest.fixture(scope="module")

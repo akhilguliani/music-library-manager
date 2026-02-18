@@ -39,9 +39,8 @@ class TestStarRating:
         widget.rating_changed.connect(lambda r: received.append(r))
 
         # Simulate clicking star 3 (center of star 3)
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         star_x = 2 * (widget.STAR_SIZE + widget.STAR_SPACING) + widget.STAR_SIZE // 2
         event = QMouseEvent(
@@ -63,9 +62,8 @@ class TestStarRating:
         received = []
         widget.rating_changed.connect(lambda r: received.append(r))
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         star_x = 2 * (widget.STAR_SIZE + widget.STAR_SPACING) + widget.STAR_SIZE // 2
         event = QMouseEvent(
@@ -83,9 +81,8 @@ class TestStarRating:
         widget = StarRatingWidget()
         widget.set_read_only(True)
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,

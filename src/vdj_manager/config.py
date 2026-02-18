@@ -3,7 +3,6 @@
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 # Default paths
 LOCAL_VDJ_DB = Path.home() / "Library/Application Support/VirtualDJ/database.xml"
@@ -19,7 +18,7 @@ LASTFM_API_KEY_ENV = "LASTFM_API_KEY"
 LASTFM_API_KEY_FILE = Path.home() / ".vdj_manager/lastfm_api_key"
 
 
-def get_lastfm_api_key() -> Optional[str]:
+def get_lastfm_api_key() -> str | None:
     """Get the Last.fm API key from environment variable or file.
 
     Checks the LASTFM_API_KEY environment variable first, then falls
@@ -37,20 +36,51 @@ def get_lastfm_api_key() -> Optional[str]:
         return LASTFM_API_KEY_FILE.read_text().strip() or None
     return None
 
+
 # Audio file extensions
 AUDIO_EXTENSIONS = {
-    ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav", ".aiff", ".aif",
-    ".ogg", ".opus", ".wma", ".alac"
+    ".mp3",
+    ".m4a",
+    ".mp4",
+    ".aac",
+    ".flac",
+    ".wav",
+    ".aiff",
+    ".aif",
+    ".ogg",
+    ".opus",
+    ".wma",
+    ".alac",
 }
 
 # Non-audio extensions to clean
 NON_AUDIO_EXTENSIONS = {
-    ".zip", ".rar", ".7z", ".tar", ".gz",
-    ".mkv", ".avi", ".mov", ".wmv",
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp",
-    ".pdf", ".doc", ".docx", ".txt",
-    ".exe", ".dmg", ".pkg", ".app",
-    ".db", ".xml", ".json", ".nfo",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".tar",
+    ".gz",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".txt",
+    ".exe",
+    ".dmg",
+    ".pkg",
+    ".app",
+    ".db",
+    ".xml",
+    ".json",
+    ".nfo",
 }
 
 # Windows to macOS path mappings
@@ -82,9 +112,9 @@ class Config:
 
     def __init__(
         self,
-        local_db: Optional[Path] = None,
-        mynvme_db: Optional[Path] = None,
-        backup_dir: Optional[Path] = None,
+        local_db: Path | None = None,
+        mynvme_db: Path | None = None,
+        backup_dir: Path | None = None,
     ):
         self.local_db = local_db or LOCAL_VDJ_DB
         self.mynvme_db = mynvme_db or MYNVME_VDJ_DB

@@ -2,26 +2,26 @@
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSlider,
     QSplitter,
-    QListWidget,
-    QListWidgetItem,
-    QGroupBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QPixmap, QImage
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
-from vdj_manager.ui.widgets.waveform_widget import WaveformWidget
 from vdj_manager.ui.widgets.star_rating_widget import StarRatingWidget
+from vdj_manager.ui.widgets.waveform_widget import WaveformWidget
 
 
 class PlayerPanel(QWidget):
@@ -372,7 +372,8 @@ class PlayerPanel(QWidget):
                 img.loadFromData(art_bytes)
                 if not img.isNull():
                     pixmap = QPixmap.fromImage(img).scaled(
-                        120, 120,
+                        120,
+                        120,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )

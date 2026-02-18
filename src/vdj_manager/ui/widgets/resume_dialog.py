@@ -2,21 +2,20 @@
 
 from typing import Any
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
-    QVBoxLayout,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QListWidget,
     QListWidgetItem,
-    QGroupBox,
-    QFormLayout,
-    QDialogButtonBox,
+    QPushButton,
+    QVBoxLayout,
 )
-from PySide6.QtCore import Qt
 
-from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
+from vdj_manager.ui.models.task_state import TaskState, TaskStatus
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 
 
@@ -189,7 +188,7 @@ class ResumeDialog(QDialog):
         self.status_label.setText(status_text)
 
         # Progress
-        completed = len(task.completed_paths)
+        len(task.completed_paths)
         failed = len(task.failed_paths)
         total = task.total_items
         progress_text = f"{task.processed_count} of {total} processed"
@@ -255,7 +254,7 @@ def check_and_show_resume_dialog(
         return ("none", None)
 
     dialog = ResumeDialog(incomplete, parent)
-    result = dialog.exec()
+    dialog.exec()
 
     action = dialog.action
     selected_task = dialog.selected_task

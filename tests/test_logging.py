@@ -4,8 +4,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from unittest.mock import patch
 
-import pytest
-
 
 class TestSetupLogging:
     """Tests for config.setup_logging()."""
@@ -66,8 +64,11 @@ class TestSetupLogging:
             setup_logging(verbose=True)
 
         logger = logging.getLogger("vdj_manager")
-        console = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)
-                   and not isinstance(h, RotatingFileHandler)][0]
+        console = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        ][0]
         assert console.level == logging.DEBUG
 
     def test_non_verbose_sets_console_info(self, tmp_path):
@@ -79,8 +80,11 @@ class TestSetupLogging:
             setup_logging(verbose=False)
 
         logger = logging.getLogger("vdj_manager")
-        console = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)
-                   and not isinstance(h, RotatingFileHandler)][0]
+        console = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        ][0]
         assert console.level == logging.INFO
 
     def test_file_handler_always_debug(self, tmp_path):
