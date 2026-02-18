@@ -264,3 +264,100 @@ class TestWorkflowPanelRunLogic:
         panel._on_energy_finished({"analyzed": 5, "failed": 2, "results": []})
 
         assert panel._workers_running == 0
+
+
+class TestWorkflowPanelResultsUI:
+    """Tests for per-operation results tables and current-file labels."""
+
+    def test_panel_has_results_tables(self, qapp):
+        """Panel should have results tables for each operation."""
+        panel = WorkflowPanel()
+        assert hasattr(panel, "energy_results_table")
+        assert hasattr(panel, "mood_results_table")
+        assert hasattr(panel, "norm_results_table")
+        # Initially hidden
+        assert not panel.energy_results_table.isVisible()
+        assert not panel.mood_results_table.isVisible()
+        assert not panel.norm_results_table.isVisible()
+
+    def test_panel_has_current_file_labels(self, qapp):
+        """Panel should have current-file labels for each operation."""
+        panel = WorkflowPanel()
+        assert hasattr(panel, "energy_current_file")
+        assert hasattr(panel, "mood_current_file")
+        assert hasattr(panel, "norm_current_file")
+        # Initially hidden
+        assert not panel.energy_current_file.isVisible()
+
+    def test_on_energy_result_updates_label_and_table(self, qapp):
+        """_on_energy_result should update current-file label and add row to table."""
+        panel = WorkflowPanel()
+        result = {
+            "file_path": "/music/track.mp3",
+            "format": "mp3",
+            "energy": "7",
+            "status": "ok",
+        }
+        panel._on_energy_result(result)
+
+        assert "track.mp3" in panel.energy_current_file.text()
+        assert panel.energy_results_table.row_count() == 1
+        assert panel._energy_counts["analyzed"] == 1
+
+    def test_on_mood_result_counts_cached(self, qapp):
+        """Cached mood results should increment the cached counter."""
+        panel = WorkflowPanel()
+        result = {
+            "file_path": "/music/cached.mp3",
+            "format": "mp3",
+            "mood": "#happy",
+            "status": "cached",
+        }
+        panel._on_mood_result(result)
+
+        assert panel._mood_counts["cached"] == 1
+        assert panel._mood_counts["analyzed"] == 0
+
+    def test_on_norm_result_handles_str_dict_signature(self, qapp):
+        """_on_norm_result should accept (str, dict) and inject file_path."""
+        panel = WorkflowPanel()
+        result = {
+            "success": True,
+            "current_lufs": -12.5,
+            "gain_db": -1.5,
+        }
+        panel._on_norm_result("/music/loud.mp3", result)
+
+        assert "loud.mp3" in panel.norm_current_file.text()
+        assert panel.norm_results_table.row_count() == 1
+        assert panel._norm_counts["measured"] == 1
+        # Verify file_path was injected
+        rows = panel.norm_results_table.get_all_results()
+        assert rows[0]["file_path"] == "loud.mp3"  # Displayed as filename
+
+    def test_energy_finished_shows_summary(self, qapp):
+        """Energy finished handler should show summary counts."""
+        panel = WorkflowPanel()
+        panel._workers_running = 1
+        panel._database = MagicMock()
+        panel._unsaved_count = 0
+        panel._energy_counts = {"analyzed": 3, "cached": 2, "failed": 1}
+
+        panel._on_energy_finished({"analyzed": 3, "failed": 1})
+
+        assert "3 analyzed" in panel.energy_current_file.text()
+        assert "2 cached" in panel.energy_current_file.text()
+        assert "1 failed" in panel.energy_current_file.text()
+
+    def test_norm_finished_shows_summary(self, qapp):
+        """Norm finished handler should show summary counts."""
+        panel = WorkflowPanel()
+        panel._workers_running = 1
+        panel._database = MagicMock()
+        panel._unsaved_count = 0
+        panel._norm_counts = {"measured": 10, "failed": 0}
+
+        panel._on_norm_finished(True, "Done")
+
+        assert "10 measured" in panel.norm_current_file.text()
+        assert "0 failed" in panel.norm_current_file.text()

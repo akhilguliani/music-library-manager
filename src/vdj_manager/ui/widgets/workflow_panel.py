@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QComboBox,
     QMessageBox,
+    QScrollArea,
 )
 from PySide6.QtCore import Qt, Signal, Slot
 
@@ -24,6 +25,7 @@ from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
+from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import EnergyWorker, MoodWorker
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,11 @@ class WorkflowPanel(QWidget):
         self._unsaved_count: int = 0
         self._workers_running: int = 0
 
+        # Per-operation result counters
+        self._energy_counts = {"analyzed": 0, "cached": 0, "failed": 0}
+        self._mood_counts = {"analyzed": 0, "cached": 0, "failed": 0}
+        self._norm_counts = {"measured": 0, "failed": 0}
+
         self._setup_ui()
 
     def set_database(self, database: VDJDatabase | None, tracks: list[Song] | None = None) -> None:
@@ -69,7 +76,14 @@ class WorkflowPanel(QWidget):
         self._update_info()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+
+        # Scroll area to handle tall content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
 
         # Config section
         config_group = QGroupBox("Workflow Configuration")
@@ -175,20 +189,70 @@ class WorkflowPanel(QWidget):
 
         layout.addLayout(action_row)
 
-        # Progress widgets (one per operation)
+        # --- Energy progress + current file + results table ---
         self.energy_progress = ProgressWidget()
         self.energy_progress.setVisible(False)
         layout.addWidget(self.energy_progress)
 
+        self.energy_current_file = QLabel("")
+        self.energy_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.energy_current_file.setVisible(False)
+        layout.addWidget(self.energy_current_file)
+
+        self.energy_results_table = ConfigurableResultsTable(columns=[
+            {"name": "Track", "key": "file_path"},
+            {"name": "Fmt", "key": "format", "width": 50},
+            {"name": "Energy", "key": "energy", "width": 60},
+            {"name": "Status", "key": "status", "width": 80},
+        ])
+        self.energy_results_table.setMaximumHeight(200)
+        self.energy_results_table.setVisible(False)
+        layout.addWidget(self.energy_results_table)
+
+        # --- Mood progress + current file + results table ---
         self.mood_progress = ProgressWidget()
         self.mood_progress.setVisible(False)
         layout.addWidget(self.mood_progress)
 
+        self.mood_current_file = QLabel("")
+        self.mood_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.mood_current_file.setVisible(False)
+        layout.addWidget(self.mood_current_file)
+
+        self.mood_results_table = ConfigurableResultsTable(columns=[
+            {"name": "Track", "key": "file_path"},
+            {"name": "Fmt", "key": "format", "width": 50},
+            {"name": "Mood", "key": "mood", "width": 150},
+            {"name": "Status", "key": "status", "width": 80},
+        ])
+        self.mood_results_table.setMaximumHeight(200)
+        self.mood_results_table.setVisible(False)
+        layout.addWidget(self.mood_results_table)
+
+        # --- Norm progress + current file + results table ---
         self.norm_progress = ProgressWidget()
         self.norm_progress.setVisible(False)
         layout.addWidget(self.norm_progress)
 
+        self.norm_current_file = QLabel("")
+        self.norm_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.norm_current_file.setVisible(False)
+        layout.addWidget(self.norm_current_file)
+
+        self.norm_results_table = ConfigurableResultsTable(columns=[
+            {"name": "Track", "key": "file_path"},
+            {"name": "LUFS", "key": "current_lufs", "width": 70},
+            {"name": "Gain dB", "key": "gain_db", "width": 70},
+            {"name": "Status", "key": "status", "width": 80},
+        ])
+        self.norm_results_table.setMaximumHeight(200)
+        self.norm_results_table.setVisible(False)
+        layout.addWidget(self.norm_results_table)
+
         layout.addStretch()
+
+        scroll.setWidget(scroll_widget)
+        outer_layout.addWidget(scroll)
 
     def _update_info(self) -> None:
         """Update the info label with track counts."""
@@ -293,12 +357,14 @@ class WorkflowPanel(QWidget):
             return
 
         self._workers_running += 1
+        self._energy_counts = {"analyzed": 0, "cached": 0, "failed": 0}
         self._energy_worker = EnergyWorker(
             tracks,
             max_workers=self.energy_workers_spin.value(),
             cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
         )
         self._energy_worker.result_ready.connect(self._apply_result_to_db)
+        self._energy_worker.result_ready.connect(self._on_energy_result)
         self._energy_worker.finished_work.connect(self._on_energy_finished)
         self._energy_worker.error.connect(
             lambda e: self.status_label.setText(f"Energy error: {e}")
@@ -307,6 +373,10 @@ class WorkflowPanel(QWidget):
         self.energy_progress.reset()
         self.energy_progress.start(len(tracks))
         self.energy_progress.setVisible(True)
+        self.energy_current_file.setText("")
+        self.energy_current_file.setVisible(True)
+        self.energy_results_table.clear()
+        self.energy_results_table.setVisible(True)
         self._energy_worker.progress.connect(self.energy_progress.update_progress)
         self._energy_worker.status_changed.connect(self.energy_progress.on_status_changed)
         self.energy_progress.pause_requested.connect(self._energy_worker.pause)
@@ -325,6 +395,7 @@ class WorkflowPanel(QWidget):
         lastfm_api_key = get_lastfm_api_key() if enable_online else None
 
         self._workers_running += 1
+        self._mood_counts = {"analyzed": 0, "cached": 0, "failed": 0}
         self._mood_worker = MoodWorker(
             tracks,
             max_workers=self.mood_workers_spin.value(),
@@ -336,6 +407,7 @@ class WorkflowPanel(QWidget):
             max_tags=self.mood_max_tags_spin.value(),
         )
         self._mood_worker.result_ready.connect(self._apply_result_to_db)
+        self._mood_worker.result_ready.connect(self._on_mood_result)
         self._mood_worker.finished_work.connect(self._on_mood_finished)
         self._mood_worker.error.connect(
             lambda e: self.status_label.setText(f"Mood error: {e}")
@@ -344,6 +416,10 @@ class WorkflowPanel(QWidget):
         self.mood_progress.reset()
         self.mood_progress.start(len(tracks))
         self.mood_progress.setVisible(True)
+        self.mood_current_file.setText("")
+        self.mood_current_file.setVisible(True)
+        self.mood_results_table.clear()
+        self.mood_results_table.setVisible(True)
         self._mood_worker.progress.connect(self.mood_progress.update_progress)
         self._mood_worker.status_changed.connect(self.mood_progress.on_status_changed)
         self.mood_progress.pause_requested.connect(self._mood_worker.pause)
@@ -372,11 +448,13 @@ class WorkflowPanel(QWidget):
         )
 
         self._workers_running += 1
+        self._norm_counts = {"measured": 0, "failed": 0}
         self._norm_worker = NormalizationWorker(
             task_state,
             target_lufs=self.norm_lufs_spin.value(),
             max_workers=self.norm_workers_spin.value(),
         )
+        self._norm_worker.result_ready.connect(self._on_norm_result)
         self._norm_worker.finished_work.connect(self._on_norm_finished)
         self._norm_worker.error.connect(
             lambda e: self.status_label.setText(f"Normalization error: {e}")
@@ -385,6 +463,10 @@ class WorkflowPanel(QWidget):
         self.norm_progress.reset()
         self.norm_progress.start(len(file_paths))
         self.norm_progress.setVisible(True)
+        self.norm_current_file.setText("")
+        self.norm_current_file.setVisible(True)
+        self.norm_results_table.clear()
+        self.norm_results_table.setVisible(True)
         self._norm_worker.progress.connect(self.norm_progress.update_progress)
         self._norm_worker.status_changed.connect(self.norm_progress.on_status_changed)
         self.norm_progress.pause_requested.connect(self._norm_worker.pause)
@@ -402,9 +484,76 @@ class WorkflowPanel(QWidget):
         self._database.update_song_tags(result["file_path"], **tag_updates)
         self._unsaved_count += 1
 
+    @Slot(dict)
+    def _on_energy_result(self, result: dict) -> None:
+        """Handle a single energy analysis result for UI display."""
+        file_path = result.get("file_path", "")
+        filename = Path(file_path).name if file_path else ""
+        self.energy_current_file.setText(f"Processing: {filename}")
+
+        status = result.get("status", "ok")
+        if status == "cached":
+            self._energy_counts["cached"] += 1
+        elif status in ("failed", "error"):
+            self._energy_counts["failed"] += 1
+        else:
+            self._energy_counts["analyzed"] += 1
+
+        self.energy_results_table.add_result(result)
+
+    @Slot(dict)
+    def _on_mood_result(self, result: dict) -> None:
+        """Handle a single mood analysis result for UI display."""
+        file_path = result.get("file_path", "")
+        filename = Path(file_path).name if file_path else ""
+        self.mood_current_file.setText(f"Processing: {filename}")
+
+        status = result.get("status", "ok")
+        if status == "cached":
+            self._mood_counts["cached"] += 1
+        elif status in ("failed", "error"):
+            self._mood_counts["failed"] += 1
+        else:
+            self._mood_counts["analyzed"] += 1
+
+        self.mood_results_table.add_result(result)
+
+    @Slot(str, dict)
+    def _on_norm_result(self, file_path: str, result: dict) -> None:
+        """Handle a single normalization result for UI display.
+
+        NormalizationWorker emits result_ready(str, dict) — different from
+        analysis workers which emit result_ready(dict).
+        """
+        filename = Path(file_path).name if file_path else ""
+        self.norm_current_file.setText(f"Measuring: {filename}")
+
+        # Inject file_path into result dict for ConfigurableResultsTable
+        result["file_path"] = file_path
+        success = result.get("success", True)
+        if success:
+            self._norm_counts["measured"] += 1
+            result.setdefault("status", "ok")
+        else:
+            self._norm_counts["failed"] += 1
+            result.setdefault("status", result.get("error", "failed"))
+
+        # Format numeric values for display
+        lufs = result.get("current_lufs")
+        if lufs is not None:
+            result["current_lufs"] = f"{lufs:.1f}"
+        gain = result.get("gain_db")
+        if gain is not None:
+            result["gain_db"] = f"{gain:+.1f}"
+
+        self.norm_results_table.add_result(result)
+
     def _on_energy_finished(self, result: dict) -> None:
         """Handle energy worker completion."""
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
+        c = self._energy_counts
+        summary = f"Energy: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
+        self.energy_current_file.setText(summary)
         if failed > 0:
             self.energy_progress.on_finished(False, f"Energy: {failed} failed")
         else:
@@ -415,6 +564,9 @@ class WorkflowPanel(QWidget):
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood worker completion."""
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
+        c = self._mood_counts
+        summary = f"Mood: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
+        self.mood_current_file.setText(summary)
         if failed > 0:
             self.mood_progress.on_finished(False, f"Mood: {failed} failed")
         else:
@@ -424,6 +576,9 @@ class WorkflowPanel(QWidget):
 
     def _on_norm_finished(self, success, message="") -> None:
         """Handle normalization worker completion."""
+        c = self._norm_counts
+        summary = f"Normalization: {c['measured']} measured, {c['failed']} failed"
+        self.norm_current_file.setText(summary)
         if success:
             self.norm_progress.on_finished(True, "Normalization: Done")
         else:
