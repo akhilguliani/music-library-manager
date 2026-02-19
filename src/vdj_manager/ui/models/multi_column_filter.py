@@ -13,11 +13,15 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
 
     Each column can have an independent filter pattern. A row is accepted
     only if it matches ALL active column filters (AND logic).
+
+    Optionally, an inclusion filter can restrict to a set of file paths
+    (used by the column browser).
     """
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
         self._column_filters: dict[int, re.Pattern[str]] = {}
+        self._inclusion_paths: set[str] | None = None
 
     def set_column_filter(self, column: int, pattern: str) -> None:
         """Set a filter pattern for a specific column.
@@ -41,17 +45,34 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
     def clear_all_filters(self) -> None:
         """Clear all column filters."""
         self._column_filters.clear()
+        self._inclusion_paths = None
+        self.invalidate()
+
+    def set_inclusion_filter(self, file_paths: set[str] | None) -> None:
+        """Restrict visible rows to tracks whose file_path is in the set.
+
+        Args:
+            file_paths: Set of allowed file paths, or None to disable.
+        """
+        self._inclusion_paths = file_paths
         self.invalidate()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # type: ignore[override]
         """Accept a row only if it matches all active column filters."""
-        if not self._column_filters:
-            return True
-
         model = self.sourceModel()
         if model is None:
             return True
 
+        # Inclusion filter (column browser)
+        if self._inclusion_paths is not None:
+            index = model.index(source_row, 0, source_parent)
+            song = model.data(index, Qt.ItemDataRole.UserRole)
+            if song is not None:
+                file_path = getattr(song, "file_path", None)
+                if file_path is not None and file_path not in self._inclusion_paths:
+                    return False
+
+        # Per-column regex filters
         for col, pattern in self._column_filters.items():
             index = model.index(source_row, col, source_parent)
             data = model.data(index, Qt.ItemDataRole.DisplayRole)

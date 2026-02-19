@@ -3,7 +3,7 @@
 import logging
 
 from PySide6.QtCore import QTimer, Slot
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -16,13 +16,16 @@ logger = logging.getLogger(__name__)
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.constants import TabIndex
+from vdj_manager.ui.navigation import NavigationItem, TabNavigationProvider
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
+from vdj_manager.ui.widgets.command_palette import CommandItem, CommandPalette
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
 from vdj_manager.ui.widgets.export_panel import ExportPanel
 from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.mini_player import MiniPlayer
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 from vdj_manager.ui.widgets.player_panel import PlayerPanel
+from vdj_manager.ui.widgets.shortcuts_dialog import ShortcutsDialog
 from vdj_manager.ui.widgets.workflow_panel import WorkflowPanel
 
 
@@ -42,8 +45,11 @@ class MainWindow(QMainWindow):
         self._save_timer.timeout.connect(self._flush_save)
 
         self._setup_ui()
+        self._setup_navigation()
         self._setup_menu_bar()
         self._setup_status_bar()
+        self._setup_command_palette()
+        self._setup_shortcuts()
 
     def _setup_ui(self) -> None:
         """Set up the main UI layout with tabs and mini player."""
@@ -128,6 +134,82 @@ class MainWindow(QMainWindow):
         self.workflow_panel.database_changed.connect(self._on_workflow_database_changed)
         self.tab_widget.addTab(self.workflow_panel, "Workflow")
 
+    def _setup_navigation(self) -> None:
+        """Set up the NavigationProvider wrapping the tab widget."""
+        self._navigation = TabNavigationProvider(self.tab_widget)
+        panels = [
+            ("Database", "", "Ctrl+1", self.database_panel),
+            ("Normalization", "", "Ctrl+2", self.normalization_panel),
+            ("Files", "", "Ctrl+3", self.files_panel),
+            ("Analysis", "", "Ctrl+4", self.analysis_panel),
+            ("Export", "", "Ctrl+5", self.export_panel),
+            ("Player", "", "Ctrl+6", self.player_panel),
+            ("Workflow", "", "Ctrl+7", self.workflow_panel),
+        ]
+        for name, icon, shortcut, panel in panels:
+            self._navigation.register_panel(NavigationItem(name, icon, shortcut, panel))
+
+    def _setup_command_palette(self) -> None:
+        """Set up the command palette with all available commands."""
+        self._command_palette = CommandPalette(self)
+
+        commands = [
+            # Navigation
+            CommandItem("Database", "Ctrl+1", "Navigation", lambda: self._navigation.navigate_to("Database")),
+            CommandItem("Normalization", "Ctrl+2", "Navigation", lambda: self._navigation.navigate_to("Normalization")),
+            CommandItem("Files", "Ctrl+3", "Navigation", lambda: self._navigation.navigate_to("Files")),
+            CommandItem("Analysis", "Ctrl+4", "Navigation", lambda: self._navigation.navigate_to("Analysis")),
+            CommandItem("Export", "Ctrl+5", "Navigation", lambda: self._navigation.navigate_to("Export")),
+            CommandItem("Player", "Ctrl+6", "Navigation", lambda: self._navigation.navigate_to("Player")),
+            CommandItem("Workflow", "Ctrl+7", "Navigation", lambda: self._navigation.navigate_to("Workflow")),
+            # Database operations
+            CommandItem("Load Database", "", "Database", lambda: self.database_panel._on_load_clicked()),
+            CommandItem("Backup Database", "", "Database", lambda: self.database_panel._on_backup_clicked()),
+            CommandItem("Validate Database", "", "Database", lambda: self.database_panel._on_validate_clicked()),
+            CommandItem("Clean Database", "", "Database", lambda: self.database_panel._on_clean_clicked()),
+            # Track browser
+            CommandItem("Focus Search", "Ctrl+L", "Browser", lambda: self._focus_search()),
+            CommandItem("Toggle Column Filters", "Ctrl+F", "Browser", lambda: self.database_panel.toggle_filter_row()),
+            CommandItem("Toggle Column Browser", "Ctrl+B", "Browser", lambda: self.database_panel.toggle_column_browser()),
+            # Playback
+            CommandItem("Play / Pause", "Space", "Playback", self._playback_bridge.toggle_play_pause),
+            CommandItem("Next Track", "Ctrl+Right", "Playback", self._playback_bridge.next_track),
+            CommandItem("Previous Track", "Ctrl+Left", "Playback", self._playback_bridge.previous_track),
+            # Help
+            CommandItem("Keyboard Shortcuts", "?", "Help", self._show_shortcuts_dialog),
+        ]
+        self._command_palette.register_commands(commands)
+
+        # Cmd+K shortcut
+        palette_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        palette_shortcut.activated.connect(self._command_palette.show_palette)
+
+    def _setup_shortcuts(self) -> None:
+        """Set up additional keyboard shortcuts."""
+        # Ctrl+L: focus search bar in database panel
+        search_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        search_shortcut.activated.connect(self._focus_search)
+
+        # Ctrl+Enter: play selected track
+        play_selected = QShortcut(QKeySequence("Ctrl+Return"), self)
+        play_selected.activated.connect(self._play_selected_track)
+
+    def _focus_search(self) -> None:
+        """Focus the search bar in the database panel."""
+        self._navigation.navigate_to("Database")
+        self.database_panel.search_input.setFocus()
+
+    def _play_selected_track(self) -> None:
+        """Play the currently selected track in the database panel."""
+        track = self.database_panel.get_selected_track()
+        if track:
+            self._on_track_play_requested(track)
+
+    def _show_shortcuts_dialog(self) -> None:
+        """Show the keyboard shortcuts help dialog."""
+        dialog = ShortcutsDialog(self)
+        dialog.exec()
+
     def _setup_menu_bar(self) -> None:
         """Set up the application menu bar."""
         menu_bar = self.menuBar()
@@ -187,6 +269,13 @@ class MainWindow(QMainWindow):
 
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
+
+        shortcuts_action = QAction("Keyboard &Shortcuts", self)
+        shortcuts_action.setShortcut(QKeySequence("?"))
+        shortcuts_action.triggered.connect(self._show_shortcuts_dialog)
+        help_menu.addAction(shortcuts_action)
+
+        help_menu.addSeparator()
 
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._on_about)

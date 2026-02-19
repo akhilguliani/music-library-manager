@@ -41,6 +41,7 @@ from vdj_manager.ui.delegates.tag_edit_delegates import (
 from vdj_manager.ui.models.multi_column_filter import MultiColumnFilterProxyModel
 from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.widgets.column_browser import ColumnBrowser
 from vdj_manager.ui.widgets.column_filter_row import ColumnFilterRow
 from vdj_manager.ui.workers.database_worker import (
     BackupWorker,
@@ -94,6 +95,10 @@ class DatabasePanel(QWidget):
         shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut.activated.connect(self.toggle_filter_row)
 
+        # Ctrl+B toggles column browser
+        browser_shortcut = QShortcut(QKeySequence("Ctrl+B"), self)
+        browser_shortcut.activated.connect(self.toggle_column_browser)
+
     @property
     def database(self) -> VDJDatabase | None:
         """Get the currently loaded database."""
@@ -122,15 +127,30 @@ class DatabasePanel(QWidget):
         # Create splitter for track table, tag editor, and log
         splitter = QSplitter(Qt.Orientation.Vertical)
 
+        # Horizontal splitter: column browser (left) + track table (right)
+        self._browser_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self._column_browser = ColumnBrowser()
+        self._column_browser.setVisible(False)
+        self._column_browser.filter_changed.connect(self._on_browser_filter_changed)
+        self._browser_splitter.addWidget(self._column_browser)
+
         # Track table group
         tracks_group = self._create_tracks_group()
-        splitter.addWidget(tracks_group)
+        self._browser_splitter.addWidget(tracks_group)
+
+        # Give most space to track table
+        self._browser_splitter.setStretchFactor(0, 1)
+        self._browser_splitter.setStretchFactor(1, 3)
+
+        splitter.addWidget(self._browser_splitter)
 
         # Tag editing group (hidden until a track is selected)
         tag_group = self._create_tag_edit_group()
         self._tag_group = tag_group
         tag_group.setVisible(False)
         splitter.addWidget(tag_group)
+
 
         # Operation log
         log_group = QGroupBox("Operation Log")
@@ -367,6 +387,10 @@ class DatabasePanel(QWidget):
             self.track_model.set_tracks(result.tracks)
             self._update_result_count()
 
+            # Update column browser if visible
+            if self._column_browser.isVisible():
+                self._column_browser.set_tracks(result.tracks)
+
             self.status_label.setText(f"Loaded {len(result.tracks)} tracks")
             self._set_status_color("success")
             self._log_operation(f"Loaded database with {len(result.tracks)} tracks")
@@ -467,6 +491,37 @@ class DatabasePanel(QWidget):
             self._filter_row.clear_all()
             self._column_filter_model.clear_all_filters()
             self._update_result_count()
+
+    def toggle_column_browser(self) -> None:
+        """Toggle visibility of the column browser panel."""
+        visible = not self._column_browser.isVisible()
+        self._column_browser.setVisible(visible)
+        if visible and self._tracks:
+            self._column_browser.set_tracks(self._tracks)
+
+    def _on_browser_filter_changed(
+        self, genres: list, artists: list, albums: list
+    ) -> None:
+        """Handle column browser filter change."""
+        if not genres and not artists and not albums:
+            # "All" selected in all lists — no inclusion filter
+            self._column_filter_model.set_inclusion_filter(None)
+        else:
+            # Compute matching file paths
+            matching = set()
+            for t in self._tracks:
+                g = t.tags.genre if t.tags and t.tags.genre else ""
+                a = t.tags.author if t.tags and t.tags.author else ""
+                al = t.tags.album if t.tags and t.tags.album else ""
+                if genres and g not in genres:
+                    continue
+                if artists and a not in artists:
+                    continue
+                if albums and al not in albums:
+                    continue
+                matching.add(t.file_path)
+            self._column_filter_model.set_inclusion_filter(matching)
+        self._update_result_count()
 
     def _map_to_source(self, view_index):
         """Map a view index through both proxy models to the source model.
@@ -1157,6 +1212,8 @@ class DatabasePanel(QWidget):
         elif self._database is not None:
             self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
+        if self._column_browser.isVisible():
+            self._column_browser.set_tracks(self._tracks)
         self._update_result_count()
 
     def _set_status_color(self, status: str) -> None:
