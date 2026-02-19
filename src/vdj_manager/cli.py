@@ -905,6 +905,132 @@ def analyze_mood(
     console.print(f"[green]✓[/green] Analyzed {analyzed} tracks ({failed} failed)")
 
 
+@analyze.command("genre")
+@click.option("--all", "analyze_all", is_flag=True, help="Detect genre for all tracks")
+@click.option("--untagged", is_flag=True, help="Only tracks without genre tags")
+@click.option(
+    "--online/--no-online", default=True, help="Enable online genre lookup (Last.fm/MusicBrainz)"
+)
+@click.option("--lastfm-key", help="Last.fm API key (overrides env var)")
+@click.option("--dry-run", is_flag=True, help="Show what would be analyzed")
+@click.option("--local", "db_choice", flag_value="local", help="Use local database")
+@click.option(
+    "--mynvme", "db_choice", flag_value="mynvme", default=True, help="Use MyNVMe database"
+)
+def analyze_genre(
+    analyze_all: bool,
+    untagged: bool,
+    online: bool,
+    lastfm_key: str | None,
+    dry_run: bool,
+    db_choice: str,
+):
+    """Detect and tag track genres.
+
+    Two-pass detection: reads embedded file tags first, then falls back
+    to online lookup via Last.fm and MusicBrainz when enabled.
+    Results are stored in the Genre tag.
+    """
+    from .analysis.online_genre import lookup_online_genre, normalize_genre
+    from .config import get_lastfm_api_key
+
+    path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
+
+    if not path.exists():
+        console.print(f"[red]Database not found: {path}[/red]")
+        return
+
+    db = get_database(path)
+
+    # Resolve API key
+    api_key = lastfm_key or get_lastfm_api_key()
+    if online and api_key:
+        console.print("[cyan]Online genre lookup enabled (Last.fm + MusicBrainz)[/cyan]")
+    elif online:
+        console.print(
+            "[yellow]Online lookup enabled but no Last.fm API key set (MusicBrainz only)[/yellow]"
+        )
+        console.print("[dim]Set LASTFM_API_KEY env var or use --lastfm-key for Last.fm[/dim]")
+
+    # Find tracks
+    to_analyze = []
+    for song in db.songs.values():
+        if song.is_netsearch:
+            continue
+        file_exists = not song.is_windows_path and Path(song.file_path).exists()
+        has_metadata = song.tags and (song.tags.author or song.tags.title)
+        if not file_exists and not (online and has_metadata):
+            continue
+        if untagged and song.tags and song.tags.genre:
+            continue
+        to_analyze.append(song)
+
+    if not to_analyze:
+        console.print("[green]No tracks to analyze[/green]")
+        return
+
+    console.print(f"Found [bold]{len(to_analyze)}[/bold] tracks to analyze")
+
+    if dry_run:
+        console.print("[yellow]Dry run - no detection performed[/yellow]")
+        return
+
+    # Create backup
+    backup_mgr = BackupManager()
+    backup_mgr.create_backup(path, label="pre_genre")
+
+    detected = 0
+    failed = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress:
+        task = progress.add_task("Detecting genre...", total=len(to_analyze))
+
+        for song in to_analyze:
+            try:
+                genre = None
+
+                # Pass 1: Read from embedded file tags
+                file_exists = not song.is_windows_path and Path(song.file_path).exists()
+                if file_exists:
+                    try:
+                        from .files.id3_editor import FileTagEditor
+
+                        editor = FileTagEditor()
+                        file_tags = editor.read_tags(song.file_path)
+                        raw_genre = file_tags.get("genre")
+                        if raw_genre and raw_genre.strip():
+                            genre = normalize_genre(raw_genre)
+                    except Exception:
+                        pass
+
+                # Pass 2: Online lookup
+                if not genre and online:
+                    artist = (song.tags.author or "") if song.tags else ""
+                    title = (song.tags.title or "") if song.tags else ""
+                    if artist and title:
+                        online_genre, _source = lookup_online_genre(artist, title, api_key)
+                        if online_genre:
+                            genre = online_genre
+
+                if genre:
+                    db.update_song_tags(song.file_path, Genre=genre)
+                    detected += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                console.print(f"[red]Error: {song.file_path}: {e}[/red]")
+                failed += 1
+            progress.advance(task)
+
+    db.save()
+    console.print(f"[green]✓[/green] Detected genre for {detected} tracks ({failed} failed)")
+
+
 @analyze.command("import-mik")
 @click.option("--dry-run", is_flag=True, help="Show what would be imported")
 @click.option("--local", "db_choice", flag_value="local", help="Use local database")
