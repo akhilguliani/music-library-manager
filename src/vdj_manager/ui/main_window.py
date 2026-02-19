@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
+from vdj_manager.ui.constants import TabIndex
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
 from vdj_manager.ui.widgets.export_panel import ExportPanel
@@ -64,7 +65,9 @@ class MainWindow(QMainWindow):
 
         # Mini player at bottom
         self.mini_player = MiniPlayer(self._playback_bridge)
-        self.mini_player.expand_requested.connect(lambda: self.tab_widget.setCurrentIndex(5))
+        self.mini_player.expand_requested.connect(
+            lambda: self.tab_widget.setCurrentIndex(TabIndex.PLAYER)
+        )
         if not vlc_available:
             self.mini_player.set_vlc_unavailable()
         central_layout.addWidget(self.mini_player)
@@ -148,13 +151,13 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
 
         tab_names = [
-            ("&Database", "Ctrl+1", 0),
-            ("&Normalization", "Ctrl+2", 1),
-            ("&Files", "Ctrl+3", 2),
-            ("&Analysis", "Ctrl+4", 3),
-            ("&Export", "Ctrl+5", 4),
-            ("&Player", "Ctrl+6", 5),
-            ("&Workflow", "Ctrl+7", 6),
+            ("&Database", "Ctrl+1", TabIndex.DATABASE),
+            ("&Normalization", "Ctrl+2", TabIndex.NORMALIZATION),
+            ("&Files", "Ctrl+3", TabIndex.FILES),
+            ("&Analysis", "Ctrl+4", TabIndex.ANALYSIS),
+            ("&Export", "Ctrl+5", TabIndex.EXPORT),
+            ("&Player", "Ctrl+6", TabIndex.PLAYER),
+            ("&Workflow", "Ctrl+7", TabIndex.WORKFLOW),
         ]
         for name, shortcut, idx in tab_names:
             action = QAction(name, self)

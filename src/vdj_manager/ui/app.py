@@ -60,7 +60,9 @@ def main() -> int:
         # Resume the task in the appropriate panel
         if task.task_type.value in ("normalize", "measure"):
             window.normalization_panel.resume_task(task)
-            window.tab_widget.setCurrentIndex(1)  # Switch to normalization tab
+            from vdj_manager.ui.constants import TabIndex
+
+            window.tab_widget.setCurrentIndex(TabIndex.NORMALIZATION)
     elif action == "discard" and task:
         # Delete the selected checkpoint
         checkpoint_manager.delete(task.task_id)
