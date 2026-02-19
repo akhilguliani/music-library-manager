@@ -9,6 +9,50 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+def _lighten(hex_color: str, factor: float = 0.2) -> str:
+    """Lighten a hex color by blending it toward white.
+
+    Args:
+        hex_color: A hex color string (e.g. "#1a1a2e" or "#fff").
+        factor: Blend factor toward white, 0.0 = unchanged, 1.0 = white.
+
+    Returns:
+        A 7-character hex color string (e.g. "#3a3a4e").
+    """
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    r = min(255, int(r + (255 - r) * factor))
+    g = min(255, int(g + (255 - g) * factor))
+    b = min(255, int(b + (255 - b) * factor))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _darken(hex_color: str, factor: float = 0.2) -> str:
+    """Darken a hex color by blending it toward black.
+
+    Args:
+        hex_color: A hex color string (e.g. "#5588cc" or "#fff").
+        factor: Blend factor toward black, 0.0 = unchanged, 1.0 = black.
+
+    Returns:
+        A 7-character hex color string (e.g. "#446da3").
+    """
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    r = max(0, int(r * (1.0 - factor)))
+    g = max(0, int(g * (1.0 - factor)))
+    b = max(0, int(b * (1.0 - factor)))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 @dataclass(frozen=True)
 class ThemeColors:
     """Complete color palette for a UI theme."""
@@ -165,6 +209,23 @@ class ThemeManager:
 def generate_stylesheet(theme: ThemeColors | None = None) -> str:
     """Generate a complete application QSS stylesheet from theme colors."""
     t = theme or DARK_THEME
+
+    # Pre-compute derived colors using lighten/darken helpers
+    btn_hover = _lighten(t.bg_hover, 0.15)
+    btn_pressed = _darken(t.bg_hover, 0.15)
+    accent_light = _lighten(t.accent, 0.15)
+    accent_dark = _darken(t.accent, 0.2)
+    input_hover_border = _lighten(t.border, 0.2)
+    scrollbar_pressed = _lighten(t.scrollbar_handle_hover, 0.15)
+    table_item_hover = _lighten(t.bg_secondary, 0.08)
+    list_item_hover = _lighten(t.bg_secondary, 0.08)
+    splitter_pressed = _lighten(t.border_light, 0.15)
+    groupbox_border = _lighten(t.border, 0.08)
+    danger_hover = _lighten(t.status_error, 0.15)
+    danger_pressed = _darken(t.status_error, 0.2)
+    slider_handle_pressed = _darken(t.accent, 0.15)
+    tab_hover_border = _lighten(t.tab_hover, 0.1)
+
     return f"""
 /* ---- Global ---- */
 QMainWindow, QDialog {{
@@ -230,11 +291,12 @@ QPushButton {{
     font-size: 13px;
 }}
 QPushButton:hover {{
-    background-color: {t.bg_pressed};
+    background-color: {btn_hover};
     border-color: {t.border_light};
 }}
 QPushButton:pressed {{
-    background-color: {t.accent_pressed};
+    background-color: {btn_pressed};
+    border-color: {t.accent};
 }}
 QPushButton:disabled {{
     background-color: {t.bg_secondary};
@@ -247,14 +309,30 @@ QPushButton[class="accent"] {{
     color: #ffffff;
 }}
 QPushButton[class="accent"]:hover {{
-    background-color: {t.accent_hover};
-    border-color: {t.accent_hover};
+    background-color: {accent_light};
+    border-color: {accent_light};
+}}
+QPushButton[class="accent"]:pressed {{
+    background-color: {accent_dark};
+    border-color: {accent_dark};
+}}
+QPushButton[class="accent"]:disabled {{
+    background-color: {_darken(t.accent, 0.4)};
+    border-color: {_darken(t.accent, 0.4)};
+    color: {t.text_disabled};
 }}
 QPushButton[class="danger"] {{
     color: {t.status_error};
     font-weight: bold;
     border: none;
     background: transparent;
+}}
+QPushButton[class="danger"]:hover {{
+    color: {danger_hover};
+    background-color: {_lighten(t.bg_primary, 0.05)};
+}}
+QPushButton[class="danger"]:pressed {{
+    color: {danger_pressed};
 }}
 
 /* ---- Inputs ---- */
@@ -266,8 +344,16 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
     padding: 4px 8px;
     selection-background-color: {t.accent};
 }}
+QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {{
+    border-color: {input_hover_border};
+}}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
     border-color: {t.border_focus};
+}}
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{
+    background-color: {t.bg_secondary};
+    color: {t.text_disabled};
+    border-color: {t.bg_secondary};
 }}
 QComboBox::drop-down {{
     border: none;
@@ -303,6 +389,11 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover:!selected {{
     background-color: {t.tab_hover};
     color: {t.text_primary};
+    border-color: {tab_hover_border};
+}}
+QTabBar::tab:disabled {{
+    color: {t.text_disabled};
+    background-color: {t.bg_secondary};
 }}
 
 /* ---- Tables & Lists ---- */
@@ -314,6 +405,24 @@ QTableView, QTreeView, QListView, QListWidget {{
     selection-background-color: {t.bg_selected};
     selection-color: {t.text_primary};
     alternate-background-color: {t.bg_primary};
+}}
+QTableView::item:hover {{
+    background-color: {table_item_hover};
+}}
+QTableView::item:selected {{
+    background-color: {t.bg_selected};
+    color: {t.text_primary};
+}}
+QListWidget::item {{
+    padding: 3px 6px;
+    border-radius: 2px;
+}}
+QListWidget::item:hover {{
+    background-color: {list_item_hover};
+}}
+QListWidget::item:selected {{
+    background-color: {t.bg_selected};
+    color: {t.text_primary};
 }}
 QHeaderView::section {{
     background-color: {t.bg_tertiary};
@@ -332,6 +441,7 @@ QScrollBar:vertical {{
     background-color: {t.scrollbar_bg};
     width: 10px;
     margin: 0;
+    border-radius: 5px;
 }}
 QScrollBar::handle:vertical {{
     background-color: {t.scrollbar_handle};
@@ -341,13 +451,20 @@ QScrollBar::handle:vertical {{
 QScrollBar::handle:vertical:hover {{
     background-color: {t.scrollbar_handle_hover};
 }}
+QScrollBar::handle:vertical:pressed {{
+    background-color: {scrollbar_pressed};
+}}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
+}}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: none;
 }}
 QScrollBar:horizontal {{
     background-color: {t.scrollbar_bg};
     height: 10px;
     margin: 0;
+    border-radius: 5px;
 }}
 QScrollBar::handle:horizontal {{
     background-color: {t.scrollbar_handle};
@@ -357,8 +474,14 @@ QScrollBar::handle:horizontal {{
 QScrollBar::handle:horizontal:hover {{
     background-color: {t.scrollbar_handle_hover};
 }}
+QScrollBar::handle:horizontal:pressed {{
+    background-color: {scrollbar_pressed};
+}}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0;
+}}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: none;
 }}
 
 /* ---- Progress bar ---- */
@@ -377,22 +500,30 @@ QProgressBar::chunk {{
 
 /* ---- Group boxes ---- */
 QGroupBox {{
-    border: 1px solid {t.border};
+    border: 1px solid {groupbox_border};
     border-radius: 4px;
     margin-top: 8px;
     padding-top: 8px;
     color: {t.text_primary};
+    font-weight: bold;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
     padding: 0 6px;
-    color: {t.text_secondary};
+    color: {t.accent};
+    font-weight: bold;
 }}
 
 /* ---- Checkboxes & Radios ---- */
 QCheckBox, QRadioButton {{
     color: {t.text_primary};
     spacing: 6px;
+}}
+QCheckBox:hover, QRadioButton:hover {{
+    color: {_lighten(t.text_primary, 0.1)};
+}}
+QCheckBox:disabled, QRadioButton:disabled {{
+    color: {t.text_disabled};
 }}
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 16px;
@@ -415,13 +546,28 @@ QSlider::handle:horizontal {{
 QSlider::handle:horizontal:hover {{
     background-color: {t.accent_hover};
 }}
+QSlider::handle:horizontal:pressed {{
+    background-color: {slider_handle_pressed};
+}}
 
 /* ---- Splitter ---- */
 QSplitter::handle {{
     background-color: {t.border};
+    border-radius: 1px;
+}}
+QSplitter::handle:horizontal {{
+    width: 3px;
+    margin: 4px 0;
+}}
+QSplitter::handle:vertical {{
+    height: 3px;
+    margin: 0 4px;
 }}
 QSplitter::handle:hover {{
-    background-color: {t.border_light};
+    background-color: {t.accent};
+}}
+QSplitter::handle:pressed {{
+    background-color: {splitter_pressed};
 }}
 
 /* ---- Tooltips ---- */
@@ -430,6 +576,7 @@ QToolTip {{
     color: {t.text_primary};
     border: 1px solid {t.border};
     padding: 4px 8px;
+    border-radius: 3px;
 }}
 
 /* ---- Menu ---- */
@@ -445,9 +592,17 @@ QMenu {{
     background-color: {t.bg_secondary};
     color: {t.text_primary};
     border: 1px solid {t.border};
+    border-radius: 4px;
+    padding: 4px 0;
+}}
+QMenu::item {{
+    padding: 5px 24px 5px 12px;
 }}
 QMenu::item:selected {{
     background-color: {t.bg_selected};
+}}
+QMenu::item:disabled {{
+    color: {t.text_disabled};
 }}
 QMenu::separator {{
     height: 1px;
@@ -478,6 +633,9 @@ MiniPlayer QPushButton {{
 }}
 MiniPlayer QPushButton:hover {{
     background-color: {t.player_button_hover};
+}}
+MiniPlayer QPushButton:pressed {{
+    background-color: {_darken(t.player_button_hover, 0.15)};
 }}
 
 /* ---- Message boxes ---- */
