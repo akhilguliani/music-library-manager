@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QModelIndex, QObject, QRect, QRunnable, Qt, QThreadPool, Signal
@@ -59,7 +60,7 @@ class _ArtLoadRunnable(QRunnable):
 
 
 class AlbumArtCache(QObject):
-    """FIFO cache for album art pixmaps with async background loading.
+    """LRU cache for album art pixmaps with async background loading.
 
     Signals:
         art_ready(str): Emitted when art for a file_path becomes available.
@@ -69,7 +70,7 @@ class AlbumArtCache(QObject):
 
     def __init__(self, max_size: int = 500, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._cache: dict[str, QPixmap | None] = {}
+        self._cache: OrderedDict[str, QPixmap | None] = OrderedDict()
         self._pending: set[str] = set()
         self._active_runnables: dict[str, _ArtLoadRunnable] = {}
         self._max_size = max_size
@@ -82,6 +83,7 @@ class AlbumArtCache(QObject):
         Triggers async loading if not cached and not already pending.
         """
         if file_path in self._cache:
+            self._cache.move_to_end(file_path)  # Mark as recently used (LRU)
             return self._cache[file_path]
 
         # Trigger async load

@@ -66,8 +66,10 @@ class TestColumnFilterRow:
         assert row._inputs[0] is None
         assert row._inputs[1] is not None
 
-    def test_filter_changed_signal(self, table_with_header):
-        """Test filter_changed signal is emitted when typing."""
+    def test_filter_changed_signal(self, table_with_header, app):
+        """Test filter_changed signal is emitted after debounce when typing."""
+        from PySide6.QtTest import QTest
+
         table, header = table_with_header
         row = ColumnFilterRow(header=header, column_count=5, skip_columns={0})
 
@@ -77,17 +79,25 @@ class TestColumnFilterRow:
         # Type in the Title column (index 1)
         row._inputs[1].setText("test")
 
+        # Wait for debounce timer to fire (200ms + margin)
+        QTest.qWait(300)
+        app.processEvents()
+
         assert len(signals) == 1
         assert signals[0] == (1, "test")
 
     def test_clear_all(self, table_with_header):
-        """Test clear_all clears all inputs and emits signals."""
+        """Test clear_all clears all inputs without emitting signals."""
         table, header = table_with_header
         row = ColumnFilterRow(header=header, column_count=5, skip_columns={0})
 
-        # Set some text
+        # Set some text (will queue debounce, but we don't care about those signals)
+        row._inputs[1].blockSignals(True)
         row._inputs[1].setText("hello")
+        row._inputs[1].blockSignals(False)
+        row._inputs[2].blockSignals(True)
         row._inputs[2].setText("world")
+        row._inputs[2].blockSignals(False)
 
         signals = []
         row.filter_changed.connect(lambda col, text: signals.append((col, text)))
@@ -98,8 +108,8 @@ class TestColumnFilterRow:
         assert row._inputs[1].text() == ""
         assert row._inputs[2].text() == ""
 
-        # Should have emitted clear signals for each column
-        assert len(signals) == 4  # 4 non-skipped columns
+        # clear_all no longer emits signals (caller handles proxy clear)
+        assert len(signals) == 0
 
     def test_set_focus_column(self, table_with_header):
         """Test set_focus_column calls setFocus on the correct input."""

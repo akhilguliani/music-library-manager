@@ -360,7 +360,8 @@ class MainWindow(QMainWindow):
     def _on_database_loaded(self, database) -> None:
         """Handle database loaded event."""
         self._database = database
-        tracks = list(database.iter_songs())
+        # Reuse the track list already built by DatabasePanel (avoids double iter_songs)
+        tracks = self.database_panel.tracks or list(database.iter_songs())
         track_count = len(tracks)
         self.statusBar().showMessage(f"Loaded database with {track_count} tracks")
 

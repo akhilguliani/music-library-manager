@@ -247,7 +247,14 @@ class DatabasePanel(QWidget):
         search_layout.addWidget(QLabel("Search:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filter tracks...")
-        self.search_input.textChanged.connect(self._on_search_changed)
+        # Debounce search: 200ms delay avoids per-keystroke proxy invalidation
+        from PySide6.QtCore import QTimer
+
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(200)
+        self._search_debounce.timeout.connect(self._on_search_changed)
+        self.search_input.textChanged.connect(lambda _: self._search_debounce.start())
         search_layout.addWidget(self.search_input)
 
         self.result_count_label = QLabel("")
@@ -471,10 +478,10 @@ class DatabasePanel(QWidget):
             f"color: {DARK_THEME.text_muted}; font-size: 11px; padding: 2px 4px;"
         )
 
-    @Slot(str)
-    def _on_search_changed(self, text: str) -> None:
-        """Handle search input change."""
-        self.proxy_model.setFilterFixedString(text)
+    @Slot()
+    def _on_search_changed(self) -> None:
+        """Handle debounced search input change."""
+        self.proxy_model.setFilterFixedString(self.search_input.text())
         self._update_result_count()
 
     # Map model field names to VDJ XML attribute names
@@ -488,6 +495,22 @@ class DatabasePanel(QWidget):
         "mood": "User2",
     }
 
+    def _refresh_single_track(self, file_path: str) -> None:
+        """Re-read a single track from the database and update the model in-place.
+
+        Avoids full model reset by emitting dataChanged for just one row.
+        """
+        if self._database is None:
+            return
+        updated_song = self._database.get_song(file_path)
+        if updated_song is not None:
+            i = self.track_model.find_track_row(file_path)
+            if i >= 0:
+                self._tracks[i] = updated_song
+                left = self.track_model.index(i, 0)
+                right = self.track_model.index(i, self.track_model.columnCount() - 1)
+                self.track_model.dataChanged.emit(left, right)
+
     def _on_tag_edit_requested(self, file_path: str, field: str, value: str) -> None:
         """Handle inline tag edit from the track table."""
         if self._database is None:
@@ -498,18 +521,7 @@ class DatabasePanel(QWidget):
             return
 
         self._database.update_song_tags(file_path, **{xml_attr: value or None})
-
-        # Update the in-memory track to reflect the change without full model reset
-        updated_song = self._database.get_song(file_path)
-        if updated_song is not None:
-            for i, track in enumerate(self._tracks):
-                if track.file_path == file_path:
-                    self._tracks[i] = updated_song
-                    # Emit dataChanged for just this row (preserves selection/scroll)
-                    left = self.track_model.index(i, 0)
-                    right = self.track_model.index(i, self.track_model.columnCount() - 1)
-                    self.track_model.dataChanged.emit(left, right)
-                    break
+        self._refresh_single_track(file_path)
 
         # Debounced save — batch rapid edits instead of saving after every keystroke
         if not hasattr(self, "_save_timer"):
@@ -546,33 +558,13 @@ class DatabasePanel(QWidget):
         if visible and self._tracks:
             self._column_browser.set_tracks(self._tracks)
 
-    def _on_browser_filter_changed(self, genres: list, artists: list, albums: list) -> None:
-        """Handle column browser filter change."""
-        if not genres and not artists and not albums:
-            # "All" selected in all lists — no inclusion filter
-            self._column_filter_model.set_inclusion_filter(None)
-        else:
-            # Use sets for O(1) membership tests
-            genre_set = set(genres) if genres else None
-            artist_set = set(artists) if artists else None
-            album_set = set(albums) if albums else None
-            # Compute matching file paths
-            matching = set()
-            for t in self._tracks:
-                if genre_set is not None:
-                    g = t.tags.genre if t.tags and t.tags.genre else ""
-                    if g not in genre_set:
-                        continue
-                if artist_set is not None:
-                    a = t.tags.author if t.tags and t.tags.author else ""
-                    if a not in artist_set:
-                        continue
-                if album_set is not None:
-                    al = t.tags.album if t.tags and t.tags.album else ""
-                    if al not in album_set:
-                        continue
-                matching.add(t.file_path)
-            self._column_filter_model.set_inclusion_filter(matching)
+    def _on_browser_filter_changed(self, matching_paths: set | None) -> None:
+        """Handle column browser filter change.
+
+        Args:
+            matching_paths: Set of file paths to include, or None for "show all".
+        """
+        self._column_filter_model.set_inclusion_filter(matching_paths)
         self._update_result_count()
 
     def _map_to_source(self, view_index):
@@ -1016,12 +1008,12 @@ class DatabasePanel(QWidget):
         self.tag_color_input.setText(tags.color or "" if tags else "")
         self.tag_flag_spin.setValue(tags.flag or 0 if tags else 0)
 
-        # Enable/disable file tag buttons based on file accessibility
-        is_accessible = not track.is_windows_path and Path(track.file_path).exists()
-        self.file_tag_read_btn.setEnabled(is_accessible)
-        self.file_tag_save_btn.setEnabled(is_accessible)
-        self.file_tag_sync_vdj_btn.setEnabled(is_accessible)
-        self.file_tag_import_btn.setEnabled(is_accessible)
+        # Enable file tag buttons for non-Windows paths (errors handled on click)
+        is_local = not track.is_windows_path
+        self.file_tag_read_btn.setEnabled(is_local)
+        self.file_tag_save_btn.setEnabled(is_local)
+        self.file_tag_sync_vdj_btn.setEnabled(is_local)
+        self.file_tag_import_btn.setEnabled(is_local)
 
     def _on_tag_revert_clicked(self) -> None:
         """Revert tag fields to the current track's saved values."""
@@ -1101,9 +1093,8 @@ class DatabasePanel(QWidget):
         self._set_status_color("success")
         self._log_operation(f"Tags saved for {track.display_name}")
 
-        # Refresh track list
-        self._tracks = list(self._database.iter_songs())
-        self.track_model.set_tracks(self._tracks)
+        # Refresh single track in-place (preserves selection/scroll)
+        self._refresh_single_track(track.file_path)
 
     # --- File Tags tab handlers ---
 
@@ -1243,8 +1234,7 @@ class DatabasePanel(QWidget):
             if vdj_kwargs:
                 self._database.update_song_tags(self._editing_track.file_path, **vdj_kwargs)
                 self._database.save()
-                self._tracks = list(self._database.iter_songs())
-                self.track_model.set_tracks(self._tracks)
+                self._refresh_single_track(self._editing_track.file_path)
                 self.status_label.setText("File tags imported to VDJ")
                 self._set_status_color("success")
                 self._log_operation(

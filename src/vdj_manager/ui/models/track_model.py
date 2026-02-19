@@ -57,6 +57,7 @@ class TrackTableModel(QAbstractTableModel):
         """
         super().__init__(parent)
         self._tracks: list[Song] = []
+        self._filepath_to_row: dict[str, int] = {}
 
     @property
     def tracks(self) -> list[Song]:
@@ -71,12 +72,14 @@ class TrackTableModel(QAbstractTableModel):
         """
         self.beginResetModel()
         self._tracks = list(tracks)
+        self._filepath_to_row = {t.file_path: i for i, t in enumerate(self._tracks)}
         self.endResetModel()
 
     def clear(self) -> None:
         """Clear all tracks from the model."""
         self.beginResetModel()
         self._tracks = []
+        self._filepath_to_row = {}
         self.endResetModel()
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
@@ -299,16 +302,15 @@ class TrackTableModel(QAbstractTableModel):
     def find_track_row(self, file_path: str) -> int:
         """Find the row index of a track by file path.
 
+        Uses an internal index for O(1) lookups.
+
         Args:
             file_path: File path to search for.
 
         Returns:
             Row index, or -1 if not found.
         """
-        for i, track in enumerate(self._tracks):
-            if track.file_path == file_path:
-                return i
-        return -1
+        return self._filepath_to_row.get(file_path, -1)
 
     def notify_art_changed(self, file_path: str) -> None:
         """Notify that album art for a track has been loaded.

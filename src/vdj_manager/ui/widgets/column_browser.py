@@ -24,13 +24,14 @@ class ColumnBrowser(QWidget):
             Args are (selected_genres, selected_artists, selected_albums).
     """
 
-    filter_changed = Signal(list, list, list)  # genres, artists, albums
+    filter_changed = Signal(object)  # set[str] | None — matching file paths or None for "all"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._tracks: list[Song] = []
-        # Pre-built indexes: genre -> [tracks], (genre, artist) -> [tracks]
+        # Pre-built indexes for O(1) cascade lookups
         self._genre_index: dict[str, list[Song]] = defaultdict(list)
+        self._artist_index: dict[str, list[Song]] = defaultdict(list)
         self._genre_artist_index: dict[tuple[str, str], list[Song]] = defaultdict(list)
 
         layout = QVBoxLayout(self)
@@ -62,13 +63,15 @@ class ColumnBrowser(QWidget):
         self._rebuild_genres()
 
     def _build_indexes(self) -> None:
-        """Pre-build genre and genre+artist indexes for O(1) lookups."""
+        """Pre-build genre, artist, and genre+artist indexes for O(1) lookups."""
         self._genre_index = defaultdict(list)
+        self._artist_index = defaultdict(list)
         self._genre_artist_index = defaultdict(list)
         for t in self._tracks:
             genre = t.tags.genre if t.tags and t.tags.genre else ""
             artist = t.tags.author if t.tags and t.tags.author else ""
             self._genre_index[genre].append(t)
+            self._artist_index[artist].append(t)
             self._genre_artist_index[(genre, artist)].append(t)
 
     def _rebuild_genres(self) -> None:
@@ -133,11 +136,10 @@ class ColumnBrowser(QWidget):
                 result.extend(self._genre_index.get(g, []))
             return result
         else:
-            # Only artist filter — iterate genre_artist_index
+            # Only artist filter — use dedicated artist index
             result = []
-            for (g, a), tracks in self._genre_artist_index.items():
-                if a in artists:
-                    result.extend(tracks)
+            for a in artists:
+                result.extend(self._artist_index.get(a, []))
             return result
 
     def _rebuild_artists(self) -> None:
@@ -203,4 +205,19 @@ class ColumnBrowser(QWidget):
         genres = self._get_selected_values(self._genre_list)
         artists = self._get_selected_values(self._artist_list)
         albums = self._get_selected_values(self._album_list)
-        self.filter_changed.emit(genres, artists, albums)
+
+        if not genres and not artists and not albums:
+            self.filter_changed.emit(None)
+            return
+
+        # Start with genre+artist filtered tracks (already indexed)
+        tracks = self._filtered_by_artist()
+
+        # Apply album filter if active
+        if albums:
+            album_set = set(albums)
+            tracks = [
+                t for t in tracks if (t.tags.album if t.tags and t.tags.album else "") in album_set
+            ]
+
+        self.filter_changed.emit({t.file_path for t in tracks})

@@ -38,13 +38,13 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
                 self._column_filters[column] = re.compile(re.escape(pattern), re.IGNORECASE)
         else:
             self._column_filters.pop(column, None)
-        self.invalidate()
+        self.invalidateRowsFilter()
 
     def clear_all_filters(self) -> None:
         """Clear all column filters."""
         self._column_filters.clear()
         self._inclusion_paths = None
-        self.invalidate()
+        self.invalidateRowsFilter()
 
     def set_inclusion_filter(self, file_paths: set[str] | None) -> None:
         """Restrict visible rows to tracks whose file_path is in the set.
@@ -53,7 +53,7 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
             file_paths: Set of allowed file paths, or None to disable.
         """
         self._inclusion_paths = file_paths
-        self.invalidate()
+        self.invalidateRowsFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # type: ignore[override]
         """Accept a row only if it matches all active column filters."""

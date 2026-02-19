@@ -134,26 +134,23 @@ def test_artist_cascade_filters_albums(browser, tracks, qapp):
     assert "Album Y (1)" in texts
 
 
-def test_all_selected_returns_empty_list(browser, tracks, qapp):
-    """When 'All' is selected, filter_changed emits empty lists."""
+def test_all_selected_emits_none(browser, tracks, qapp):
+    """When 'All' is selected, filter_changed emits None (no filter)."""
     received = []
-    browser.filter_changed.connect(lambda g, a, al: received.append((g, a, al)))
+    browser.filter_changed.connect(lambda paths: received.append(paths))
 
     browser.set_tracks(tracks)
     qapp.processEvents()
 
-    # After set_tracks, "All" is selected in all lists
+    # After set_tracks, "All" is selected in all lists → None means no filter
     assert len(received) > 0
-    genres, artists, albums = received[-1]
-    assert genres == []
-    assert artists == []
-    assert albums == []
+    assert received[-1] is None
 
 
 def test_specific_genre_filter(browser, tracks, qapp):
-    """Selecting a specific genre emits it in filter_changed."""
+    """Selecting a specific genre emits matching file paths in filter_changed."""
     received = []
-    browser.filter_changed.connect(lambda g, a, al: received.append((g, a, al)))
+    browser.filter_changed.connect(lambda paths: received.append(paths))
 
     browser.set_tracks(tracks)
     qapp.processEvents()
@@ -169,11 +166,8 @@ def test_specific_genre_filter(browser, tracks, qapp):
     qapp.processEvents()
 
     assert len(received) > 0
-    genres, artists, albums = received[-1]
-    assert genres == ["House"]
-    # Artists and albums should be empty (All selected in cascaded lists)
-    assert artists == []
-    assert albums == []
+    # House tracks: track1 and track2
+    assert received[-1] == {"/track1.mp3", "/track2.mp3"}
 
 
 def test_no_genre_shows_no_genre_label(browser, qapp):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QHeaderView, QLineEdit, QWidget
 
 if TYPE_CHECKING:
@@ -39,6 +39,11 @@ class ColumnFilterRow(QWidget):
         self._header = header
         self._skip_columns = skip_columns or set()
         self._inputs: dict[int, QLineEdit] = {}
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(200)
+        self._debounce_timer.timeout.connect(self._emit_pending_filters)
+        self._pending_changes: dict[int, str] = {}
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -57,12 +62,23 @@ class ColumnFilterRow(QWidget):
                 line_edit.setClearButtonEnabled(True)
                 line_edit.setFixedHeight(24)
                 line_edit.setFixedWidth(header.sectionSize(col))
-                line_edit.textChanged.connect(lambda text, c=col: self.filter_changed.emit(c, text))
+                line_edit.textChanged.connect(lambda text, c=col: self._on_input_changed(c, text))
                 layout.addWidget(line_edit)
                 self._inputs[col] = line_edit
 
         # Sync widths when header sections resize
         header.sectionResized.connect(self._on_section_resized)
+
+    def _on_input_changed(self, column: int, text: str) -> None:
+        """Queue a filter change and restart the debounce timer."""
+        self._pending_changes[column] = text
+        self._debounce_timer.start()
+
+    def _emit_pending_filters(self) -> None:
+        """Emit accumulated filter changes after debounce delay."""
+        for col, text in self._pending_changes.items():
+            self.filter_changed.emit(col, text)
+        self._pending_changes.clear()
 
     def _on_section_resized(self, index: int, old_size: int, new_size: int) -> None:
         """Update the corresponding filter input width when a header section resizes."""
@@ -79,16 +95,16 @@ class ColumnFilterRow(QWidget):
                     spacer_widget.setFixedWidth(new_size)
 
     def clear_all(self) -> None:
-        """Clear all filter inputs."""
+        """Clear all filter input text without emitting per-column signals.
+
+        The caller is responsible for clearing the proxy model separately
+        (avoids N redundant invalidation cycles).
+        """
         for widget in self._inputs.values():
             if widget is not None:
                 widget.blockSignals(True)
                 widget.clear()
                 widget.blockSignals(False)
-        # Emit one final clear for each column
-        for col, widget in self._inputs.items():
-            if widget is not None:
-                self.filter_changed.emit(col, "")
 
     def set_focus_column(self, column: int) -> None:
         """Set focus to a specific column's filter input."""
