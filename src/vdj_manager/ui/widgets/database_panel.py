@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -31,8 +32,10 @@ from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import DatabaseStats, Song
 from vdj_manager.ui.delegates.album_art_delegate import AlbumArtCache, AlbumArtDelegate
+from vdj_manager.ui.models.multi_column_filter import MultiColumnFilterProxyModel
 from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.widgets.column_filter_row import ColumnFilterRow
 from vdj_manager.ui.workers.database_worker import (
     BackupWorker,
     CleanWorker,
@@ -80,6 +83,10 @@ class DatabasePanel(QWidget):
         self._editing_track: Song | None = None
 
         self._setup_ui()
+
+        # Ctrl+F toggles per-column filter row
+        shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut.activated.connect(self.toggle_filter_row)
 
     @property
     def database(self) -> VDJDatabase | None:
@@ -201,15 +208,19 @@ class DatabasePanel(QWidget):
 
         layout.addLayout(search_layout)
 
-        # Track table
+        # Track table with chained proxy models:
+        # TrackTableModel → QSortFilterProxyModel (global) → MultiColumnFilterProxyModel
         self.track_model = TrackTableModel()
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setSourceModel(self.track_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)  # Search all columns
 
+        self._column_filter_model = MultiColumnFilterProxyModel()
+        self._column_filter_model.setSourceModel(self.proxy_model)
+
         self.track_table = QTableView()
-        self.track_table.setModel(self.proxy_model)
+        self.track_table.setModel(self._column_filter_model)
         self.track_table.setAlternatingRowColors(True)
         self.track_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.track_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -234,6 +245,17 @@ class DatabasePanel(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Title
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Artist
         header.setDefaultSectionSize(100)
+
+        # Per-column filter row (hidden by default, toggle with Ctrl+F)
+        self._filter_row = ColumnFilterRow(
+            header=header,
+            column_count=self.track_model.columnCount(),
+            skip_columns={0},  # Skip art column
+            parent=group,
+        )
+        self._filter_row.setVisible(False)
+        self._filter_row.filter_changed.connect(self._on_column_filter_changed)
+        layout.addWidget(self._filter_row)
 
         # Connect selection
         self.track_table.selectionModel().currentRowChanged.connect(self._on_track_selected)
@@ -379,9 +401,37 @@ class DatabasePanel(QWidget):
         self.proxy_model.setFilterFixedString(text)
         self._update_result_count()
 
+    def _on_column_filter_changed(self, column: int, text: str) -> None:
+        """Handle per-column filter change."""
+        self._column_filter_model.set_column_filter(column, text)
+        self._update_result_count()
+
+    def toggle_filter_row(self) -> None:
+        """Toggle visibility of the per-column filter row."""
+        visible = not self._filter_row.isVisible()
+        self._filter_row.setVisible(visible)
+        if visible:
+            self._filter_row.set_focus_column(1)  # Focus Title column
+        else:
+            self._filter_row.clear_all()
+            self._column_filter_model.clear_all_filters()
+            self._update_result_count()
+
+    def _map_to_source(self, view_index):
+        """Map a view index through both proxy models to the source model.
+
+        Args:
+            view_index: Index from the track_table's model (column_filter_model).
+
+        Returns:
+            Source model index (TrackTableModel).
+        """
+        mid_index = self._column_filter_model.mapToSource(view_index)
+        return self.proxy_model.mapToSource(mid_index)
+
     def _update_result_count(self) -> None:
         """Update the result count label."""
-        filtered = self.proxy_model.rowCount()
+        filtered = self._column_filter_model.rowCount()
         total = self.track_model.rowCount()
 
         if filtered == total:
@@ -396,10 +446,7 @@ class DatabasePanel(QWidget):
         if not indexes:
             return
 
-        # Get the source index from the proxy model
-        proxy_index = indexes[0]
-        source_index = self.proxy_model.mapToSource(proxy_index)
-
+        source_index = self._map_to_source(indexes[0])
         track = self.track_model.get_track(source_index.row())
         if track:
             self._populate_tag_fields(track)
@@ -408,7 +455,7 @@ class DatabasePanel(QWidget):
     @Slot()
     def _on_track_double_clicked(self, index) -> None:
         """Handle track double-click for playback."""
-        source_index = self.proxy_model.mapToSource(index)
+        source_index = self._map_to_source(index)
         track = self.track_model.get_track(source_index.row())
         if track:
             self.track_double_clicked.emit(track)
@@ -423,8 +470,7 @@ class DatabasePanel(QWidget):
         if not indexes:
             return None
 
-        proxy_index = indexes[0]
-        source_index = self.proxy_model.mapToSource(proxy_index)
+        source_index = self._map_to_source(indexes[0])
         return self.track_model.get_track(source_index.row())
 
     def get_filtered_tracks(self) -> list[Song]:
@@ -433,9 +479,10 @@ class DatabasePanel(QWidget):
         Returns:
             List of filtered Song objects.
         """
+        view_model = self._column_filter_model
         tracks = []
-        for row in range(self.proxy_model.rowCount()):
-            source_index = self.proxy_model.mapToSource(self.proxy_model.index(row, 0))
+        for row in range(view_model.rowCount()):
+            source_index = self._map_to_source(view_model.index(row, 0))
             track = self.track_model.get_track(source_index.row())
             if track:
                 tracks.append(track)
@@ -450,7 +497,7 @@ class DatabasePanel(QWidget):
         rows = sorted(self.track_table.selectionModel().selectedRows(), key=lambda idx: idx.row())
         tracks = []
         for proxy_index in rows:
-            source_index = self.proxy_model.mapToSource(proxy_index)
+            source_index = self._map_to_source(proxy_index)
             track = self.track_model.get_track(source_index.row())
             if track:
                 tracks.append(track)
