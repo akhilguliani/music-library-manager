@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -25,6 +26,7 @@ from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
@@ -80,6 +82,9 @@ class AnalysisPanel(QWidget):
         else:
             self._tracks = []
 
+        # Switch to content when database is loaded, empty state otherwise
+        self._stacked.setCurrentIndex(1 if database is not None else 0)
+
         has_db = database is not None and len(self._tracks) > 0
         self.energy_all_btn.setEnabled(has_db)
         self.energy_untagged_btn.setEnabled(has_db)
@@ -95,6 +100,21 @@ class AnalysisPanel(QWidget):
     def _setup_ui(self) -> None:
         """Set up the panel UI with sub-tabs."""
         layout = QVBoxLayout(self)
+
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Load a database from the Database tab to analyze energy, mood, and genre.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
         # Settings bar
         settings_group = QGroupBox("Settings")
@@ -129,7 +149,7 @@ class AnalysisPanel(QWidget):
         config_layout.addWidget(self.max_duration_spin)
 
         config_layout.addStretch()
-        layout.addWidget(settings_group)
+        content_layout.addWidget(settings_group)
 
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -139,7 +159,12 @@ class AnalysisPanel(QWidget):
         self._create_mood_tab()
         self._create_genre_tab()
 
-        layout.addWidget(self.sub_tabs)
+        content_layout.addWidget(self.sub_tabs)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     def _create_energy_tab(self) -> None:
         """Create the energy analysis sub-tab."""

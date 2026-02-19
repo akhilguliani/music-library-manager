@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +26,7 @@ from vdj_manager.core.models import Song
 from vdj_manager.normalize.measurement_cache import MeasurementCache
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ResultsTable
 from vdj_manager.ui.workers.normalization_worker import (
@@ -88,15 +90,33 @@ class NormalizationPanel(QWidget):
         else:
             self._tracks = []
 
+        # Switch to content when database is loaded, empty state otherwise
+        self._stacked.setCurrentIndex(1 if database is not None else 0)
+
         self._update_track_count()
 
     def _setup_ui(self) -> None:
         """Set up the panel UI."""
         layout = QVBoxLayout(self)
 
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Load a database from the Database tab to measure and normalize loudness.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
         # Configuration section
         config_group = self._create_config_group()
-        layout.addWidget(config_group)
+        content_layout.addWidget(config_group)
 
         # Create splitter for progress and results
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -119,7 +139,12 @@ class NormalizationPanel(QWidget):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
 
-        layout.addWidget(splitter)
+        content_layout.addWidget(splitter)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     def _create_config_group(self) -> QGroupBox:
         """Create the configuration group box."""
