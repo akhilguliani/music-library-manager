@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
@@ -20,7 +20,7 @@ class CommandItem(NamedTuple):
     name: str
     shortcut: str
     category: str
-    callback: Callable[[], None]
+    callback: Callable[[], Any]
 
 
 class CommandPalette(QDialog):
@@ -60,16 +60,16 @@ class CommandPalette(QDialog):
         self._search.clear()
         self._populate_results("")
 
-        if self.parent():
-            parent = self.parent()
-            x = parent.x() + (parent.width() - self.width()) // 2
-            y = parent.y() + 80
+        parent_widget = self.parentWidget()
+        if parent_widget:
+            x = parent_widget.x() + (parent_widget.width() - self.width()) // 2
+            y = parent_widget.y() + 80
             self.move(x, y)
 
         self.show()
         self._search.setFocus()
 
-    def eventFilter(self, obj, event):  # type: ignore[override]
+    def eventFilter(self, obj, event):
         """Handle keyboard navigation in search field."""
         if obj == self._search and event.type() == QEvent.Type.KeyPress:
             key = event.key()

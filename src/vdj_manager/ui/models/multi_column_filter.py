@@ -35,9 +35,7 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
                 self._column_filters[column] = re.compile(pattern, re.IGNORECASE)
             except re.error:
                 # Invalid regex — treat as literal substring
-                self._column_filters[column] = re.compile(
-                    re.escape(pattern), re.IGNORECASE
-                )
+                self._column_filters[column] = re.compile(re.escape(pattern), re.IGNORECASE)
         else:
             self._column_filters.pop(column, None)
         self.invalidate()

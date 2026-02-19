@@ -49,9 +49,7 @@ class EmptyStateWidget(QWidget):
 
         if description:
             desc_label = QLabel(description)
-            desc_label.setStyleSheet(
-                f"font-size: 12px; color: {ThemeManager().theme.text_muted};"
-            )
+            desc_label.setStyleSheet(f"font-size: 12px; color: {ThemeManager().theme.text_muted};")
             desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             desc_label.setWordWrap(True)
             layout.addWidget(desc_label)

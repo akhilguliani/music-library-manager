@@ -38,7 +38,7 @@ def extract_dominant_colors(image_bytes: bytes, max_colors: int = 5) -> list[tup
         installed or the image cannot be decoded.
     """
     try:
-        from PIL import Image
+        from PIL import Image  # type: ignore[import-not-found]
     except ImportError:
         logger.debug("Pillow not installed; skipping color extraction")
         return []

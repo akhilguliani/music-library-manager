@@ -157,7 +157,7 @@ class TrackTableModel(QAbstractTableModel):
         """Return supported MIME types for drag operations."""
         return [TRACK_MIME_TYPE]
 
-    def mimeData(self, indexes: list[QModelIndex]) -> QMimeData:
+    def mimeData(self, indexes: list[QModelIndex]) -> QMimeData:  # type: ignore[override]
         """Encode dragged rows as JSON list of file paths."""
         rows = sorted({idx.row() for idx in indexes if idx.isValid()})
         paths = [self._tracks[r].file_path for r in rows if r < len(self._tracks)]

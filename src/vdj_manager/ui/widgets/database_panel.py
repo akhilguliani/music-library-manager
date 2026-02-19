@@ -546,9 +546,7 @@ class DatabasePanel(QWidget):
         if visible and self._tracks:
             self._column_browser.set_tracks(self._tracks)
 
-    def _on_browser_filter_changed(
-        self, genres: list, artists: list, albums: list
-    ) -> None:
+    def _on_browser_filter_changed(self, genres: list, artists: list, albums: list) -> None:
         """Handle column browser filter change."""
         if not genres and not artists and not albums:
             # "All" selected in all lists — no inclusion filter

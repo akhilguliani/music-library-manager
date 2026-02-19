@@ -156,26 +156,68 @@ class MainWindow(QMainWindow):
 
         commands = [
             # Navigation
-            CommandItem("Database", "Ctrl+1", "Navigation", lambda: self._navigation.navigate_to("Database")),
-            CommandItem("Normalization", "Ctrl+2", "Navigation", lambda: self._navigation.navigate_to("Normalization")),
-            CommandItem("Files", "Ctrl+3", "Navigation", lambda: self._navigation.navigate_to("Files")),
-            CommandItem("Analysis", "Ctrl+4", "Navigation", lambda: self._navigation.navigate_to("Analysis")),
-            CommandItem("Export", "Ctrl+5", "Navigation", lambda: self._navigation.navigate_to("Export")),
-            CommandItem("Player", "Ctrl+6", "Navigation", lambda: self._navigation.navigate_to("Player")),
-            CommandItem("Workflow", "Ctrl+7", "Navigation", lambda: self._navigation.navigate_to("Workflow")),
+            CommandItem(
+                "Database", "Ctrl+1", "Navigation", lambda: self._navigation.navigate_to("Database")
+            ),
+            CommandItem(
+                "Normalization",
+                "Ctrl+2",
+                "Navigation",
+                lambda: self._navigation.navigate_to("Normalization"),
+            ),
+            CommandItem(
+                "Files", "Ctrl+3", "Navigation", lambda: self._navigation.navigate_to("Files")
+            ),
+            CommandItem(
+                "Analysis", "Ctrl+4", "Navigation", lambda: self._navigation.navigate_to("Analysis")
+            ),
+            CommandItem(
+                "Export", "Ctrl+5", "Navigation", lambda: self._navigation.navigate_to("Export")
+            ),
+            CommandItem(
+                "Player", "Ctrl+6", "Navigation", lambda: self._navigation.navigate_to("Player")
+            ),
+            CommandItem(
+                "Workflow", "Ctrl+7", "Navigation", lambda: self._navigation.navigate_to("Workflow")
+            ),
             # Database operations
-            CommandItem("Load Database", "", "Database", lambda: self.database_panel._on_load_clicked()),
-            CommandItem("Backup Database", "", "Database", lambda: self.database_panel._on_backup_clicked()),
-            CommandItem("Validate Database", "", "Database", lambda: self.database_panel._on_validate_clicked()),
-            CommandItem("Clean Database", "", "Database", lambda: self.database_panel._on_clean_clicked()),
+            CommandItem(
+                "Load Database", "", "Database", lambda: self.database_panel._on_load_clicked()
+            ),
+            CommandItem(
+                "Backup Database", "", "Database", lambda: self.database_panel._on_backup_clicked()
+            ),
+            CommandItem(
+                "Validate Database",
+                "",
+                "Database",
+                lambda: self.database_panel._on_validate_clicked(),
+            ),
+            CommandItem(
+                "Clean Database", "", "Database", lambda: self.database_panel._on_clean_clicked()
+            ),
             # Track browser
             CommandItem("Focus Search", "Ctrl+L", "Browser", lambda: self._focus_search()),
-            CommandItem("Toggle Column Filters", "Ctrl+F", "Browser", lambda: self.database_panel.toggle_filter_row()),
-            CommandItem("Toggle Column Browser", "Ctrl+B", "Browser", lambda: self.database_panel.toggle_column_browser()),
+            CommandItem(
+                "Toggle Column Filters",
+                "Ctrl+F",
+                "Browser",
+                lambda: self.database_panel.toggle_filter_row(),
+            ),
+            CommandItem(
+                "Toggle Column Browser",
+                "Ctrl+B",
+                "Browser",
+                lambda: self.database_panel.toggle_column_browser(),
+            ),
             # Playback
-            CommandItem("Play / Pause", "Space", "Playback", self._playback_bridge.toggle_play_pause),
+            CommandItem(
+                "Play / Pause", "Space", "Playback", self._playback_bridge.toggle_play_pause
+            ),
             CommandItem("Next Track", "Ctrl+Right", "Playback", self._playback_bridge.next_track),
-            CommandItem("Previous Track", "Ctrl+Left", "Playback", self._playback_bridge.previous_track),
+            CommandItem(
+                "Previous Track", "Ctrl+Left", "Playback", self._playback_bridge.previous_track
+            ),
             # Help
             CommandItem("Keyboard Shortcuts", "?", "Help", self._show_shortcuts_dialog),
         ]

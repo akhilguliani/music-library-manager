@@ -57,9 +57,7 @@ class ColumnFilterRow(QWidget):
                 line_edit.setClearButtonEnabled(True)
                 line_edit.setFixedHeight(24)
                 line_edit.setFixedWidth(header.sectionSize(col))
-                line_edit.textChanged.connect(
-                    lambda text, c=col: self.filter_changed.emit(c, text)
-                )
+                line_edit.textChanged.connect(lambda text, c=col: self.filter_changed.emit(c, text))
                 layout.addWidget(line_edit)
                 self._inputs[col] = line_edit
 
@@ -76,8 +74,9 @@ class ColumnFilterRow(QWidget):
             layout = self.layout()
             if layout is not None:
                 item = layout.itemAt(index)
-                if item and item.widget():
-                    item.widget().setFixedWidth(new_size)
+                spacer_widget = item.widget() if item else None
+                if spacer_widget is not None:
+                    spacer_widget.setFixedWidth(new_size)
 
     def clear_all(self) -> None:
         """Clear all filter inputs."""

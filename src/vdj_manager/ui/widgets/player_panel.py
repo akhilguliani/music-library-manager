@@ -236,21 +236,21 @@ class PlayerPanel(QWidget):
         # Accept drops on the whole panel (tracks dragged from database)
         self.setAcceptDrops(True)
 
-    def dragEnterEvent(self, event) -> None:  # type: ignore[override]
+    def dragEnterEvent(self, event) -> None:
         """Accept drag events with track MIME data."""
         if event.mimeData().hasFormat(TRACK_MIME_TYPE):
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
 
-    def dragMoveEvent(self, event) -> None:  # type: ignore[override]
+    def dragMoveEvent(self, event) -> None:
         """Accept drag move events with track MIME data."""
         if event.mimeData().hasFormat(TRACK_MIME_TYPE):
             event.acceptProposedAction()
         else:
             super().dragMoveEvent(event)
 
-    def dropEvent(self, event) -> None:  # type: ignore[override]
+    def dropEvent(self, event) -> None:
         """Handle drop of tracks from database panel."""
         if event.mimeData().hasFormat(TRACK_MIME_TYPE):
             raw = bytes(event.mimeData().data(TRACK_MIME_TYPE))

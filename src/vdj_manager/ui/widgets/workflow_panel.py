@@ -194,7 +194,9 @@ class WorkflowPanel(QWidget):
 
         # Info label
         self.info_label = QLabel("No database loaded")
-        self.info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;")
+        self.info_label.setStyleSheet(
+            f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
+        )
         layout.addWidget(self.info_label)
 
         # Action buttons
@@ -222,7 +224,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.energy_progress)
 
         self.energy_current_file = QLabel("")
-        self.energy_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
+        self.energy_current_file.setStyleSheet(
+            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.energy_current_file.setVisible(False)
         layout.addWidget(self.energy_current_file)
 
@@ -244,7 +248,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.mood_progress)
 
         self.mood_current_file = QLabel("")
-        self.mood_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
+        self.mood_current_file.setStyleSheet(
+            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.mood_current_file.setVisible(False)
         layout.addWidget(self.mood_current_file)
 
@@ -266,7 +272,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.genre_progress)
 
         self.genre_current_file = QLabel("")
-        self.genre_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
+        self.genre_current_file.setStyleSheet(
+            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.genre_current_file.setVisible(False)
         layout.addWidget(self.genre_current_file)
 
@@ -289,7 +297,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.norm_progress)
 
         self.norm_current_file = QLabel("")
-        self.norm_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
+        self.norm_current_file.setStyleSheet(
+            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.norm_current_file.setVisible(False)
         layout.addWidget(self.norm_current_file)
 

@@ -276,7 +276,9 @@ class TestTrackTableModel:
         model.set_tracks(sample_tracks)
 
         changed = []
-        model.dataChanged.connect(lambda tl, br, roles: changed.append((tl.row(), tl.column(), roles)))
+        model.dataChanged.connect(
+            lambda tl, br, roles: changed.append((tl.row(), tl.column(), roles))
+        )
 
         model.notify_art_changed("/path/to/track2.mp3")
         assert len(changed) == 1

@@ -164,12 +164,10 @@ class AlbumArtDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._cache = cache
 
-    def paint(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> None:
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:  # type: ignore[override]
         # Draw selection/focus background
         self.initStyleOption(option, index)
-        style = option.widget.style() if option.widget else None
+        style = option.widget.style() if option.widget else None  # type: ignore[attr-defined]
         if style:
             style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, option, painter)
 
@@ -182,11 +180,12 @@ class AlbumArtDelegate(QStyledItemDelegate):
             pixmap = self._cache.get_placeholder()
 
         # Center the pixmap in the cell
-        x = option.rect.x() + (option.rect.width() - pixmap.width()) // 2
-        y = option.rect.y() + (option.rect.height() - pixmap.height()) // 2
+        rect = option.rect  # type: ignore[attr-defined]
+        x = rect.x() + (rect.width() - pixmap.width()) // 2
+        y = rect.y() + (rect.height() - pixmap.height()) // 2
         painter.drawPixmap(x, y, pixmap)
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> Any:
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> Any:  # type: ignore[override]
         from PySide6.QtCore import QSize
 
         return QSize(_THUMB_SIZE + 4, _THUMB_SIZE + 4)
