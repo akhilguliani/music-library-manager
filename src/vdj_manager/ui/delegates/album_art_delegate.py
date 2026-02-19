@@ -169,7 +169,9 @@ class AlbumArtDelegate(QStyledItemDelegate):
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:  # type: ignore[override]
         # Draw selection/focus background
         self.initStyleOption(option, index)
-        style = option.widget.style() if option.widget else None  # type: ignore[attr-defined]
+        # Cast to Any — PySide6 stub versions differ on QStyleOptionViewItem attributes
+        opt: Any = option
+        style = opt.widget.style() if opt.widget else None
         if style:
             style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, option, painter)
 
@@ -182,7 +184,7 @@ class AlbumArtDelegate(QStyledItemDelegate):
             pixmap = self._cache.get_placeholder()
 
         # Center the pixmap in the cell
-        rect = option.rect  # type: ignore[attr-defined]
+        rect = opt.rect
         x = rect.x() + (rect.width() - pixmap.width()) // 2
         y = rect.y() + (rect.height() - pixmap.height()) // 2
         painter.drawPixmap(x, y, pixmap)
