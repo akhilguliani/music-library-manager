@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
+from vdj_manager.ui.models.track_model import TRACK_MIME_TYPE
 from vdj_manager.ui.theme import DARK_THEME
 from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
 
@@ -52,6 +54,7 @@ class PlayerPanel(QWidget):
 
     rating_changed = Signal(str, int)
     cues_changed = Signal(str, list)
+    tracks_dropped = Signal(list)  # list[str] file paths dropped onto queue
 
     def __init__(self, bridge: PlaybackBridge, parent=None):
         super().__init__(parent)
@@ -193,8 +196,16 @@ class PlayerPanel(QWidget):
         queue_box = QGroupBox("Queue")
         queue_layout = QVBoxLayout(queue_box)
 
+        # Queue duration label
+        self.queue_duration_label = QLabel("0 tracks")
+        self.queue_duration_label.setStyleSheet(
+            f"color: {DARK_THEME.text_tertiary}; font-size: 11px;"
+        )
+        queue_layout.addWidget(self.queue_duration_label)
+
         self.queue_list = QListWidget()
         self.queue_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.queue_list.setAcceptDrops(True)
         queue_layout.addWidget(self.queue_list)
 
         queue_btns = QHBoxLayout()
@@ -221,6 +232,34 @@ class PlayerPanel(QWidget):
         splitter.addWidget(history_box)
 
         layout.addWidget(splitter, stretch=1)
+
+        # Accept drops on the whole panel (tracks dragged from database)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event) -> None:  # type: ignore[override]
+        """Accept drag events with track MIME data."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # type: ignore[override]
+        """Accept drag move events with track MIME data."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:  # type: ignore[override]
+        """Handle drop of tracks from database panel."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            raw = bytes(event.mimeData().data(TRACK_MIME_TYPE))
+            file_paths = json.loads(raw.decode())
+            if file_paths:
+                self.tracks_dropped.emit(file_paths)
+            event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
 
     def _connect_signals(self) -> None:
         # Bridge signals
@@ -295,13 +334,30 @@ class PlayerPanel(QWidget):
     @Slot(list)
     def _on_queue_changed(self, queue: list) -> None:
         self.queue_list.clear()
+        total_duration = 0.0
         for track in queue:
             label = track.title or Path(track.file_path).stem
             if track.artist:
                 label = f"{track.artist} - {label}"
+            if track.duration_s and track.duration_s > 0:
+                mins = int(track.duration_s // 60)
+                secs = int(track.duration_s % 60)
+                label = f"{label}  [{mins}:{secs:02d}]"
+                total_duration += track.duration_s
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, track)
             self.queue_list.addItem(item)
+
+        # Update duration label
+        count = len(queue)
+        if total_duration > 0:
+            total_mins = int(total_duration // 60)
+            total_secs = int(total_duration % 60)
+            self.queue_duration_label.setText(
+                f"{count} track{'s' if count != 1 else ''} \u2022 {total_mins}:{total_secs:02d}"
+            )
+        else:
+            self.queue_duration_label.setText(f"{count} track{'s' if count != 1 else ''}")
 
     @Slot(object)
     def _on_track_finished(self, track: TrackInfo) -> None:

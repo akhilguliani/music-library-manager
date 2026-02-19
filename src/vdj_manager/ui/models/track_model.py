@@ -1,10 +1,13 @@
 """Qt table model for displaying tracks with virtual scrolling support."""
 
+import json
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, Qt, Signal
 
 from vdj_manager.core.models import Song
+
+TRACK_MIME_TYPE = "application/x-vdj-tracks"
 
 # Custom role for album art delegate: returns file_path for art lookup
 ALBUM_ART_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -141,11 +144,25 @@ class TrackTableModel(QAbstractTableModel):
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:  # type: ignore[override]
-        """Return item flags, adding Editable for supported columns."""
+        """Return item flags, adding Editable and DragEnabled for supported columns."""
         base_flags = super().flags(index)
-        if index.isValid() and index.column() in self.EDITABLE_COLUMNS:
-            return base_flags | Qt.ItemFlag.ItemIsEditable
+        if index.isValid():
+            base_flags |= Qt.ItemFlag.ItemIsDragEnabled
+            if index.column() in self.EDITABLE_COLUMNS:
+                base_flags |= Qt.ItemFlag.ItemIsEditable
         return base_flags
+
+    def mimeTypes(self) -> list[str]:
+        """Return supported MIME types for drag operations."""
+        return [TRACK_MIME_TYPE]
+
+    def mimeData(self, indexes: list[QModelIndex]) -> QMimeData:
+        """Encode dragged rows as JSON list of file paths."""
+        rows = sorted({idx.row() for idx in indexes if idx.isValid()})
+        paths = [self._tracks[r].file_path for r in rows if r < len(self._tracks)]
+        data = QMimeData()
+        data.setData(TRACK_MIME_TYPE, json.dumps(paths).encode())
+        return data
 
     def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # type: ignore[override]
         """Handle edit commits by emitting tag_edit_requested signal."""

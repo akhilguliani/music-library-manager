@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):
         self.player_panel = PlayerPanel(self._playback_bridge)
         self.player_panel.rating_changed.connect(self._on_rating_changed)
         self.player_panel.cues_changed.connect(self._on_cues_changed)
+        self.player_panel.tracks_dropped.connect(self._on_tracks_dropped)
         self._playback_bridge.track_finished.connect(self._on_track_playback_finished)
         self.tab_widget.addTab(self.player_panel, "Player")
 
@@ -328,6 +329,16 @@ class MainWindow(QMainWindow):
         """Append songs to end of queue."""
         for song in songs:
             self._playback_bridge.add_to_queue(TrackInfo.from_song(song))
+
+    @Slot(list)
+    def _on_tracks_dropped(self, file_paths: list) -> None:
+        """Handle tracks dropped onto the player panel — add to queue."""
+        if not self._database:
+            return
+        for fp in file_paths:
+            song = self._database.get_song(fp)
+            if song:
+                self._playback_bridge.add_to_queue(TrackInfo.from_song(song))
 
     @Slot(object)
     def _on_track_playback_finished(self, track) -> None:

@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from vdj_manager.core.models import Infos, Scan, Song, Tags
-from vdj_manager.ui.models.track_model import ALBUM_ART_ROLE, TrackTableModel
+from vdj_manager.ui.models.track_model import ALBUM_ART_ROLE, TRACK_MIME_TYPE, TrackTableModel
 
 
 @pytest.fixture(scope="module")
@@ -343,3 +343,45 @@ class TestTrackTableModel:
 
         result = model.setData(model.index(0, 1), "test", Qt.ItemDataRole.DisplayRole)
         assert result is False
+
+    def test_flags_drag_enabled(self, app, sample_tracks):
+        """Test all valid cells have ItemIsDragEnabled flag."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        for col in range(model.columnCount()):
+            flags = model.flags(model.index(0, col))
+            assert flags & Qt.ItemFlag.ItemIsDragEnabled
+
+    def test_mime_types(self, app):
+        """Test mimeTypes returns the track MIME type."""
+        model = TrackTableModel()
+        assert TRACK_MIME_TYPE in model.mimeTypes()
+
+    def test_mime_data(self, app, sample_tracks):
+        """Test mimeData encodes file paths as JSON."""
+        import json
+
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        indexes = [model.index(0, 0), model.index(1, 0)]
+        mime = model.mimeData(indexes)
+        assert mime.hasFormat(TRACK_MIME_TYPE)
+
+        raw = bytes(mime.data(TRACK_MIME_TYPE))
+        paths = json.loads(raw.decode())
+        assert paths == ["/path/to/track1.mp3", "/path/to/track2.mp3"]
+
+    def test_mime_data_deduplicates_rows(self, app, sample_tracks):
+        """Test mimeData deduplicates when multiple columns from same row."""
+        import json
+
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        # Multiple indexes from row 0
+        indexes = [model.index(0, 0), model.index(0, 1), model.index(0, 2)]
+        mime = model.mimeData(indexes)
+        paths = json.loads(bytes(mime.data(TRACK_MIME_TYPE)).decode())
+        assert paths == ["/path/to/track1.mp3"]

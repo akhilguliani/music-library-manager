@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QSplitter,
+    QStackedWidget,
     QTableView,
     QTabWidget,
     QVBoxLayout,
@@ -43,6 +44,7 @@ from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
 from vdj_manager.ui.widgets.column_browser import ColumnBrowser
 from vdj_manager.ui.widgets.column_filter_row import ColumnFilterRow
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.workers.database_worker import (
     BackupWorker,
     CleanWorker,
@@ -117,12 +119,27 @@ class DatabasePanel(QWidget):
         selection_group = self._create_selection_group()
         layout.addWidget(selection_group)
 
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Select a database source above and click Load to get started.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
         # Compact stats summary
         self.stats_summary_label = QLabel("No database loaded")
         self.stats_summary_label.setStyleSheet(
             f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
         )
-        layout.addWidget(self.stats_summary_label)
+        content_layout.addWidget(self.stats_summary_label)
 
         # Create splitter for track table, tag editor, and log
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -151,7 +168,6 @@ class DatabasePanel(QWidget):
         tag_group.setVisible(False)
         splitter.addWidget(tag_group)
 
-
         # Operation log
         log_group = QGroupBox("Operation Log")
         log_layout = QVBoxLayout(log_group)
@@ -165,7 +181,12 @@ class DatabasePanel(QWidget):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 1)
 
-        layout.addWidget(splitter)
+        content_layout.addWidget(splitter)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     def _create_selection_group(self) -> QGroupBox:
         """Create the database selection and actions group box."""
@@ -254,6 +275,7 @@ class DatabasePanel(QWidget):
         self.track_table.verticalHeader().setVisible(False)
         self.track_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.track_table.customContextMenuRequested.connect(self._on_track_context_menu)
+        self.track_table.setDragEnabled(True)
 
         # Album art delegate + cache
         self._art_cache = AlbumArtCache(parent=self)
@@ -379,6 +401,9 @@ class DatabasePanel(QWidget):
         if result.success:
             self._database = result.database
             self._tracks = result.tracks
+
+            # Switch from empty state to main content
+            self._stacked.setCurrentIndex(1)
 
             # Update stats
             self._update_stats(result.stats)
