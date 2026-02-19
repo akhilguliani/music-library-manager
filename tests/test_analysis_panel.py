@@ -56,13 +56,14 @@ class TestAnalysisPanelCreation:
     def test_panel_creation(self, qapp):
         panel = AnalysisPanel()
         assert panel.sub_tabs is not None
-        assert panel.sub_tabs.count() == 3
+        assert panel.sub_tabs.count() == 4
 
     def test_sub_tab_names(self, qapp):
         panel = AnalysisPanel()
         assert panel.sub_tabs.tabText(0) == "Energy"
         assert panel.sub_tabs.tabText(1) == "MIK Import"
         assert panel.sub_tabs.tabText(2) == "Mood"
+        assert panel.sub_tabs.tabText(3) == "Genre"
 
     def test_buttons_disabled_initially(self, qapp):
         panel = AnalysisPanel()
@@ -70,6 +71,7 @@ class TestAnalysisPanelCreation:
         assert not panel.energy_untagged_btn.isEnabled()
         assert not panel.mik_scan_btn.isEnabled()
         assert not panel.mood_btn.isEnabled()
+        assert not panel.genre_btn.isEnabled()
 
     def test_set_database_enables_buttons(self, qapp):
         panel = AnalysisPanel()
@@ -81,6 +83,7 @@ class TestAnalysisPanelCreation:
         assert panel.energy_untagged_btn.isEnabled()
         assert panel.mik_scan_btn.isEnabled()
         assert panel.mood_btn.isEnabled()
+        assert panel.genre_btn.isEnabled()
 
     def test_set_database_none_disables_buttons(self, qapp):
         panel = AnalysisPanel()
@@ -90,6 +93,7 @@ class TestAnalysisPanelCreation:
         assert not panel.energy_untagged_btn.isEnabled()
         assert not panel.mik_scan_btn.isEnabled()
         assert not panel.mood_btn.isEnabled()
+        assert not panel.genre_btn.isEnabled()
 
     def test_track_info_updated(self, qapp):
         panel = AnalysisPanel()
@@ -126,12 +130,14 @@ class TestAnalysisPanelCreation:
         assert panel.energy_progress is not None
         assert panel.mik_progress is not None
         assert panel.mood_progress is not None
+        assert panel.genre_progress is not None
 
     def test_progress_widgets_hidden_initially(self, qapp):
         panel = AnalysisPanel()
         assert not panel.energy_progress.isVisible()
         assert not panel.mik_progress.isVisible()
         assert not panel.mood_progress.isVisible()
+        assert not panel.genre_progress.isVisible()
 
 
 class TestEnergyWorker:
@@ -637,6 +643,11 @@ class TestFormatColumnAndFailureSummary:
         assert panel.mood_results.table.columnCount() == 4
         assert panel.mood_results.table.horizontalHeaderItem(1).text() == "Fmt"
 
+    def test_genre_results_has_format_column(self, qapp):
+        panel = AnalysisPanel()
+        assert panel.genre_results.table.columnCount() == 5
+        assert panel.genre_results.table.horizontalHeaderItem(1).text() == "Fmt"
+
     def test_failure_summary_includes_format_breakdown(self, qapp):
         results = [
             {"file_path": "/a.flac", "format": ".flac", "energy": None, "status": "failed"},
@@ -887,3 +898,34 @@ class TestProcessLevelCaching:
             assert "analysis_cache" in _process_cache
 
         _process_cache.clear()
+
+
+class TestGenreHandlers:
+    """Tests for genre detection handlers in AnalysisPanel."""
+
+    def test_genre_finished_shows_status(self, qapp):
+        panel = AnalysisPanel()
+        panel._on_genre_finished({"analyzed": 5, "failed": 1, "cached": 2, "results": []})
+        assert "5 detected" in panel.genre_status.text()
+        assert "2 cached" in panel.genre_status.text()
+        assert "1 failed" in panel.genre_status.text()
+
+    def test_genre_finished_emits_database_changed(self, qapp):
+        panel = AnalysisPanel()
+        mock_db = MagicMock()
+        panel.set_database(mock_db, [_make_song("/a.mp3")])
+        signals = []
+        panel.database_changed.connect(lambda: signals.append(True))
+        panel._on_genre_finished({"analyzed": 1, "failed": 0, "cached": 0, "results": []})
+        assert len(signals) == 1
+
+    def test_genre_error_shows_message(self, qapp):
+        panel = AnalysisPanel()
+        panel._on_genre_error("Test error")
+        assert "Test error" in panel.genre_status.text()
+        assert panel.genre_btn.isEnabled()
+
+    def test_genre_online_checkbox_exists(self, qapp):
+        panel = AnalysisPanel()
+        assert hasattr(panel, "genre_online_checkbox")
+        assert panel.genre_online_checkbox.isChecked()

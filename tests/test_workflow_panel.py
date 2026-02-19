@@ -35,10 +35,11 @@ class TestWorkflowPanelCreation:
     """Tests for panel initialization."""
 
     def test_panel_has_checkboxes(self, qapp):
-        """Panel should have energy, mood, and normalization checkboxes."""
+        """Panel should have energy, mood, genre, and normalization checkboxes."""
         panel = WorkflowPanel()
         assert hasattr(panel, "energy_check")
         assert hasattr(panel, "mood_check")
+        assert hasattr(panel, "genre_check")
         assert hasattr(panel, "norm_check")
 
     def test_panel_has_controls(self, qapp):
@@ -75,6 +76,7 @@ class TestWorkflowPanelRunLogic:
 
         panel.energy_check.setChecked(False)
         panel.mood_check.setChecked(False)
+        panel.genre_check.setChecked(False)
         panel.norm_check.setChecked(False)
 
         with patch.object(QMessageBox, "warning") as mock_warn:
@@ -93,6 +95,7 @@ class TestWorkflowPanelRunLogic:
 
         panel.energy_check.setChecked(True)
         panel.mood_check.setChecked(False)
+        panel.genre_check.setChecked(False)
         panel.norm_check.setChecked(False)
 
         mock_worker = MagicMock()
@@ -118,6 +121,7 @@ class TestWorkflowPanelRunLogic:
 
         panel.energy_check.setChecked(True)
         panel.mood_check.setChecked(True)
+        panel.genre_check.setChecked(False)
         panel.norm_check.setChecked(False)
 
         mock_energy = MagicMock()
@@ -150,6 +154,7 @@ class TestWorkflowPanelRunLogic:
 
         panel.energy_check.setChecked(True)
         panel.mood_check.setChecked(True)
+        panel.genre_check.setChecked(False)
         panel.norm_check.setChecked(False)
 
         mock_backup = MagicMock()
@@ -201,6 +206,35 @@ class TestWorkflowPanelRunLogic:
         db.save.assert_called_once()
         assert panel._unsaved_count == 0
 
+    def test_worker_error_decrements_running_count(self, qapp):
+        """Worker error should decrement _workers_running and save if last."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        panel._database = db
+        panel._unsaved_count = 3
+        panel._workers_running = 1
+
+        panel._on_worker_error("Energy", "something broke")
+
+        assert panel._workers_running == 0
+        db.save.assert_called_once()  # last worker triggers save
+        # _check_all_done overwrites status to "All operations complete"
+        assert panel.run_btn.isEnabled()
+
+    def test_worker_error_with_others_still_running(self, qapp):
+        """Worker error should not save if other workers are still running."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        panel._database = db
+        panel._unsaved_count = 3
+        panel._workers_running = 2
+
+        panel._on_worker_error("Genre", "network error")
+
+        assert panel._workers_running == 1
+        assert "Genre error" in panel.status_label.text()
+        db.save.assert_not_called()
+
     def test_cancel_all_stops_running_workers(self, qapp):
         """Cancel all should call cancel() on running workers."""
         panel = WorkflowPanel()
@@ -223,6 +257,7 @@ class TestWorkflowPanelRunLogic:
         panel = WorkflowPanel()
         assert hasattr(panel, "energy_progress")
         assert hasattr(panel, "mood_progress")
+        assert hasattr(panel, "genre_progress")
         assert hasattr(panel, "norm_progress")
 
     @patch("vdj_manager.core.backup.BackupManager")
@@ -237,6 +272,7 @@ class TestWorkflowPanelRunLogic:
 
         panel.energy_check.setChecked(True)
         panel.mood_check.setChecked(False)
+        panel.genre_check.setChecked(False)
         panel.norm_check.setChecked(False)
 
         panel._on_run_clicked()
@@ -278,10 +314,12 @@ class TestWorkflowPanelResultsUI:
         panel = WorkflowPanel()
         assert hasattr(panel, "energy_results_table")
         assert hasattr(panel, "mood_results_table")
+        assert hasattr(panel, "genre_results_table")
         assert hasattr(panel, "norm_results_table")
         # Initially hidden
         assert not panel.energy_results_table.isVisible()
         assert not panel.mood_results_table.isVisible()
+        assert not panel.genre_results_table.isVisible()
         assert not panel.norm_results_table.isVisible()
 
     def test_panel_has_current_file_labels(self, qapp):
@@ -289,6 +327,7 @@ class TestWorkflowPanelResultsUI:
         panel = WorkflowPanel()
         assert hasattr(panel, "energy_current_file")
         assert hasattr(panel, "mood_current_file")
+        assert hasattr(panel, "genre_current_file")
         assert hasattr(panel, "norm_current_file")
         # Initially hidden
         assert not panel.energy_current_file.isVisible()
@@ -365,3 +404,48 @@ class TestWorkflowPanelResultsUI:
 
         assert "10 measured" in panel.norm_current_file.text()
         assert "0 failed" in panel.norm_current_file.text()
+
+    def test_on_genre_result_updates_label_and_table(self, qapp):
+        """_on_genre_result should update current-file label and add row to table."""
+        panel = WorkflowPanel()
+        result = {
+            "file_path": "/music/track.mp3",
+            "format": "mp3",
+            "genre": "House",
+            "source": "file-tag",
+            "status": "ok (file-tag)",
+        }
+        panel._on_genre_result(result)
+
+        assert "track.mp3" in panel.genre_current_file.text()
+        assert panel.genre_results_table.row_count() == 1
+        assert panel._genre_counts["analyzed"] == 1
+
+    def test_on_genre_result_counts_cached(self, qapp):
+        """Cached genre results should increment the cached counter."""
+        panel = WorkflowPanel()
+        result = {
+            "file_path": "/music/cached.mp3",
+            "format": "mp3",
+            "genre": "Pop",
+            "source": "cache",
+            "status": "cached",
+        }
+        panel._on_genre_result(result)
+
+        assert panel._genre_counts["cached"] == 1
+        assert panel._genre_counts["analyzed"] == 0
+
+    def test_genre_finished_shows_summary(self, qapp):
+        """Genre finished handler should show summary counts."""
+        panel = WorkflowPanel()
+        panel._workers_running = 1
+        panel._database = MagicMock()
+        panel._unsaved_count = 0
+        panel._genre_counts = {"analyzed": 5, "cached": 3, "failed": 2}
+
+        panel._on_genre_finished({"analyzed": 5, "failed": 2})
+
+        assert "5 detected" in panel.genre_current_file.text()
+        assert "3 cached" in panel.genre_current_file.text()
+        assert "2 failed" in panel.genre_current_file.text()

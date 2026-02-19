@@ -195,17 +195,25 @@ class AnalysisCache:
 
         return hits
 
-    def invalidate(self, file_path: str) -> None:
-        """Remove all cached entries for a file path.
+    def invalidate(self, file_path: str, analysis_type: str | None = None) -> None:
+        """Remove cached entries for a file path.
 
         Args:
             file_path: Absolute path to invalidate.
+            analysis_type: If provided, only invalidate this specific type.
+                           If ``None``, removes all types for the file.
         """
         with self._connect() as conn:
-            conn.execute(
-                "DELETE FROM analysis_results WHERE file_path = ?",
-                (file_path,),
-            )
+            if analysis_type is not None:
+                conn.execute(
+                    "DELETE FROM analysis_results WHERE file_path = ? AND analysis_type = ?",
+                    (file_path, analysis_type),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM analysis_results WHERE file_path = ?",
+                    (file_path,),
+                )
 
     def invalidate_by_type(self, analysis_type: str) -> int:
         """Remove all cached entries for a specific analysis type.

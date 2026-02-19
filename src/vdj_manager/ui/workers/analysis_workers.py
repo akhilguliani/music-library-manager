@@ -252,6 +252,107 @@ def _analyze_mood_single(
         }
 
 
+def _fetch_genre_single(
+    file_path: str,
+    cache_db_path: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
+    lastfm_api_key: str | None = None,
+    enable_online: bool = False,
+    skip_cache: bool = False,
+) -> dict:
+    """Fetch genre for a single file in a subprocess.
+
+    Two-pass approach:
+    1. Read embedded file tags via FileTagEditor (fast, no network).
+    2. If no genre found and online enabled, try Last.fm / MusicBrainz.
+
+    Returns:
+        Dict with file_path, format, genre (str|None), source, and status.
+    """
+    fmt = Path(file_path).suffix.lower()
+    try:
+        cache = None
+        if cache_db_path:
+            if "analysis_cache" not in _process_cache:
+                from vdj_manager.analysis.analysis_cache import AnalysisCache
+
+                _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
+            cache = _process_cache["analysis_cache"]
+            if skip_cache:
+                cache.invalidate(file_path, "genre")
+            else:
+                cached = cache.get(file_path, "genre")
+                if cached is not None:
+                    return {
+                        "file_path": file_path,
+                        "format": fmt,
+                        "genre": cached,
+                        "source": "cache",
+                        "status": "cached",
+                    }
+
+        # Pass 1: Read embedded file tags
+        if os.path.isfile(file_path):
+            from vdj_manager.files.id3_editor import FileTagEditor
+
+            if "file_tag_editor" not in _process_cache:
+                _process_cache["file_tag_editor"] = FileTagEditor()
+            editor = _process_cache["file_tag_editor"]
+
+            try:
+                file_tags = editor.read_tags(file_path)
+                raw_genre = file_tags.get("genre")
+                if raw_genre and raw_genre.strip():
+                    from vdj_manager.analysis.online_genre import normalize_genre
+
+                    genre = normalize_genre(raw_genre)
+                    if genre:
+                        if cache is not None:
+                            cache.put(file_path, "genre", genre)
+                        return {
+                            "file_path": file_path,
+                            "format": fmt,
+                            "genre": genre,
+                            "source": "file-tag",
+                            "status": "ok (file-tag)",
+                        }
+            except Exception:
+                logger.debug("Failed to read file tags for %s", file_path)
+
+        # Pass 2: Online lookup
+        if enable_online and artist and title:
+            from vdj_manager.analysis.online_genre import lookup_online_genre
+
+            online_genre, source = lookup_online_genre(artist, title, lastfm_api_key)
+            if online_genre:
+                if cache is not None:
+                    cache.put(file_path, "genre", online_genre)
+                return {
+                    "file_path": file_path,
+                    "format": fmt,
+                    "genre": online_genre,
+                    "source": source,
+                    "status": f"ok ({source})",
+                }
+
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "genre": None,
+            "source": "none",
+            "status": "none",
+        }
+    except Exception as e:
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "genre": None,
+            "source": "none",
+            "status": f"error: {e}",
+        }
+
+
 def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict:
     """Import MIK tags for a single file in a subprocess.
 
@@ -760,5 +861,117 @@ class MoodWorker(PausableAnalysisWorker):
 
                 # Free audioread handles accumulated during batch
                 gc.collect()
+
+        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
+
+
+class GenreWorker(PausableAnalysisWorker):
+    """Worker that fetches/detects genre for audio tracks in parallel.
+
+    Two-pass: reads embedded file tags first, then online lookup for
+    missing genres (Last.fm / MusicBrainz).
+    Supports pause/resume/cancel between batches.
+
+    Note: This worker does NOT mutate the database directly. It includes
+    ``tag_updates`` in each result dict so the main-thread panel handler
+    can apply DB changes safely (no cross-thread mutation).
+    """
+
+    def __init__(
+        self,
+        tracks: list[Song],
+        max_workers: int | None = None,
+        cache_db_path: str | None = None,
+        enable_online: bool = False,
+        lastfm_api_key: str | None = None,
+        skip_cache: bool = False,
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self._tracks = tracks
+        self._max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
+        self._cache_db_path = cache_db_path
+        self._enable_online = enable_online
+        self._lastfm_api_key = lastfm_api_key
+        self._skip_cache = skip_cache
+
+    def do_work(self) -> dict:
+        """Fetch genre for all tracks in parallel."""
+        # Cap workers at 1 when online (rate limiting)
+        max_workers = 1 if self._enable_online else self._max_workers
+
+        analyzed = 0
+        failed = 0
+        cached = 0
+        results: list[dict[str, Any]] = []
+        total = len(self._tracks)
+
+        # Build read-only snapshot of artist/title metadata
+        track_info = {}
+        for t in self._tracks:
+            artist = (t.tags.author or "") if t.tags else ""
+            title = (t.tags.title or "") if t.tags else ""
+            track_info[t.file_path] = (artist, title)
+
+        file_paths = [t.file_path for t in self._tracks]
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for batch_start in range(0, len(file_paths), _SAVE_INTERVAL):
+                if not self._wait_if_paused():
+                    break
+
+                batch = file_paths[batch_start : batch_start + _SAVE_INTERVAL]
+                futures = {}
+                for fp in batch:
+                    artist, title = track_info.get(fp, ("", ""))
+                    futures[
+                        executor.submit(
+                            _fetch_genre_single,
+                            fp,
+                            self._cache_db_path,
+                            artist=artist,
+                            title=title,
+                            lastfm_api_key=self._lastfm_api_key,
+                            enable_online=self._enable_online,
+                            skip_cache=self._skip_cache,
+                        )
+                    ] = fp
+
+                for future in as_completed(futures):
+                    if self._check_cancelled():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        return {
+                            "analyzed": analyzed,
+                            "failed": failed,
+                            "cached": cached,
+                            "results": results,
+                        }
+
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        fp = futures[future]
+                        result = {
+                            "file_path": fp,
+                            "format": Path(fp).suffix.lower(),
+                            "genre": None,
+                            "source": "none",
+                            "status": f"error: {e}",
+                        }
+
+                    genre = result.get("genre")
+                    status = result.get("status", "")
+                    if genre and (status.startswith("ok") or status == "cached"):
+                        result["tag_updates"] = {"Genre": genre}
+                        if status == "cached":
+                            cached += 1
+                        else:
+                            analyzed += 1
+                    else:
+                        failed += 1
+
+                    results.append(result)
+                    self.result_ready.emit(result)
+                    self._emit_progress(analyzed + failed + cached, total)
 
         return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}

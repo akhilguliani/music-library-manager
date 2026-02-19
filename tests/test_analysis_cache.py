@@ -86,6 +86,15 @@ class TestInvalidation:
         assert cache.get(audio_file, "energy") is None
         assert cache.get(audio_file, "mood") is None
 
+    def test_invalidate_specific_type_keeps_others(self, cache, audio_file):
+        cache.put(audio_file, "energy", "7")
+        cache.put(audio_file, "genre", "House")
+
+        cache.invalidate(audio_file, "genre")
+
+        assert cache.get(audio_file, "energy") == "7"  # kept
+        assert cache.get(audio_file, "genre") is None  # removed
+
     def test_invalidate_nonexistent_is_noop(self, cache):
         cache.invalidate("/no/such/file.mp3")  # Should not raise
 
