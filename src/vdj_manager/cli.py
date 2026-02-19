@@ -933,6 +933,11 @@ def analyze_genre(
     """
     from .analysis.online_genre import lookup_online_genre, normalize_genre
     from .config import get_lastfm_api_key
+    from .files.id3_editor import FileTagEditor
+
+    # --all overrides --untagged
+    if analyze_all:
+        untagged = False
 
     path = LOCAL_VDJ_DB if db_choice == "local" else MYNVME_VDJ_DB
 
@@ -981,6 +986,7 @@ def analyze_genre(
 
     detected = 0
     failed = 0
+    editor = FileTagEditor()
 
     with Progress(
         SpinnerColumn(),
@@ -998,15 +1004,12 @@ def analyze_genre(
                 file_exists = not song.is_windows_path and Path(song.file_path).exists()
                 if file_exists:
                     try:
-                        from .files.id3_editor import FileTagEditor
-
-                        editor = FileTagEditor()
                         file_tags = editor.read_tags(song.file_path)
                         raw_genre = file_tags.get("genre")
                         if raw_genre and raw_genre.strip():
                             genre = normalize_genre(raw_genre)
                     except Exception:
-                        pass
+                        logger.debug("Failed to read file tags for %s", song.file_path)
 
                 # Pass 2: Online lookup
                 if not genre and online:

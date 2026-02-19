@@ -139,8 +139,8 @@ class TestFetchGenreSingle:
         assert result["genre"] is None
         assert result["status"] == "none"
 
-    def test_skip_cache_invalidates(self):
-        """skip_cache=True should invalidate before re-detecting."""
+    def test_skip_cache_invalidates_genre_only(self):
+        """skip_cache=True should invalidate only genre type, not all types."""
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
         _process_cache["analysis_cache"] = mock_cache
@@ -148,7 +148,7 @@ class TestFetchGenreSingle:
         with patch("vdj_manager.ui.workers.analysis_workers.os.path.isfile", return_value=False):
             _fetch_genre_single("/music/track.mp3", cache_db_path="/tmp/c.db", skip_cache=True)
 
-        mock_cache.invalidate.assert_called_once_with("/music/track.mp3")
+        mock_cache.invalidate.assert_called_once_with("/music/track.mp3", "genre")
 
     @patch("vdj_manager.ui.workers.analysis_workers.os.path.isfile", return_value=True)
     def test_caches_result(self, mock_isfile):

@@ -280,7 +280,7 @@ def _fetch_genre_single(
                 _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
             cache = _process_cache["analysis_cache"]
             if skip_cache:
-                cache.invalidate(file_path)
+                cache.invalidate(file_path, "genre")
             else:
                 cached = cache.get(file_path, "genre")
                 if cached is not None:

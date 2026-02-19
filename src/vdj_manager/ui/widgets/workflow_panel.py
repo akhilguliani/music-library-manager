@@ -425,7 +425,7 @@ class WorkflowPanel(QWidget):
         self._energy_worker.result_ready.connect(self._apply_result_to_db)
         self._energy_worker.result_ready.connect(self._on_energy_result)
         self._energy_worker.finished_work.connect(self._on_energy_finished)
-        self._energy_worker.error.connect(lambda e: self.status_label.setText(f"Energy error: {e}"))
+        self._energy_worker.error.connect(lambda e: self._on_worker_error("Energy", e))
 
         self.energy_progress.reset()
         self.energy_progress.start(len(tracks))
@@ -466,7 +466,7 @@ class WorkflowPanel(QWidget):
         self._mood_worker.result_ready.connect(self._apply_result_to_db)
         self._mood_worker.result_ready.connect(self._on_mood_result)
         self._mood_worker.finished_work.connect(self._on_mood_finished)
-        self._mood_worker.error.connect(lambda e: self.status_label.setText(f"Mood error: {e}"))
+        self._mood_worker.error.connect(lambda e: self._on_worker_error("Mood", e))
 
         self.mood_progress.reset()
         self.mood_progress.start(len(tracks))
@@ -504,7 +504,7 @@ class WorkflowPanel(QWidget):
         self._genre_worker.result_ready.connect(self._apply_result_to_db)
         self._genre_worker.result_ready.connect(self._on_genre_result)
         self._genre_worker.finished_work.connect(self._on_genre_finished)
-        self._genre_worker.error.connect(lambda e: self.status_label.setText(f"Genre error: {e}"))
+        self._genre_worker.error.connect(lambda e: self._on_worker_error("Genre", e))
 
         self.genre_progress.reset()
         self.genre_progress.start(len(tracks))
@@ -550,9 +550,7 @@ class WorkflowPanel(QWidget):
         )
         self._norm_worker.result_ready.connect(self._on_norm_result)
         self._norm_worker.finished_work.connect(self._on_norm_finished)
-        self._norm_worker.error.connect(
-            lambda e: self.status_label.setText(f"Normalization error: {e}")
-        )
+        self._norm_worker.error.connect(lambda e: self._on_worker_error("Normalization", e))
 
         self.norm_progress.reset()
         self.norm_progress.start(len(file_paths))
@@ -707,6 +705,13 @@ class WorkflowPanel(QWidget):
             self.norm_progress.on_finished(True, "Normalization: Done")
         else:
             self.norm_progress.on_finished(False, f"Normalization: {message or 'Failed'}")
+        self._workers_running -= 1
+        self._check_all_done()
+
+    def _on_worker_error(self, name: str, error_msg: str) -> None:
+        """Handle a worker error by decrementing the running count and showing the error."""
+        logger.error("%s worker error: %s", name, error_msg)
+        self.status_label.setText(f"{name} error: {error_msg}")
         self._workers_running -= 1
         self._check_all_done()
 

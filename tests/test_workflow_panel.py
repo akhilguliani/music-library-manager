@@ -206,6 +206,35 @@ class TestWorkflowPanelRunLogic:
         db.save.assert_called_once()
         assert panel._unsaved_count == 0
 
+    def test_worker_error_decrements_running_count(self, qapp):
+        """Worker error should decrement _workers_running and save if last."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        panel._database = db
+        panel._unsaved_count = 3
+        panel._workers_running = 1
+
+        panel._on_worker_error("Energy", "something broke")
+
+        assert panel._workers_running == 0
+        db.save.assert_called_once()  # last worker triggers save
+        # _check_all_done overwrites status to "All operations complete"
+        assert panel.run_btn.isEnabled()
+
+    def test_worker_error_with_others_still_running(self, qapp):
+        """Worker error should not save if other workers are still running."""
+        panel = WorkflowPanel()
+        db = MagicMock()
+        panel._database = db
+        panel._unsaved_count = 3
+        panel._workers_running = 2
+
+        panel._on_worker_error("Genre", "network error")
+
+        assert panel._workers_running == 1
+        assert "Genre error" in panel.status_label.text()
+        db.save.assert_not_called()
+
     def test_cancel_all_stops_running_workers(self, qapp):
         """Cancel all should call cancel() on running workers."""
         panel = WorkflowPanel()
