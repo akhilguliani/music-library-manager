@@ -1,6 +1,5 @@
 """Tests for normalization processor."""
 
-import pytest
 from vdj_manager.normalize.processor import NormalizationProcessor, NormalizationResult
 
 
@@ -8,10 +7,7 @@ class TestNormalizationResult:
     def test_successful_result(self):
         """Test creating a successful result."""
         result = NormalizationResult(
-            file_path="/path/track.mp3",
-            success=True,
-            current_lufs=-10.5,
-            gain_db=-3.5
+            file_path="/path/track.mp3", success=True, current_lufs=-10.5, gain_db=-3.5
         )
 
         assert result.success
@@ -22,9 +18,7 @@ class TestNormalizationResult:
     def test_failed_result(self):
         """Test creating a failed result."""
         result = NormalizationResult(
-            file_path="/path/track.mp3",
-            success=False,
-            error="File not found"
+            file_path="/path/track.mp3", success=False, error="File not found"
         )
 
         assert not result.success
@@ -42,22 +36,18 @@ class TestNormalizationProcessor:
 
     def test_init_custom_settings(self):
         """Test processor with custom settings."""
-        processor = NormalizationProcessor(
-            target_lufs=-16.0,
-            max_workers=4
-        )
+        processor = NormalizationProcessor(target_lufs=-16.0, max_workers=4)
 
         assert processor.target_lufs == -16.0
         assert processor.max_workers == 4
 
     def test_calculate_vdj_volume_positive_gain(self):
         """Test VDJ volume calculation for positive gain."""
-        processor = NormalizationProcessor(target_lufs=-14.0)
+        NormalizationProcessor(target_lufs=-14.0)
 
         # If current LUFS is -18, we need +4dB gain
         # Volume multiplier should be > 1.0
         # Since we can't actually measure files, we test the formula
-        import math
 
         gain_db = 4.0  # Need to increase volume
         expected_volume = 10 ** (gain_db / 20)
@@ -67,7 +57,6 @@ class TestNormalizationProcessor:
 
     def test_calculate_vdj_volume_negative_gain(self):
         """Test VDJ volume calculation for negative gain."""
-        import math
 
         gain_db = -4.0  # Need to decrease volume
         expected_volume = 10 ** (gain_db / 20)
@@ -77,7 +66,6 @@ class TestNormalizationProcessor:
 
     def test_calculate_vdj_volume_no_change(self):
         """Test VDJ volume calculation when no change needed."""
-        import math
 
         gain_db = 0.0  # No change needed
         expected_volume = 10 ** (gain_db / 20)

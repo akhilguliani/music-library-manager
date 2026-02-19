@@ -1,7 +1,7 @@
 """Directory scanning utilities for finding audio files."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from ..config import AUDIO_EXTENSIONS
 

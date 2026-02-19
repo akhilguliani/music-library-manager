@@ -15,7 +15,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from PySide6.QtCore import QMutex, QWaitCondition, QThread, Signal
+from PySide6.QtCore import QMutex, QThread, QWaitCondition, Signal
 
 from vdj_manager.core.models import Song
 
@@ -85,14 +85,21 @@ def _analyze_energy_single(file_path: str, cache_db_path: str | None = None) -> 
         if cache_db_path:
             if "analysis_cache" not in _process_cache:
                 from vdj_manager.analysis.analysis_cache import AnalysisCache
+
                 _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
             cache = _process_cache["analysis_cache"]
             cached = cache.get(file_path, "energy")
             if cached is not None:
-                return {"file_path": file_path, "format": fmt, "energy": int(cached), "status": "cached"}
+                return {
+                    "file_path": file_path,
+                    "format": fmt,
+                    "energy": int(cached),
+                    "status": "cached",
+                }
 
         if "energy_analyzer" not in _process_cache:
             from vdj_manager.analysis.energy import EnergyAnalyzer
+
             _process_cache["energy_analyzer"] = EnergyAnalyzer()
         analyzer = _process_cache["energy_analyzer"]
 
@@ -144,6 +151,7 @@ def _analyze_mood_single(
         if cache_db_path:
             if "analysis_cache" not in _process_cache:
                 from vdj_manager.analysis.analysis_cache import AnalysisCache
+
                 _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
             cache = _process_cache["analysis_cache"]
             if skip_cache:
@@ -163,6 +171,7 @@ def _analyze_mood_single(
         # Try online lookup first
         if enable_online and artist and title:
             from vdj_manager.analysis.online_mood import lookup_online_mood
+
             mood, source = lookup_online_mood(artist, title, lastfm_api_key)
             if mood:
                 mood_tags = [mood]
@@ -255,6 +264,7 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
         if cache_db_path:
             if "analysis_cache" not in _process_cache:
                 from vdj_manager.analysis.analysis_cache import AnalysisCache
+
                 _process_cache["analysis_cache"] = AnalysisCache(db_path=Path(cache_db_path))
             cache = _process_cache["analysis_cache"]
             cached = cache.get(file_path, "mik")
@@ -288,14 +298,27 @@ def _import_mik_single(file_path: str, cache_db_path: str | None = None) -> dict
                 "key": mik_data.get("key"),
                 "status": "found",
             }
-        return {"file_path": file_path, "format": fmt, "energy": None, "key": None, "status": "none"}
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "energy": None,
+            "key": None,
+            "status": "none",
+        }
     except Exception as e:
-        return {"file_path": file_path, "format": fmt, "energy": None, "key": None, "status": f"error: {e}"}
+        return {
+            "file_path": file_path,
+            "format": fmt,
+            "energy": None,
+            "key": None,
+            "status": f"error: {e}",
+        }
 
 
 # ------------------------------------------------------------------
 # Pausable analysis worker base
 # ------------------------------------------------------------------
+
 
 class PausableAnalysisWorker(QThread):
     """Base class for analysis workers with pause/resume/cancel.
@@ -406,6 +429,7 @@ class PausableAnalysisWorker(QThread):
 # Worker classes
 # ------------------------------------------------------------------
 
+
 class EnergyWorker(PausableAnalysisWorker):
     """Worker that analyzes energy levels for audio tracks in parallel.
 
@@ -435,7 +459,7 @@ class EnergyWorker(PausableAnalysisWorker):
         analyzed = 0
         failed = 0
         cached = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         file_paths = [t.file_path for t in self._tracks]
@@ -445,7 +469,7 @@ class EnergyWorker(PausableAnalysisWorker):
                 if not self._wait_if_paused():
                     break
 
-                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
+                batch = file_paths[batch_start : batch_start + _SAVE_INTERVAL]
                 futures = {
                     executor.submit(_analyze_energy_single, fp, self._cache_db_path): fp
                     for fp in batch
@@ -454,13 +478,23 @@ class EnergyWorker(PausableAnalysisWorker):
                 for future in as_completed(futures):
                     if self._check_cancelled():
                         executor.shutdown(wait=False, cancel_futures=True)
-                        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
+                        return {
+                            "analyzed": analyzed,
+                            "failed": failed,
+                            "cached": cached,
+                            "results": results,
+                        }
 
                     try:
                         result = future.result()
                     except Exception as e:
                         fp = futures[future]
-                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "energy": None, "status": f"error: {e}"}
+                        result = {
+                            "file_path": fp,
+                            "format": Path(fp).suffix.lower(),
+                            "energy": None,
+                            "status": f"error: {e}",
+                        }
 
                     if result["status"] == "cached" and result["energy"] is not None:
                         result["tag_updates"] = {"Grouping": str(result["energy"])}
@@ -508,13 +542,11 @@ class MIKImportWorker(PausableAnalysisWorker):
         """Import MIK tags for all tracks in parallel."""
         found = 0
         updated = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         # Build a lookup for existing energy tags (read-only snapshot)
-        existing_energy = {
-            t.file_path: t.energy for t in self._tracks
-        }
+        existing_energy = {t.file_path: t.energy for t in self._tracks}
 
         file_paths = [t.file_path for t in self._tracks]
 
@@ -523,10 +555,9 @@ class MIKImportWorker(PausableAnalysisWorker):
                 if not self._wait_if_paused():
                     break
 
-                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
+                batch = file_paths[batch_start : batch_start + _SAVE_INTERVAL]
                 futures = {
-                    executor.submit(_import_mik_single, fp, self._cache_db_path): fp
-                    for fp in batch
+                    executor.submit(_import_mik_single, fp, self._cache_db_path): fp for fp in batch
                 }
 
                 for future in as_completed(futures):
@@ -538,7 +569,13 @@ class MIKImportWorker(PausableAnalysisWorker):
                         result = future.result()
                     except Exception as e:
                         fp = futures[future]
-                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "energy": None, "key": None, "status": f"error: {e}"}
+                        result = {
+                            "file_path": fp,
+                            "format": Path(fp).suffix.lower(),
+                            "energy": None,
+                            "key": None,
+                            "status": f"error: {e}",
+                        }
 
                     if result["status"] in ("found", "cached"):
                         found += 1
@@ -603,6 +640,7 @@ class MoodWorker(PausableAnalysisWorker):
         # Check backend availability
         if not self._enable_online:
             from vdj_manager.analysis.mood_backend import MoodModel, get_backend
+
             backend = get_backend(MoodModel(self._model_name))
             if not backend.is_available:
                 return {
@@ -611,7 +649,7 @@ class MoodWorker(PausableAnalysisWorker):
                     "cached": 0,
                     "results": [],
                     "error": f"Backend '{self._model_name}' is not available "
-                             "(essentia-tensorflow not installed)",
+                    "(essentia-tensorflow not installed)",
                 }
 
         # Cap workers at 1 when online (rate limiting)
@@ -620,7 +658,7 @@ class MoodWorker(PausableAnalysisWorker):
         analyzed = 0
         failed = 0
         cached = 0
-        results = []
+        results: list[dict[str, Any]] = []
         total = len(self._tracks)
 
         # Build read-only snapshots for artist/title and existing user2
@@ -642,47 +680,59 @@ class MoodWorker(PausableAnalysisWorker):
                 if not self._wait_if_paused():
                     break
 
-                batch = file_paths[batch_start:batch_start + _SAVE_INTERVAL]
+                batch = file_paths[batch_start : batch_start + _SAVE_INTERVAL]
                 futures = {}
                 for fp in batch:
                     artist, title = track_info.get(fp, ("", ""))
-                    futures[executor.submit(
-                        _analyze_mood_single,
-                        fp,
-                        self._cache_db_path,
-                        artist=artist,
-                        title=title,
-                        lastfm_api_key=self._lastfm_api_key,
-                        enable_online=self._enable_online,
-                        skip_cache=self._skip_cache,
-                        model_name=self._model_name,
-                        threshold=self._threshold,
-                        max_tags=self._max_tags,
-                    )] = fp
+                    futures[
+                        executor.submit(
+                            _analyze_mood_single,
+                            fp,
+                            self._cache_db_path,
+                            artist=artist,
+                            title=title,
+                            lastfm_api_key=self._lastfm_api_key,
+                            enable_online=self._enable_online,
+                            skip_cache=self._skip_cache,
+                            model_name=self._model_name,
+                            threshold=self._threshold,
+                            max_tags=self._max_tags,
+                        )
+                    ] = fp
 
                 for future in as_completed(futures):
                     if self._check_cancelled():
                         executor.shutdown(wait=False, cancel_futures=True)
-                        return {"analyzed": analyzed, "failed": failed, "cached": cached, "results": results}
+                        return {
+                            "analyzed": analyzed,
+                            "failed": failed,
+                            "cached": cached,
+                            "results": results,
+                        }
 
                     try:
                         result = future.result()
-                    except Exception as e:
+                    except Exception:
                         fp = futures[future]
-                        result = {"file_path": fp, "format": Path(fp).suffix.lower(), "mood": "unknown", "mood_tags": ["unknown"], "status": "ok (unknown)"}
+                        result = {
+                            "file_path": fp,
+                            "format": Path(fp).suffix.lower(),
+                            "mood": "unknown",
+                            "mood_tags": ["unknown"],
+                            "status": "ok (unknown)",
+                        }
 
                     status = result.get("status", "")
                     mood_tags = result.get("mood_tags", [])
-                    if mood_tags and (
-                        status.startswith("ok") or status == "cached"
-                    ):
+                    if mood_tags and (status.startswith("ok") or status == "cached"):
                         new_hashtags = {f"#{t}" for t in mood_tags}
                         existing = existing_user2.get(result["file_path"], "")
 
                         if self._skip_cache:
                             # Re-analyzing: strip ALL known mood hashtags, then add new
                             words = [
-                                w for w in existing.split()
+                                w
+                                for w in existing.split()
                                 if not (w.startswith("#") and w[1:] in MOOD_CLASSES_SET)
                                 and w != "#unknown"
                             ]

@@ -3,23 +3,22 @@
 Each test class corresponds to a specific fix from the performance review.
 """
 
-import hashlib
 import time
-import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from unittest.mock import patch, MagicMock
-from lxml import etree
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from vdj_manager.core.database import VDJDatabase
-from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType
-from vdj_manager.files.path_remapper import PathRemapper
+from vdj_manager.core.models import Song
 from vdj_manager.files.duplicates import DuplicateDetector
+from vdj_manager.files.path_remapper import PathRemapper
 from vdj_manager.files.validator import FileValidator
 from vdj_manager.normalize.loudness import LoudnessMeasurer
 
-
 # --- Helpers ---
+
 
 def _make_db_xml(num_songs: int) -> str:
     """Generate a VDJ database XML string with N songs."""
@@ -29,12 +28,11 @@ def _make_db_xml(num_songs: int) -> str:
             f' <Song FilePath="/path/to/track{i}.mp3" FileSize="{1000 + i}">\n'
             f'  <Tags Author="Artist {i}" Title="Track {i}" Grouping="Energy {(i % 10) + 1}" />\n'
             f'  <Scan Bpm="0.5" Key="Am" />\n'
-            f' </Song>'
+            f" </Song>"
         )
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<VirtualDJ_Database Version="8">\n'
-        + "\n".join(songs_xml) + "\n"
+        '<VirtualDJ_Database Version="8">\n' + "\n".join(songs_xml) + "\n"
         "</VirtualDJ_Database>"
     )
 
@@ -87,6 +85,7 @@ def large_db_file():
 
 
 # --- Fix 1: database.py element index for O(1) lookups ---
+
 
 class TestDatabaseElementIndex:
     """Tests for Fix 1: filepath-to-element index in database.py."""
@@ -203,6 +202,7 @@ class TestDatabaseElementIndex:
 
 # --- Fix 2: database.py O(n) merge_from ---
 
+
 class TestDatabaseMergeOptimized:
     """Tests for Fix 2: optimized merge_from using element index."""
 
@@ -264,6 +264,7 @@ class TestDatabaseMergeOptimized:
 
 # --- Fix 3: path_remapper.py cached sorted prefixes ---
 
+
 class TestPathRemapperCachedPrefixes:
     """Tests for Fix 3: cached sorted prefixes in PathRemapper."""
 
@@ -305,11 +306,13 @@ class TestPathRemapperCachedPrefixes:
 
     def test_longest_prefix_wins(self):
         """Verify longest prefix match is selected (cache order correct)."""
-        remapper = PathRemapper(mappings={
-            "D:/": "/short/",
-            "D:/Music/": "/long/",
-            "D:/Music/DJ/": "/longest/",
-        })
+        remapper = PathRemapper(
+            mappings={
+                "D:/": "/short/",
+                "D:/Music/": "/long/",
+                "D:/Music/DJ/": "/longest/",
+            }
+        )
 
         assert remapper.remap_path("D:/Music/DJ/track.mp3") == "/longest/track.mp3"
         assert remapper.remap_path("D:/Music/other.mp3") == "/long/other.mp3"
@@ -328,6 +331,7 @@ class TestPathRemapperCachedPrefixes:
 
 
 # --- Fix 4: duplicates.py skip full hash for small groups ---
+
 
 class TestDuplicateHashOptimization:
     """Tests for Fix 4: skip full-hash verification for pairs."""
@@ -357,7 +361,9 @@ class TestDuplicateHashOptimization:
                 full_hash_calls.append(path)
                 return original_full_hash(path, chunk_size)
 
-            with patch.object(DuplicateDetector, "compute_file_hash", side_effect=tracking_full_hash):
+            with patch.object(
+                DuplicateDetector, "compute_file_hash", side_effect=tracking_full_hash
+            ):
                 duplicates = detector.find_by_hash(songs, use_partial=True, verify_full=True)
 
             # Should find 1 duplicate group
@@ -387,7 +393,9 @@ class TestDuplicateHashOptimization:
                 full_hash_calls.append(path)
                 return original_full_hash(path, chunk_size)
 
-            with patch.object(DuplicateDetector, "compute_file_hash", side_effect=tracking_full_hash):
+            with patch.object(
+                DuplicateDetector, "compute_file_hash", side_effect=tracking_full_hash
+            ):
                 duplicates = detector.find_by_hash(songs, use_partial=True, verify_full=True)
 
             assert len(duplicates) == 1
@@ -418,6 +426,7 @@ class TestDuplicateHashOptimization:
 
 
 # --- Fix 5: loudness.py shared JSON parser ---
+
 
 class TestLoudnessJsonParser:
     """Tests for Fix 5: extracted _parse_ffmpeg_json in LoudnessMeasurer."""
@@ -481,6 +490,7 @@ frame=  100 fps=50 size=N/A time=00:03:30.00 bitrate=N/A
 
 
 # --- Fix 6: validator.py redundant extension extraction ---
+
 
 class TestValidatorExtensionOptimization:
     """Tests for Fix 6: single extension extraction in FileValidator."""
@@ -554,6 +564,7 @@ class TestValidatorExtensionOptimization:
 
 
 # --- Fix 7: loudness.py ffmpeg verification cache ---
+
 
 class TestFfmpegVerificationCache:
     """Tests for Fix 7: cached ffmpeg verification in LoudnessMeasurer."""

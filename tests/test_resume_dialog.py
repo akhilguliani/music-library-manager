@@ -1,13 +1,13 @@
 """Tests for resume dialog."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 # Skip all tests if PySide6 is not available
 pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
 
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.widgets.resume_dialog import ResumeDialog
@@ -200,6 +200,7 @@ class TestCheckAndShowResumeDialog:
     def test_returns_none_when_no_incomplete(self, app):
         """Test returns 'none' when no incomplete tasks."""
         from unittest.mock import MagicMock
+
         from vdj_manager.ui.widgets.resume_dialog import check_and_show_resume_dialog
 
         mock_manager = MagicMock()

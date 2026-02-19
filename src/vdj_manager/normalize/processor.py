@@ -1,26 +1,26 @@
 """Audio normalization processor using ffmpeg with parallel processing."""
 
-import subprocess
+import multiprocessing
 import shutil
+import subprocess
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Callable
-import multiprocessing
-import os
 
-from .loudness import LoudnessMeasurer
 from ..config import DEFAULT_LUFS_TARGET
+from .loudness import LoudnessMeasurer
 
 
 @dataclass
 class NormalizationResult:
     """Result of a normalization operation."""
+
     file_path: str
     success: bool
-    current_lufs: Optional[float] = None
-    gain_db: Optional[float] = None
-    error: Optional[str] = None
+    current_lufs: float | None = None
+    gain_db: float | None = None
+    error: str | None = None
 
 
 def _measure_single_file(args: tuple) -> NormalizationResult:
@@ -60,32 +60,27 @@ def _measure_single_file(args: tuple) -> NormalizationResult:
 
         if lufs is None:
             return NormalizationResult(
-                file_path=file_path,
-                success=False,
-                error="Could not measure loudness"
+                file_path=file_path, success=False, error="Could not measure loudness"
             )
 
         gain = target_lufs - lufs
 
         # Write to cache (reuse instance from above)
         if cache is not None:
-            cache.put(file_path, target_lufs, {
-                "integrated_lufs": lufs,
-                "gain_db": round(gain, 2),
-            })
+            cache.put(
+                file_path,
+                target_lufs,
+                {
+                    "integrated_lufs": lufs,
+                    "gain_db": round(gain, 2),
+                },
+            )
 
         return NormalizationResult(
-            file_path=file_path,
-            success=True,
-            current_lufs=lufs,
-            gain_db=round(gain, 2)
+            file_path=file_path, success=True, current_lufs=lufs, gain_db=round(gain, 2)
         )
     except Exception as e:
-        return NormalizationResult(
-            file_path=file_path,
-            success=False,
-            error=str(e)
-        )
+        return NormalizationResult(file_path=file_path, success=False, error=str(e))
 
 
 def _normalize_single_file(args: tuple) -> NormalizationResult:
@@ -107,11 +102,7 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
     try:
         input_path = Path(file_path)
         if not input_path.exists():
-            return NormalizationResult(
-                file_path=file_path,
-                success=False,
-                error="File not found"
-            )
+            return NormalizationResult(file_path=file_path, success=False, error="File not found")
 
         measurer = LoudnessMeasurer(ffmpeg_path)
 
@@ -135,12 +126,10 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
             measurements = measurer.measure_detailed(file_path)
         if not measurements:
             return NormalizationResult(
-                file_path=file_path,
-                success=False,
-                error="Could not measure loudness"
+                file_path=file_path, success=False, error="Could not measure loudness"
             )
 
-        current_lufs = measurements['integrated']
+        current_lufs = measurements["integrated"]
         gain = target_lufs - current_lufs
 
         # Create temp output file
@@ -150,13 +139,15 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
         result = subprocess.run(
             [
                 ffmpeg_path,
-                "-i", str(input_path),
-                "-af", f"loudnorm=I={target_lufs}:TP=-1.0:LRA=11:"
-                       f"measured_I={measurements['integrated']}:"
-                       f"measured_TP={measurements['true_peak']}:"
-                       f"measured_LRA={measurements['lra']}:"
-                       f"measured_thresh={measurements['threshold']}:"
-                       f"linear=true:print_format=summary",
+                "-i",
+                str(input_path),
+                "-af",
+                f"loudnorm=I={target_lufs}:TP=-1.0:LRA=11:"
+                f"measured_I={measurements['integrated']}:"
+                f"measured_TP={measurements['true_peak']}:"
+                f"measured_LRA={measurements['lra']}:"
+                f"measured_thresh={measurements['threshold']}:"
+                f"linear=true:print_format=summary",
                 "-y",
                 str(temp_output),
             ],
@@ -173,7 +164,7 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
                 success=False,
                 current_lufs=current_lufs,
                 gain_db=gain,
-                error=f"ffmpeg error: {result.stderr[:200]}"
+                error=f"ffmpeg error: {result.stderr[:200]}",
             )
 
         # Backup and replace original
@@ -189,24 +180,13 @@ def _normalize_single_file(args: tuple) -> NormalizationResult:
             raise
 
         return NormalizationResult(
-            file_path=file_path,
-            success=True,
-            current_lufs=current_lufs,
-            gain_db=gain
+            file_path=file_path, success=True, current_lufs=current_lufs, gain_db=gain
         )
 
     except subprocess.TimeoutExpired:
-        return NormalizationResult(
-            file_path=file_path,
-            success=False,
-            error="Timeout"
-        )
+        return NormalizationResult(file_path=file_path, success=False, error="Timeout")
     except Exception as e:
-        return NormalizationResult(
-            file_path=file_path,
-            success=False,
-            error=str(e)
-        )
+        return NormalizationResult(file_path=file_path, success=False, error=str(e))
 
 
 class NormalizationProcessor:
@@ -216,7 +196,7 @@ class NormalizationProcessor:
         self,
         target_lufs: float = DEFAULT_LUFS_TARGET,
         ffmpeg_path: str = "ffmpeg",
-        max_workers: Optional[int] = None,
+        max_workers: int | None = None,
     ):
         """Initialize normalization processor.
 
@@ -230,7 +210,7 @@ class NormalizationProcessor:
         self.max_workers = max_workers or max(1, multiprocessing.cpu_count() - 1)
         self.measurer = LoudnessMeasurer(ffmpeg_path)
 
-    def calculate_gain(self, file_path: str) -> Optional[float]:
+    def calculate_gain(self, file_path: str) -> float | None:
         """Calculate gain adjustment needed to reach target loudness.
 
         Args:
@@ -247,7 +227,7 @@ class NormalizationProcessor:
     def normalize_file(
         self,
         file_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         backup: bool = True,
     ) -> bool:
         """Normalize a file to target loudness (destructive).
@@ -260,12 +240,10 @@ class NormalizationProcessor:
         Returns:
             True if successful
         """
-        result = _normalize_single_file(
-            (file_path, self.target_lufs, self.ffmpeg_path, backup)
-        )
+        result = _normalize_single_file((file_path, self.target_lufs, self.ffmpeg_path, backup))
         return result.success
 
-    def calculate_vdj_volume(self, file_path: str) -> Optional[float]:
+    def calculate_vdj_volume(self, file_path: str) -> float | None:
         """Calculate VDJ Volume field value for non-destructive normalization.
 
         VDJ Volume is a multiplier where 1.0 = no change.
@@ -281,14 +259,13 @@ class NormalizationProcessor:
         if gain_db is None:
             return None
 
-        import math
         linear_gain = 10 ** (gain_db / 20)
         return round(linear_gain, 4)
 
     def measure_batch_parallel(
         self,
         file_paths: list[str],
-        callback: Optional[Callable[[NormalizationResult], None]] = None,
+        callback: Callable[[NormalizationResult], None] | None = None,
     ) -> list[NormalizationResult]:
         """Measure loudness for multiple files in parallel.
 
@@ -300,16 +277,10 @@ class NormalizationProcessor:
             List of NormalizationResult objects
         """
         results = []
-        args_list = [
-            (fp, self.target_lufs, self.ffmpeg_path)
-            for fp in file_paths
-        ]
+        args_list = [(fp, self.target_lufs, self.ffmpeg_path) for fp in file_paths]
 
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(_measure_single_file, args): args[0]
-                for args in args_list
-            }
+            futures = {executor.submit(_measure_single_file, args): args[0] for args in args_list}
 
             for future in as_completed(futures):
                 result = future.result()
@@ -323,7 +294,7 @@ class NormalizationProcessor:
         self,
         file_paths: list[str],
         backup: bool = True,
-        callback: Optional[Callable[[NormalizationResult], None]] = None,
+        callback: Callable[[NormalizationResult], None] | None = None,
     ) -> list[NormalizationResult]:
         """Normalize multiple files in parallel.
 
@@ -336,16 +307,10 @@ class NormalizationProcessor:
             List of NormalizationResult objects
         """
         results = []
-        args_list = [
-            (fp, self.target_lufs, self.ffmpeg_path, backup)
-            for fp in file_paths
-        ]
+        args_list = [(fp, self.target_lufs, self.ffmpeg_path, backup) for fp in file_paths]
 
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(_normalize_single_file, args): args[0]
-                for args in args_list
-            }
+            futures = {executor.submit(_normalize_single_file, args): args[0] for args in args_list}
 
             for future in as_completed(futures):
                 result = future.result()
@@ -359,7 +324,7 @@ class NormalizationProcessor:
         self,
         file_paths: list[str],
         destructive: bool = False,
-        callback: Optional[Callable[[str, bool], None]] = None,
+        callback: Callable[[str, bool], None] | None = None,
     ) -> dict:
         """Process multiple files (legacy interface).
 
@@ -371,7 +336,7 @@ class NormalizationProcessor:
         Returns:
             Dict with processing results
         """
-        results_dict = {
+        results_dict: dict[str, int | dict[str, float]] = {
             "processed": 0,
             "failed": 0,
             "skipped": 0,
@@ -380,11 +345,11 @@ class NormalizationProcessor:
 
         def result_callback(result: NormalizationResult):
             if result.success:
-                results_dict["processed"] += 1
+                results_dict["processed"] += 1  # type: ignore[operator]
                 if result.gain_db is not None:
-                    results_dict["gains"][result.file_path] = result.gain_db
+                    results_dict["gains"][result.file_path] = result.gain_db  # type: ignore[index]
             else:
-                results_dict["failed"] += 1
+                results_dict["failed"] += 1  # type: ignore[operator]
 
             if callback:
                 callback(result.file_path, result.success)
@@ -412,8 +377,9 @@ class NormalizationProcessor:
         if not successful:
             return {"error": "No files could be measured"}
 
-        lufs_values = [r.current_lufs for r in successful]
-        gains_needed = [r.gain_db for r in successful]
+        # current_lufs and gain_db are guaranteed non-None by the filter above
+        lufs_values: list[float] = [r.current_lufs for r in successful]  # type: ignore[misc]
+        gains_needed: list[float] = [r.gain_db for r in successful]  # type: ignore[misc]
 
         import statistics
 

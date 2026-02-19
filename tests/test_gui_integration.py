@@ -7,15 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QCoreApplication
 
-from vdj_manager.core.models import Song, Tags, Playlist, DatabaseStats
+from vdj_manager.core.models import Playlist, Song, Tags
 from vdj_manager.ui.main_window import MainWindow
-from vdj_manager.ui.widgets.database_panel import DatabasePanel
-from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
-from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
+from vdj_manager.ui.widgets.database_panel import DatabasePanel
 from vdj_manager.ui.widgets.export_panel import ExportPanel
+from vdj_manager.ui.widgets.files_panel import FilesPanel
+from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 
 
 @pytest.fixture(scope="module")
@@ -60,14 +59,35 @@ class TestMainWindowIntegration:
         # Export panel gets database
         assert window.export_panel._database is mock_db
 
-    def test_tab_count_is_six(self, qapp):
+    def test_tab_count_is_seven(self, qapp):
         window = MainWindow()
-        assert window.tab_widget.count() == 6
+        assert window.tab_widget.count() == 7
 
     def test_tab_names_correct(self, qapp):
         window = MainWindow()
-        names = [window.tab_widget.tabText(i) for i in range(6)]
-        assert names == ["Database", "Normalization", "Files", "Analysis", "Export", "Player"]
+        names = [window.tab_widget.tabText(i) for i in range(7)]
+        assert names == [
+            "Database",
+            "Normalization",
+            "Files",
+            "Analysis",
+            "Export",
+            "Player",
+            "Workflow",
+        ]
+
+    def test_workflow_database_changed_refreshes_panels(self, qapp):
+        window = MainWindow()
+        mock_db = MagicMock()
+        tracks = [_make_song("/a.mp3")]
+        mock_db.iter_songs.return_value = iter(tracks)
+        mock_db.playlists = []
+        window._on_database_loaded(mock_db)
+
+        # Simulate workflow completion
+        mock_db.iter_songs.return_value = iter(tracks)
+        window._on_workflow_database_changed()
+        assert "Workflow complete" in window.statusBar().currentMessage()
 
     def test_status_bar_shows_track_selection(self, qapp):
         window = MainWindow()
@@ -91,9 +111,14 @@ class TestDatabaseToNormalizationFlow:
 
     def test_measurement_enables_apply_and_export(self, qapp):
         panel = NormalizationPanel()
-        panel.results_table.add_result("/a.mp3", {
-            "success": True, "current_lufs": -14.0, "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/a.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
         panel._on_measurement_finished(True, "Done")
 
         assert panel.apply_btn.isEnabled()
@@ -101,9 +126,14 @@ class TestDatabaseToNormalizationFlow:
 
     def test_apply_finished_re_enables_controls(self, qapp):
         panel = NormalizationPanel()
-        panel.results_table.add_result("/a.mp3", {
-            "success": True, "current_lufs": -14.0, "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/a.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
         panel._on_apply_finished(True, "Done")
 
         assert panel.start_btn.isEnabled()
@@ -145,7 +175,13 @@ class TestDatabaseToAnalysisFlow:
     def test_mik_results_update_panel(self, qapp):
         """Results are streamed via result_ready; finished handler updates status."""
         panel = AnalysisPanel()
-        result_item = {"file_path": "/a.mp3", "format": ".mp3", "energy": 5, "key": "Am", "status": "updated"}
+        result_item = {
+            "file_path": "/a.mp3",
+            "format": ".mp3",
+            "energy": 5,
+            "key": "Am",
+            "status": "updated",
+        }
         # Simulate streaming
         panel.mik_results.add_result(result_item)
 
@@ -174,7 +210,8 @@ class TestDatabaseToExportFlow:
     def test_export_results_displayed(self, qapp):
         panel = ExportPanel()
         result = {
-            "exported": 3, "failed": 0,
+            "exported": 3,
+            "failed": 0,
             "results": [
                 {"file_path": "/a.mp3", "status": "exported"},
                 {"file_path": "/b.mp3", "status": "exported"},
@@ -203,8 +240,12 @@ class TestDatabaseValidateCleanFlow:
 
         # Step 1: Validate
         report = {
-            "total": 1, "audio_valid": 0, "audio_missing": 1,
-            "non_audio": 0, "windows_paths": 0, "netsearch": 0,
+            "total": 1,
+            "audio_valid": 0,
+            "audio_missing": 1,
+            "non_audio": 0,
+            "windows_paths": 0,
+            "netsearch": 0,
         }
         with patch.object(QMessageBox, "information"):
             panel._on_validate_finished(report)
@@ -229,7 +270,12 @@ class TestFileScanImportFlow:
 
         # Step 1: Scan results
         files = [
-            {"name": "new_song", "file_path": "/music/new_song.mp3", "file_size": 5000, "extension": ".mp3"},
+            {
+                "name": "new_song",
+                "file_path": "/music/new_song.mp3",
+                "file_size": 5000,
+                "extension": ".mp3",
+            },
         ]
         panel._on_scan_finished(files)
 

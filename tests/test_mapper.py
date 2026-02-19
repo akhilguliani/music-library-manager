@@ -1,8 +1,7 @@
 """Tests for VDJ to Serato mapper."""
 
-import pytest
+from vdj_manager.core.models import Poi, PoiType, Scan, Song, Tags
 from vdj_manager.export.mapper import VDJToSeratoMapper
-from vdj_manager.core.models import Song, Tags, Scan, Poi, PoiType
 
 
 class TestVDJToSeratoMapper:

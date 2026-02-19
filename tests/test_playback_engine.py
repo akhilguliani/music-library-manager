@@ -1,11 +1,8 @@
 """Tests for the PlaybackEngine and TrackInfo."""
 
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from vdj_manager.player.engine import PlaybackEngine, PlaybackState, TrackInfo
-
 
 # =============================================================================
 # TrackInfo tests
@@ -45,7 +42,7 @@ class TestTrackInfo:
 
     def test_from_song(self):
         """Test creating TrackInfo from a Song model."""
-        from vdj_manager.core.models import Song, Tags, Infos, Scan, Poi, PoiType
+        from vdj_manager.core.models import Infos, Poi, Scan, Song, Tags
 
         song = Song(
             FilePath="/path/to/track.mp3",
@@ -173,10 +170,7 @@ class TestPlaybackEngineQueue:
 
     def setup_method(self):
         self.engine = PlaybackEngine()
-        self.tracks = [
-            TrackInfo(file_path=f"/track{i}.mp3", title=f"Track {i}")
-            for i in range(5)
-        ]
+        self.tracks = [TrackInfo(file_path=f"/track{i}.mp3", title=f"Track {i}") for i in range(5)]
 
     def test_empty_queue(self):
         assert self.engine.queue == []
@@ -236,9 +230,7 @@ class TestPlaybackEngineQueue:
         """History should be limited to max_history entries."""
         self.engine._max_history = 5
         for i in range(10):
-            self.engine._add_to_history(
-                TrackInfo(file_path=f"/track{i}.mp3")
-            )
+            self.engine._add_to_history(TrackInfo(file_path=f"/track{i}.mp3"))
         assert len(self.engine.history) == 5
         # Most recent first
         assert self.engine.history[0].file_path == "/track9.mp3"

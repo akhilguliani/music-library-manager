@@ -2,15 +2,15 @@
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
     QHBoxLayout,
-    QVBoxLayout,
     QLabel,
     QPushButton,
     QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
@@ -54,8 +54,7 @@ class MiniPlayer(QWidget):
         self.album_art = QLabel()
         self.album_art.setFixedSize(44, 44)
         self.album_art.setStyleSheet(
-            "background-color: #333; border-radius: 4px; color: #666; "
-            "font-size: 20px;"
+            "background-color: #333; border-radius: 4px; color: #666; " "font-size: 20px;"
         )
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setText("\u266b")  # Musical note

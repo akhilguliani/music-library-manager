@@ -15,6 +15,7 @@ def pytest_configure(config):
     """
     if sys.platform == "darwin":
         import multiprocessing
+
         try:
             multiprocessing.set_start_method("spawn", force=True)
         except RuntimeError:
@@ -32,6 +33,7 @@ def _qt_cleanup():
     yield
     try:
         from PySide6.QtCore import QCoreApplication
+
         app = QCoreApplication.instance()
         if app is not None:
             app.processEvents()

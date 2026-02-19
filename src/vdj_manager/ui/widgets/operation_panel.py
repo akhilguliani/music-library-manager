@@ -3,17 +3,16 @@
 from abc import abstractmethod
 from typing import Any
 
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
-    QSplitter,
     QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
@@ -131,7 +130,8 @@ class OperationPanel(QWidget):
             return
         if self._worker is not None and self._worker.isRunning():
             QMessageBox.warning(
-                self, "Already Running",
+                self,
+                "Already Running",
                 f"{self._operation_name()} is already in progress.",
             )
             return

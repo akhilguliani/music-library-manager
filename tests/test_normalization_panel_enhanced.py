@@ -5,8 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from vdj_manager.core.models import Song, Tags
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
@@ -55,11 +54,14 @@ class TestNormalizationPanelEnhanced:
     def test_buttons_enabled_after_measurement(self, qapp):
         panel = NormalizationPanel()
         # Simulate adding results
-        panel.results_table.add_result("/music/song.mp3", {
-            "success": True,
-            "current_lufs": -14.0,
-            "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/music/song.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
 
         panel._on_measurement_finished(True, "Done")
 
@@ -76,20 +78,24 @@ class TestNormalizationPanelEnhanced:
         panel = NormalizationPanel()
         panel.destructive_check.setChecked(True)
         # Add a result so it doesn't short-circuit on empty results
-        panel.results_table.add_result("/music/song.mp3", {
-            "success": True, "current_lufs": -14.0, "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/music/song.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
 
-        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.No) as mock_warn:
+        with patch.object(
+            QMessageBox, "warning", return_value=QMessageBox.StandardButton.No
+        ) as mock_warn:
             panel._on_apply_clicked()
             mock_warn.assert_called_once()
 
     def test_limit_respected_in_paths(self, qapp):
         panel = NormalizationPanel()
-        songs = [
-            Song(file_path=f"/music/song{i}.mp3", tags=Tags())
-            for i in range(10)
-        ]
+        songs = [Song(file_path=f"/music/song{i}.mp3", tags=Tags()) for i in range(10)]
         panel._tracks = songs
         panel.limit_spin.setValue(3)
 
@@ -98,10 +104,7 @@ class TestNormalizationPanelEnhanced:
 
     def test_limit_zero_means_all(self, qapp):
         panel = NormalizationPanel()
-        songs = [
-            Song(file_path=f"/music/song{i}.mp3", tags=Tags())
-            for i in range(5)
-        ]
+        songs = [Song(file_path=f"/music/song{i}.mp3", tags=Tags()) for i in range(5)]
         panel._tracks = songs
         panel.limit_spin.setValue(0)
 
@@ -110,11 +113,14 @@ class TestNormalizationPanelEnhanced:
 
     def test_export_csv_writes_file(self, qapp):
         panel = NormalizationPanel()
-        panel.results_table.add_result("/music/song.mp3", {
-            "success": True,
-            "current_lufs": -14.0,
-            "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/music/song.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
             csv_path = f.name
@@ -130,9 +136,14 @@ class TestNormalizationPanelEnhanced:
 
     def test_on_apply_finished_re_enables_buttons(self, qapp):
         panel = NormalizationPanel()
-        panel.results_table.add_result("/music/song.mp3", {
-            "success": True, "current_lufs": -14.0, "gain_db": 0.5,
-        })
+        panel.results_table.add_result(
+            "/music/song.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
 
         panel._on_apply_finished(True, "Done")
 

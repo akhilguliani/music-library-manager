@@ -1,9 +1,14 @@
 """Energy level classification (1-10 scale)."""
 
+from __future__ import annotations
+
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from ..config import ENERGY_WEIGHTS
+
+if TYPE_CHECKING:
+    from .audio_features import AudioFeatureExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +21,7 @@ class EnergyAnalyzer:
     RMS_RANGE = (0.01, 0.3)  # RMS energy
     SPECTRAL_RANGE = (1000, 5000)  # Spectral centroid in Hz
 
-    def __init__(self, weights: Optional[dict] = None):
+    def __init__(self, weights: dict | None = None):
         """Initialize energy analyzer.
 
         Args:
@@ -25,17 +30,18 @@ class EnergyAnalyzer:
         self.weights = weights or ENERGY_WEIGHTS
 
         # Lazy import to avoid slow startup
-        self._extractor = None
+        self._extractor: AudioFeatureExtractor | None = None
 
     @property
     def extractor(self):
         """Get or create audio feature extractor."""
         if self._extractor is None:
             from .audio_features import AudioFeatureExtractor
+
             self._extractor = AudioFeatureExtractor()
         return self._extractor
 
-    def analyze(self, file_path: str) -> Optional[int]:
+    def analyze(self, file_path: str) -> int | None:
         """Analyze a file and return energy level (1-10).
 
         Args:
@@ -81,9 +87,9 @@ class EnergyAnalyzer:
 
         # Weighted combination
         weighted_score = (
-            self.weights["tempo"] * tempo_norm +
-            self.weights["rms"] * rms_norm +
-            self.weights["spectral"] * spectral_norm
+            self.weights["tempo"] * tempo_norm
+            + self.weights["rms"] * rms_norm
+            + self.weights["spectral"] * spectral_norm
         )
 
         # Map to 1-10 scale
@@ -98,7 +104,7 @@ class EnergyAnalyzer:
         normalized = (value - min_val) / (max_val - min_val)
         return max(0.0, min(1.0, normalized))
 
-    def analyze_batch(self, file_paths: list[str]) -> dict[str, Optional[int]]:
+    def analyze_batch(self, file_paths: list[str]) -> dict[str, int | None]:
         """Analyze multiple files.
 
         Args:

@@ -2,18 +2,16 @@
 
 import os
 import sys
-from typing import Optional
 
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
 from vdj_manager.ui.main_window import MainWindow
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.widgets.resume_dialog import check_and_show_resume_dialog
 
 
-def create_application(argv: Optional[list[str]] = None) -> QApplication:
+def create_application(argv: list[str] | None = None) -> QApplication:
     """Create and configure the Qt application.
 
     Args:
@@ -46,6 +44,7 @@ def main() -> int:
         Exit code from the application.
     """
     from vdj_manager.config import setup_logging
+
     setup_logging(verbose=bool(os.environ.get("VDJ_VERBOSE")))
 
     app = create_application()

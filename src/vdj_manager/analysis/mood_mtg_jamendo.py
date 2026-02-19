@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from .mood_backend import MOOD_CLASSES, select_top_moods
+from .mood_backend import select_top_moods
 
 logger = logging.getLogger(__name__)
 
@@ -120,14 +120,14 @@ class MTGJamendoBackend:
 
             embedding_path, classifier_path = ensure_model_files()
 
-            audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()
+            audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()  # type: ignore[union-attr]
 
-            embeddings = self._es.TensorflowPredictEffnetDiscogs(
+            embeddings = self._es.TensorflowPredictEffnetDiscogs(  # type: ignore[union-attr]
                 graphFilename=str(embedding_path),
                 output="PartitionedCall:1",
             )(audio)
 
-            predictions = self._es.TensorflowPredict2D(
+            predictions = self._es.TensorflowPredict2D(  # type: ignore[union-attr]
                 graphFilename=str(classifier_path),
                 output="model/Sigmoid:0",
             )(embeddings)

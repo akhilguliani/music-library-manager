@@ -36,6 +36,8 @@ CLASSIFIER_MODEL = {
 
 def models_available() -> bool:
     """Check if model files already exist locally (no network call)."""
+    assert EMBEDDING_MODEL["filename"] is not None
+    assert CLASSIFIER_MODEL["filename"] is not None
     embedding_path = MODELS_DIR / EMBEDDING_MODEL["filename"]
     classifier_path = MODELS_DIR / CLASSIFIER_MODEL["filename"]
     return embedding_path.exists() and classifier_path.exists()

@@ -2,19 +2,19 @@
 
 import csv
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QAbstractItemView,
+    QHeaderView,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QColor
 
 
 class ResultsTable(QWidget):
@@ -133,12 +133,16 @@ class ResultsTable(QWidget):
         """
         results = []
         for row in range(self.table.rowCount()):
+            item0 = self.table.item(row, 0)
+            item1 = self.table.item(row, 1)
+            item2 = self.table.item(row, 2)
+            item3 = self.table.item(row, 3)
             result = {
-                "file": self.table.item(row, 0).text(),
-                "path": self.table.item(row, 0).toolTip(),
-                "lufs": self.table.item(row, 1).text(),
-                "gain": self.table.item(row, 2).text(),
-                "status": self.table.item(row, 3).text(),
+                "file": item0.text() if item0 else "",
+                "path": item0.toolTip() if item0 else "",
+                "lufs": item1.text() if item1 else "",
+                "gain": item2.text() if item2 else "",
+                "status": item3.text() if item3 else "",
             }
             results.append(result)
         return results
@@ -265,9 +269,7 @@ class ConfigurableResultsTable(QWidget):
             if "alignment" in col:
                 item.setTextAlignment(col["alignment"])
             elif i > 0:
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
             # Smart color coding for status column
             if col["key"] == "status" and value is not None:

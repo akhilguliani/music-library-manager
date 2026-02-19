@@ -2,14 +2,14 @@
 
 import logging
 
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QAction, QKeySequence
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ from vdj_manager.ui.widgets.files_panel import FilesPanel
 from vdj_manager.ui.widgets.mini_player import MiniPlayer
 from vdj_manager.ui.widgets.normalization_panel import NormalizationPanel
 from vdj_manager.ui.widgets.player_panel import PlayerPanel
+from vdj_manager.ui.widgets.workflow_panel import WorkflowPanel
 
 
 class MainWindow(QMainWindow):
@@ -63,22 +64,21 @@ class MainWindow(QMainWindow):
 
         # Mini player at bottom
         self.mini_player = MiniPlayer(self._playback_bridge)
-        self.mini_player.expand_requested.connect(
-            lambda: self.tab_widget.setCurrentIndex(5)
-        )
+        self.mini_player.expand_requested.connect(lambda: self.tab_widget.setCurrentIndex(5))
         if not vlc_available:
             self.mini_player.set_vlc_unavailable()
         central_layout.addWidget(self.mini_player)
 
         self.setCentralWidget(central)
 
-        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4), Player(5)
+        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4), Player(5), Workflow(6)
         self._create_database_tab()
         self._create_normalization_tab()
         self._create_files_tab()
         self._create_analysis_tab()
         self._create_export_tab()
         self._create_player_tab()
+        self._create_workflow_tab()
 
     def _create_database_tab(self) -> None:
         """Create the database overview tab."""
@@ -86,6 +86,8 @@ class MainWindow(QMainWindow):
         self.database_panel.database_loaded.connect(self._on_database_loaded)
         self.database_panel.track_selected.connect(self._on_track_selected)
         self.database_panel.track_double_clicked.connect(self._on_track_play_requested)
+        self.database_panel.play_next_requested.connect(self._on_play_next_requested)
+        self.database_panel.add_to_queue_requested.connect(self._on_add_to_queue_requested)
 
         self.tab_widget.addTab(self.database_panel, "Database")
 
@@ -117,6 +119,12 @@ class MainWindow(QMainWindow):
         self._playback_bridge.track_finished.connect(self._on_track_playback_finished)
         self.tab_widget.addTab(self.player_panel, "Player")
 
+    def _create_workflow_tab(self) -> None:
+        """Create the workflow dashboard tab."""
+        self.workflow_panel = WorkflowPanel()
+        self.workflow_panel.database_changed.connect(self._on_workflow_database_changed)
+        self.tab_widget.addTab(self.workflow_panel, "Workflow")
+
     def _setup_menu_bar(self) -> None:
         """Set up the application menu bar."""
         menu_bar = self.menuBar()
@@ -146,11 +154,14 @@ class MainWindow(QMainWindow):
             ("&Analysis", "Ctrl+4", 3),
             ("&Export", "Ctrl+5", 4),
             ("&Player", "Ctrl+6", 5),
+            ("&Workflow", "Ctrl+7", 6),
         ]
         for name, shortcut, idx in tab_names:
             action = QAction(name, self)
             action.setShortcut(QKeySequence(shortcut))
-            action.triggered.connect(lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i))
+            action.triggered.connect(
+                lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i)
+            )
             view_menu.addAction(action)
 
         # Playback menu
@@ -201,6 +212,7 @@ class MainWindow(QMainWindow):
         for panel in (self.files_panel, self.analysis_panel, self.export_panel):
             if hasattr(panel, "set_database"):
                 panel.set_database(database)
+        self.workflow_panel.set_database(database, tracks)
 
     @Slot(object)
     def _on_track_selected(self, track) -> None:
@@ -212,6 +224,18 @@ class MainWindow(QMainWindow):
         """Handle double-click on track — start playing."""
         track_info = TrackInfo.from_song(song)
         self._playback_bridge.play_track(track_info)
+
+    @Slot(object)
+    def _on_play_next_requested(self, songs) -> None:
+        """Insert songs after current position in queue (reversed to preserve order)."""
+        for song in reversed(songs):
+            self._playback_bridge.insert_next(TrackInfo.from_song(song))
+
+    @Slot(object)
+    def _on_add_to_queue_requested(self, songs) -> None:
+        """Append songs to end of queue."""
+        for song in songs:
+            self._playback_bridge.add_to_queue(TrackInfo.from_song(song))
 
     @Slot(object)
     def _on_track_playback_finished(self, track) -> None:
@@ -245,6 +269,17 @@ class MainWindow(QMainWindow):
             return
         self._database.update_song_pois(file_path, cue_list)
         self._schedule_save()
+
+    @Slot()
+    def _on_workflow_database_changed(self) -> None:
+        """Refresh panels after workflow operations modify the database."""
+        if not self._database:
+            return
+        tracks = list(self._database.iter_songs())
+        self.database_panel.refresh_tracks(tracks)
+        self.normalization_panel.set_database(self._database, tracks)
+        self.analysis_panel.set_database(self._database)
+        self.statusBar().showMessage(f"Workflow complete — {len(tracks)} tracks")
 
     def _schedule_save(self) -> None:
         """Schedule a debounced save (5s delay to batch rapid changes)."""

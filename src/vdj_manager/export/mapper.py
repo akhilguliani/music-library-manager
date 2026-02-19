@@ -1,7 +1,6 @@
 """VirtualDJ to Serato metadata mapping."""
 
-from typing import Optional
-from ..core.models import Song, Poi, PoiType
+from ..core.models import Poi, PoiType, Song
 
 
 class VDJToSeratoMapper:
@@ -50,7 +49,7 @@ class VDJToSeratoMapper:
         """
         return int(pos_seconds * 1000)
 
-    def convert_key(self, vdj_key: Optional[str]) -> Optional[str]:
+    def convert_key(self, vdj_key: str | None) -> str | None:
         """Convert VDJ key notation to Serato-compatible format.
 
         VDJ and Serato both support standard key notation (Am, Gb, etc.)
@@ -120,7 +119,7 @@ class VDJToSeratoMapper:
         Returns:
             Dict with all Serato-compatible metadata
         """
-        result = {
+        result: dict[str, float | int | list | str | dict | None] = {
             "file_path": song.file_path,
             "bpm": None,
             "key": None,
@@ -165,12 +164,12 @@ class VDJToSeratoMapper:
         for poi in song.pois:
             if poi.type == PoiType.CUE:
                 if cue_index < 8:  # Serato supports 8 cue points
-                    result["cue_points"].append(self.map_cue_point(poi, cue_index))
+                    result["cue_points"].append(self.map_cue_point(poi, cue_index))  # type: ignore[union-attr]
                     cue_index += 1
 
             elif poi.type == PoiType.LOOP:
                 if loop_index < 8:  # Serato supports 8 loops
-                    result["loops"].append(self.map_loop(poi, loop_index))
+                    result["loops"].append(self.map_loop(poi, loop_index))  # type: ignore[union-attr]
                     loop_index += 1
 
             elif poi.type == PoiType.BEATGRID:
@@ -195,7 +194,7 @@ class VDJToSeratoMapper:
         """
         # This is a simplified version - full implementation would use
         # the serato-tools library or implement the full binary format
-        mapped = self.map_song(song)
+        self.map_song(song)
 
         # For now, return empty markers - full implementation in serato.py
         return b""

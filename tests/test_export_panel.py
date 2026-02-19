@@ -5,12 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import Qt, QCoreApplication
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
-from vdj_manager.core.models import Song, Tags, Playlist
+from vdj_manager.core.models import Playlist, Song, Tags
 from vdj_manager.ui.widgets.export_panel import ExportPanel
-from vdj_manager.ui.workers.export_workers import SeratoExportWorker, CrateExportWorker
+from vdj_manager.ui.workers.export_workers import CrateExportWorker, SeratoExportWorker
 
 
 @pytest.fixture(scope="module")
@@ -152,7 +152,8 @@ class TestExportPanelHandlers:
     def test_export_finished_populates_results(self, qapp):
         panel = ExportPanel()
         result = {
-            "exported": 2, "failed": 1,
+            "exported": 2,
+            "failed": 1,
             "results": [
                 {"file_path": "/a.mp3", "status": "exported"},
                 {"file_path": "/b.mp3", "status": "exported"},

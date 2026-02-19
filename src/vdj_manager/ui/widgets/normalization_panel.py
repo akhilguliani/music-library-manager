@@ -1,28 +1,25 @@
 """Normalization panel with workflow controls and parallel processing."""
 
 import multiprocessing
-from pathlib import Path
-from typing import Any
 
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QGroupBox,
-    QFormLayout,
-    QSpinBox,
-    QDoubleSpinBox,
-    QCheckBox,
-    QComboBox,
-    QSplitter,
     QMessageBox,
-    QFileDialog,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
-from vdj_manager.config import DEFAULT_LUFS_TARGET, LOCAL_VDJ_DB, MYNVME_VDJ_DB
+from vdj_manager.config import DEFAULT_LUFS_TARGET
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.normalize.measurement_cache import MeasurementCache
@@ -31,8 +28,8 @@ from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ResultsTable
 from vdj_manager.ui.workers.normalization_worker import (
-    NormalizationWorker,
     ApplyNormalizationWorker,
+    NormalizationWorker,
 )
 
 
@@ -154,9 +151,7 @@ class NormalizationPanel(QWidget):
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(1, 20)
         self.workers_spin.setValue(default_workers)
-        self.workers_spin.setToolTip(
-            f"Number of parallel workers (detected {cpu_count} CPU cores)"
-        )
+        self.workers_spin.setToolTip(f"Number of parallel workers (detected {cpu_count} CPU cores)")
         form_layout.addRow("Workers:", self.workers_spin)
 
         # Limit
@@ -202,7 +197,9 @@ class NormalizationPanel(QWidget):
         button_layout.addWidget(self.use_cache_check)
 
         self.destructive_check = QCheckBox("Destructive")
-        self.destructive_check.setToolTip("Modify files in-place (non-destructive uses ReplayGain tags)")
+        self.destructive_check.setToolTip(
+            "Modify files in-place (non-destructive uses ReplayGain tags)"
+        )
         button_layout.addWidget(self.destructive_check)
 
         layout.addLayout(button_layout)
@@ -217,11 +214,11 @@ class NormalizationPanel(QWidget):
         else:
             # Count audio files only
             audio_count = sum(
-                1 for t in self._tracks
-                if not t.is_netsearch and t.extension in {
-                    ".mp3", ".m4a", ".aac", ".flac", ".wav",
-                    ".aiff", ".aif", ".ogg", ".opus"
-                }
+                1
+                for t in self._tracks
+                if not t.is_netsearch
+                and t.extension
+                in {".mp3", ".m4a", ".aac", ".flac", ".wav", ".aiff", ".aif", ".ogg", ".opus"}
             )
             self.track_count_label.setText(f"{audio_count} audio files")
             self.start_btn.setEnabled(audio_count > 0)
@@ -234,8 +231,15 @@ class NormalizationPanel(QWidget):
         """
         paths = []
         audio_extensions = {
-            ".mp3", ".m4a", ".aac", ".flac", ".wav",
-            ".aiff", ".aif", ".ogg", ".opus"
+            ".mp3",
+            ".m4a",
+            ".aac",
+            ".flac",
+            ".wav",
+            ".aiff",
+            ".aif",
+            ".ogg",
+            ".opus",
         }
 
         for track in self._tracks:
@@ -406,7 +410,8 @@ class NormalizationPanel(QWidget):
 
         if self.destructive_check.isChecked():
             reply = QMessageBox.warning(
-                self, "Destructive Normalization",
+                self,
+                "Destructive Normalization",
                 "This will modify audio files in-place. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
@@ -461,7 +466,8 @@ class NormalizationPanel(QWidget):
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Results",
+            self,
+            "Export Results",
             "normalization_results.csv",
             "CSV Files (*.csv)",
         )
@@ -469,6 +475,4 @@ class NormalizationPanel(QWidget):
             return
 
         count = self.results_table.export_to_csv(file_path)
-        QMessageBox.information(
-            self, "Export Complete", f"Exported {count} results to CSV."
-        )
+        QMessageBox.information(self, "Export Complete", f"Exported {count} results to CSV.")

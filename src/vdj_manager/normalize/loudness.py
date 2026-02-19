@@ -4,7 +4,6 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class LoudnessMeasurer:
 
         LoudnessMeasurer._verified_paths.add(self.ffmpeg_path)
 
-    def measure(self, file_path: str) -> Optional[float]:
+    def measure(self, file_path: str) -> float | None:
         """Measure integrated loudness of an audio file.
 
         Args:
@@ -61,9 +60,12 @@ class LoudnessMeasurer:
             result = subprocess.run(
                 [
                     self.ffmpeg_path,
-                    "-i", file_path,
-                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
-                    "-f", "null",
+                    "-i",
+                    file_path,
+                    "-af",
+                    "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+                    "-f",
+                    "null",
                     "-",
                 ],
                 capture_output=True,
@@ -83,7 +85,7 @@ class LoudnessMeasurer:
             return None
 
     @staticmethod
-    def _parse_ffmpeg_json(stderr: str) -> Optional[dict]:
+    def _parse_ffmpeg_json(stderr: str) -> dict | None:
         """Parse JSON block from ffmpeg stderr output.
 
         Args:
@@ -99,7 +101,7 @@ class LoudnessMeasurer:
         for line in lines:
             if "{" in line:
                 in_json = True
-                json_lines.append(line[line.index("{"):])
+                json_lines.append(line[line.index("{") :])
             elif in_json:
                 json_lines.append(line)
                 if "}" in line:
@@ -114,7 +116,7 @@ class LoudnessMeasurer:
         except (json.JSONDecodeError, ValueError):
             return None
 
-    def _parse_loudnorm_output(self, stderr: str) -> Optional[float]:
+    def _parse_loudnorm_output(self, stderr: str) -> float | None:
         """Parse loudnorm JSON output from ffmpeg stderr.
 
         Args:
@@ -136,7 +138,7 @@ class LoudnessMeasurer:
         except (TypeError, ValueError):
             return None
 
-    def measure_detailed(self, file_path: str) -> Optional[dict]:
+    def measure_detailed(self, file_path: str) -> dict | None:
         """Get detailed loudness measurements.
 
         Args:
@@ -152,9 +154,12 @@ class LoudnessMeasurer:
             result = subprocess.run(
                 [
                     self.ffmpeg_path,
-                    "-i", file_path,
-                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
-                    "-f", "null",
+                    "-i",
+                    file_path,
+                    "-af",
+                    "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+                    "-f",
+                    "null",
                     "-",
                 ],
                 capture_output=True,
@@ -176,7 +181,7 @@ class LoudnessMeasurer:
 
         return None
 
-    def measure_batch(self, file_paths: list[str]) -> dict[str, Optional[float]]:
+    def measure_batch(self, file_paths: list[str]) -> dict[str, float | None]:
         """Measure loudness for multiple files.
 
         Args:

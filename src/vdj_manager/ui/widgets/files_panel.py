@@ -1,25 +1,22 @@
 """File management panel with scan, import, remove, remap, and duplicates."""
 
 from pathlib import Path
-from typing import Any
 
+from PySide6.QtCore import Signal, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QTabWidget,
-    QGroupBox,
-    QFormLayout,
-    QLineEdit,
     QCheckBox,
     QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
-    QSplitter,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QColor
 
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
@@ -27,11 +24,11 @@ from vdj_manager.files.path_remapper import PathRemapper
 from vdj_manager.files.validator import FileValidator
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.file_workers import (
-    ScanWorker,
-    ImportWorker,
-    RemoveWorker,
-    RemapWorker,
     DuplicateWorker,
+    ImportWorker,
+    RemapWorker,
+    RemoveWorker,
+    ScanWorker,
 )
 
 
@@ -124,11 +121,13 @@ class FilesPanel(QWidget):
         layout.addLayout(opts_layout)
 
         # Results
-        self.scan_results = ConfigurableResultsTable([
-            {"name": "File", "key": "name", "tooltip_key": "file_path"},
-            {"name": "Size", "key": "size"},
-            {"name": "Extension", "key": "extension"},
-        ])
+        self.scan_results = ConfigurableResultsTable(
+            [
+                {"name": "File", "key": "name", "tooltip_key": "file_path"},
+                {"name": "Size", "key": "size"},
+                {"name": "Extension", "key": "extension"},
+            ]
+        )
         layout.addWidget(self.scan_results)
 
         return widget
@@ -152,9 +151,7 @@ class FilesPanel(QWidget):
         self.scan_status.setText("Scanning...")
         self.scan_results.clear()
 
-        self._scan_worker = ScanWorker(
-            Path(directory), existing, self.scan_recursive.isChecked()
-        )
+        self._scan_worker = ScanWorker(Path(directory), existing, self.scan_recursive.isChecked())
         self._scan_worker.finished_work.connect(self._on_scan_finished)
         self._scan_worker.error.connect(self._on_scan_error)
         self._scan_worker.start()
@@ -167,12 +164,14 @@ class FilesPanel(QWidget):
 
         for f in files:
             size_kb = f.get("file_size", 0) / 1024
-            self.scan_results.add_result({
-                "name": f.get("name", ""),
-                "file_path": f.get("file_path", ""),
-                "size": f"{size_kb:.0f} KB",
-                "extension": f.get("extension", ""),
-            })
+            self.scan_results.add_result(
+                {
+                    "name": f.get("name", ""),
+                    "file_path": f.get("file_path", ""),
+                    "size": f"{size_kb:.0f} KB",
+                    "extension": f.get("extension", ""),
+                }
+            )
 
         self._update_button_states()
 
@@ -201,10 +200,16 @@ class FilesPanel(QWidget):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        self.import_results = ConfigurableResultsTable([
-            {"name": "File", "key": "file"},
-            {"name": "Status", "key": "status", "color_fn": lambda v: QColor("green") if v == "OK" else QColor("red")},
-        ])
+        self.import_results = ConfigurableResultsTable(
+            [
+                {"name": "File", "key": "file"},
+                {
+                    "name": "Status",
+                    "key": "status",
+                    "color_fn": lambda v: QColor("green") if v == "OK" else QColor("red"),
+                },
+            ]
+        )
         layout.addWidget(self.import_results)
 
         return widget
@@ -232,22 +237,24 @@ class FilesPanel(QWidget):
         failed = 0
         for path in paths_to_add:
             try:
-                self._database.add_song(path)
+                self._database.add_song(path)  # type: ignore[union-attr]
                 added += 1
             except Exception:
                 failed += 1
 
         if added > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.import_status.setText(f"Imported {added} files ({failed} failed)")
         self.import_btn.setEnabled(False)  # Can't re-import
 
         for f in self._scanned_files:
-            self.import_results.add_result({
-                "file": f.get("name", ""),
-                "status": "OK",
-            })
+            self.import_results.add_result(
+                {
+                    "file": f.get("name", ""),
+                    "status": "OK",
+                }
+            )
 
         self._scanned_files = []
         self._tracks = list(self._database.iter_songs()) if self._database else []
@@ -301,7 +308,8 @@ class FilesPanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Removal",
+            self,
+            "Confirm Removal",
             f"Remove {len(to_remove)} entries? A backup will be created first.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -309,6 +317,7 @@ class FilesPanel(QWidget):
             return
 
         from vdj_manager.core.backup import BackupManager
+
         try:
             BackupManager().create_backup(self._database.db_path, label="pre_remove")
         except Exception as e:
@@ -330,10 +339,10 @@ class FilesPanel(QWidget):
         paths_to_remove = result.get("paths_to_remove", [])
         removed = 0
         for path in paths_to_remove:
-            if self._database.remove_song(path):
+            if self._database.remove_song(path):  # type: ignore[union-attr]
                 removed += 1
         if removed > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.remove_btn.setEnabled(True)
         self.remove_status.setText(f"Removed {removed} entries")
@@ -377,11 +386,17 @@ class FilesPanel(QWidget):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        self.remap_results = ConfigurableResultsTable([
-            {"name": "Old Path", "key": "old_path"},
-            {"name": "New Path", "key": "new_path"},
-            {"name": "Exists", "key": "exists", "color_fn": lambda v: QColor("green") if v == "Yes" else QColor("orange")},
-        ])
+        self.remap_results = ConfigurableResultsTable(
+            [
+                {"name": "Old Path", "key": "old_path"},
+                {"name": "New Path", "key": "new_path"},
+                {
+                    "name": "Exists",
+                    "key": "exists",
+                    "color_fn": lambda v: QColor("green") if v == "Yes" else QColor("orange"),
+                },
+            ]
+        )
         layout.addWidget(self.remap_results)
 
         return widget
@@ -415,7 +430,9 @@ class FilesPanel(QWidget):
 
         # Preview
         self.remap_results.clear()
-        mappable = [s for s in self._tracks if s.is_windows_path and remapper.can_remap(s.file_path)]
+        mappable = [
+            s for s in self._tracks if s.is_windows_path and remapper.can_remap(s.file_path)
+        ]
 
         if not mappable:
             QMessageBox.information(self, "Nothing to Remap", "No paths match the given prefix.")
@@ -423,14 +440,17 @@ class FilesPanel(QWidget):
 
         for s in mappable[:100]:  # Preview first 100
             new_path = remapper.remap_path(s.file_path)
-            self.remap_results.add_result({
-                "old_path": s.file_path,
-                "new_path": new_path or "-",
-                "exists": "Yes" if new_path and Path(new_path).exists() else "No",
-            })
+            self.remap_results.add_result(
+                {
+                    "old_path": s.file_path,
+                    "new_path": new_path or "-",
+                    "exists": "Yes" if new_path and Path(new_path).exists() else "No",
+                }
+            )
 
         reply = QMessageBox.question(
-            self, "Confirm Remap",
+            self,
+            "Confirm Remap",
             f"Remap {len(mappable)} paths? A backup will be created first.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -438,6 +458,7 @@ class FilesPanel(QWidget):
             return
 
         from vdj_manager.core.backup import BackupManager
+
         try:
             BackupManager().create_backup(self._database.db_path, label="pre_remap")
         except Exception as e:
@@ -460,7 +481,7 @@ class FilesPanel(QWidget):
         failed = 0
         for old_path, new_path in remappings:
             try:
-                if self._database.remap_path(old_path, new_path):
+                if self._database.remap_path(old_path, new_path):  # type: ignore[union-attr]
                     remapped += 1
                 else:
                     failed += 1
@@ -468,12 +489,11 @@ class FilesPanel(QWidget):
                 failed += 1
 
         if remapped > 0:
-            self._database.save()
+            self._database.save()  # type: ignore[union-attr]
 
         self.remap_apply_btn.setEnabled(True)
         self.remap_status.setText(
-            f"Remapped {remapped}, skipped {result.get('skipped', 0)}, "
-            f"failed {failed}"
+            f"Remapped {remapped}, skipped {result.get('skipped', 0)}, " f"failed {failed}"
         )
         self._tracks = list(self._database.iter_songs()) if self._database else []
         self.database_changed.emit()
@@ -512,11 +532,13 @@ class FilesPanel(QWidget):
         layout.addLayout(opts_layout)
 
         # Results
-        self.dup_results = ConfigurableResultsTable([
-            {"name": "File", "key": "file", "tooltip_key": "path"},
-            {"name": "Match Type", "key": "match_type"},
-            {"name": "Group", "key": "group"},
-        ])
+        self.dup_results = ConfigurableResultsTable(
+            [
+                {"name": "File", "key": "file", "tooltip_key": "path"},
+                {"name": "Match Type", "key": "match_type"},
+                {"name": "Group", "key": "group"},
+            ]
+        )
         layout.addWidget(self.dup_results)
 
         return widget
@@ -556,23 +578,27 @@ class FilesPanel(QWidget):
         by_metadata = result.get("by_metadata", {})
         for group_idx, (key, songs) in enumerate(by_metadata.items()):
             for song in songs:
-                self.dup_results.add_result({
-                    "file": Path(song.file_path).name,
-                    "path": song.file_path,
-                    "match_type": "Metadata",
-                    "group": str(group_idx + 1),
-                })
+                self.dup_results.add_result(
+                    {
+                        "file": Path(song.file_path).name,
+                        "path": song.file_path,
+                        "match_type": "Metadata",
+                        "group": str(group_idx + 1),
+                    }
+                )
 
         # Show filename duplicates
         by_filename = result.get("by_filename", {})
         for group_idx, (key, songs) in enumerate(by_filename.items()):
             for song in songs:
-                self.dup_results.add_result({
-                    "file": Path(song.file_path).name,
-                    "path": song.file_path,
-                    "match_type": "Filename",
-                    "group": str(group_idx + 1),
-                })
+                self.dup_results.add_result(
+                    {
+                        "file": Path(song.file_path).name,
+                        "path": song.file_path,
+                        "match_type": "Filename",
+                        "group": str(group_idx + 1),
+                    }
+                )
 
     @Slot(str)
     def _on_dup_error(self, error: str) -> None:

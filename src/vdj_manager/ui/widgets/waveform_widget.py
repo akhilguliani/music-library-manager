@@ -3,17 +3,16 @@
 from dataclasses import dataclass
 
 import numpy as np
-
-from PySide6.QtWidgets import QWidget, QMenu, QInputDialog
-from PySide6.QtCore import Qt, Signal, QSize, QPointF, QRectF
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import (
-    QPainter,
     QColor,
-    QPen,
-    QMouseEvent,
-    QLinearGradient,
     QFont,
+    QLinearGradient,
+    QMouseEvent,
+    QPainter,
+    QPen,
 )
+from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
 
 
 @dataclass
@@ -103,11 +102,13 @@ class WaveformWidget(QWidget):
         self._cue_points = []
         for i, cue in enumerate(cues):
             if isinstance(cue, dict):
-                self._cue_points.append(CuePointData(
-                    pos=cue["pos"],
-                    name=cue.get("name", f"Cue {i + 1}"),
-                    num=cue.get("num"),
-                ))
+                self._cue_points.append(
+                    CuePointData(
+                        pos=cue["pos"],
+                        name=cue.get("name", f"Cue {i + 1}"),
+                        num=cue.get("num"),
+                    )
+                )
             else:
                 time_s, label = cue
                 self._cue_points.append(CuePointData(pos=time_s, name=label, num=i + 1))
@@ -147,10 +148,7 @@ class WaveformWidget(QWidget):
 
     def _emit_cues_changed(self) -> None:
         """Emit full cue list as dicts."""
-        cue_dicts = [
-            {"pos": c.pos, "name": c.name, "num": c.num}
-            for c in self._cue_points
-        ]
+        cue_dicts = [{"pos": c.pos, "name": c.name, "num": c.num} for c in self._cue_points]
         self.cues_changed.emit(cue_dicts)
 
     # --- Mouse events ---
@@ -210,7 +208,7 @@ class WaveformWidget(QWidget):
         menu = QMenu(self)
         cue = self._cue_points[cue_index]
 
-        rename_action = menu.addAction(f"Rename \"{cue.name}\"...")
+        rename_action = menu.addAction(f'Rename "{cue.name}"...')
         delete_action = menu.addAction("Delete Cue Point")
 
         action = menu.exec(global_pos)
@@ -324,8 +322,7 @@ class WaveformWidget(QWidget):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRoundedRect(badge_x, 1, badge_w, badge_h, 3, 3)
                 painter.setPen(QColor("#fff"))
-                painter.drawText(badge_x, 1, badge_w, badge_h,
-                                 Qt.AlignmentFlag.AlignCenter, label)
+                painter.drawText(badge_x, 1, badge_w, badge_h, Qt.AlignmentFlag.AlignCenter, label)
 
                 # Name label below badge
                 if cue.name and not cue.name.startswith("Cue "):

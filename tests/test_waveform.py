@@ -2,16 +2,14 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 from vdj_manager.player.waveform import (
     WaveformCache,
     generate_waveform_peaks,
 )
-
 
 # =============================================================================
 # generate_waveform_peaks tests
@@ -169,8 +167,10 @@ class TestGenerateWaveformPeaksSoundfile:
         """Should resample when file sr differs from target sr."""
         fake_data = np.random.randn(44100, 1).astype(np.float32)
         resampled = np.random.randn(22050).astype(np.float32)
-        with patch("soundfile.read", return_value=(fake_data, 44100)), \
-             patch("librosa.resample", return_value=resampled) as resample_mock:
+        with (
+            patch("soundfile.read", return_value=(fake_data, 44100)),
+            patch("librosa.resample", return_value=resampled) as resample_mock,
+        ):
             peaks = generate_waveform_peaks("/fake.wav", target_width=100, sr=22050)
             resample_mock.assert_called_once()
             assert len(peaks) == 100

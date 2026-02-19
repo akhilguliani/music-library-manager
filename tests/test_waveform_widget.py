@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from vdj_manager.ui.widgets.waveform_widget import WaveformWidget, CuePointData
+from vdj_manager.ui.widgets.waveform_widget import CuePointData, WaveformWidget
 
 
 @pytest.fixture(scope="module")
@@ -54,9 +54,8 @@ class TestWaveformWidget:
         received = []
         widget.seek_requested.connect(lambda pos: received.append(pos))
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         # Click at 50% of width (no cue points nearby)
         event = QMouseEvent(
@@ -77,9 +76,8 @@ class TestWaveformWidget:
         received = []
         widget.seek_requested.connect(lambda pos: received.append(pos))
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
@@ -139,10 +137,12 @@ class TestCueHitDetection:
         widget = WaveformWidget()
         assert widget._next_cue_number() == 1
 
-        widget.set_cue_points([
-            {"pos": 10.0, "name": "C1", "num": 1},
-            {"pos": 20.0, "name": "C3", "num": 3},
-        ])
+        widget.set_cue_points(
+            [
+                {"pos": 10.0, "name": "C1", "num": 1},
+                {"pos": 20.0, "name": "C3", "num": 3},
+            ]
+        )
         assert widget._next_cue_number() == 2  # skips used 1 and 3
 
 
@@ -166,10 +166,12 @@ class TestCueEditing:
     def test_delete_cue_emits_signal(self, qapp):
         widget = WaveformWidget()
         widget.set_duration(240.0)
-        widget.set_cue_points([
-            {"pos": 30.0, "name": "C1", "num": 1},
-            {"pos": 60.0, "name": "C2", "num": 2},
-        ])
+        widget.set_cue_points(
+            [
+                {"pos": 30.0, "name": "C1", "num": 1},
+                {"pos": 60.0, "name": "C2", "num": 2},
+            ]
+        )
         received = []
         widget.cues_changed.connect(lambda cues: received.append(cues))
 
@@ -190,14 +192,15 @@ class TestCueEditing:
         received = []
         widget.cues_changed.connect(lambda cues: received.append(cues))
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         # Press on cue at pixel 400 (50% of 800 = 120s)
         press = QMouseEvent(
-            QEvent.Type.MouseButtonPress, QPointF(400, 50),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            QEvent.Type.MouseButtonPress,
+            QPointF(400, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mousePressEvent(press)
@@ -205,8 +208,10 @@ class TestCueEditing:
 
         # Drag to pixel 600 (75% = 180s)
         move = QMouseEvent(
-            QEvent.Type.MouseMove, QPointF(600, 50),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            QEvent.Type.MouseMove,
+            QPointF(600, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mouseMoveEvent(move)
@@ -214,8 +219,10 @@ class TestCueEditing:
 
         # Release
         release = QMouseEvent(
-            QEvent.Type.MouseButtonRelease, QPointF(600, 50),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+            QEvent.Type.MouseButtonRelease,
+            QPointF(600, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mouseReleaseEvent(release)
@@ -234,13 +241,14 @@ class TestCueEditing:
         widget.seek_requested.connect(lambda pos: seek_received.append(pos))
         widget.cues_changed.connect(lambda cues: cue_received.append(cues))
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         event = QMouseEvent(
-            QEvent.Type.MouseButtonPress, QPointF(400, 50),
-            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            QEvent.Type.MouseButtonPress,
+            QPointF(400, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mousePressEvent(event)
@@ -255,14 +263,15 @@ class TestCueEditing:
         widget.set_duration(240.0)
         widget.set_cue_points([{"pos": 60.0, "name": "C1", "num": 1}])
 
-        from PySide6.QtCore import QPointF, Qt
+        from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
-        from PySide6.QtCore import QEvent
 
         # Move to cue position (pixel 200)
         move = QMouseEvent(
-            QEvent.Type.MouseMove, QPointF(200, 50),
-            Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+            QEvent.Type.MouseMove,
+            QPointF(200, 50),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mouseMoveEvent(move)
@@ -270,8 +279,10 @@ class TestCueEditing:
 
         # Move away
         move2 = QMouseEvent(
-            QEvent.Type.MouseMove, QPointF(500, 50),
-            Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+            QEvent.Type.MouseMove,
+            QPointF(500, 50),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
         widget.mouseMoveEvent(move2)

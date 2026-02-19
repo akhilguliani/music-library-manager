@@ -3,7 +3,6 @@
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from ..config import BACKUP_DIR
 
@@ -11,11 +10,11 @@ from ..config import BACKUP_DIR
 class BackupManager:
     """Manages timestamped backups of VDJ database files."""
 
-    def __init__(self, backup_dir: Optional[Path] = None):
+    def __init__(self, backup_dir: Path | None = None):
         self.backup_dir = backup_dir or BACKUP_DIR
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_backup(self, db_path: Path, label: Optional[str] = None) -> Path:
+    def create_backup(self, db_path: Path, label: str | None = None) -> Path:
         """Create a timestamped backup of a database file.
 
         Args:
@@ -53,7 +52,7 @@ class BackupManager:
 
         return backup_path
 
-    def list_backups(self, source: Optional[str] = None) -> list[Path]:
+    def list_backups(self, source: str | None = None) -> list[Path]:
         """List all backup files, optionally filtered by source.
 
         Args:
@@ -69,7 +68,7 @@ class BackupManager:
         backups = list(self.backup_dir.glob(pattern))
         return sorted(backups, key=lambda p: p.stat().st_mtime, reverse=True)
 
-    def get_latest_backup(self, source: Optional[str] = None) -> Optional[Path]:
+    def get_latest_backup(self, source: str | None = None) -> Path | None:
         """Get the most recent backup file.
 
         Args:
@@ -97,7 +96,7 @@ class BackupManager:
 
         shutil.copy2(backup_path, target_path)
 
-    def cleanup_old_backups(self, keep_count: int = 10, source: Optional[str] = None) -> int:
+    def cleanup_old_backups(self, keep_count: int = 10, source: str | None = None) -> int:
         """Remove old backups, keeping the most recent ones.
 
         Args:

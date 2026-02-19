@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 from vdj_manager.core.models import Infos, Song, Tags
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
@@ -209,10 +209,16 @@ class TestMIKImportWorker:
     def test_mik_worker_finds_and_updates(self, qapp):
         tracks = [_make_song("/a.mp3")]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader,
+        ):
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
-                "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
+                "energy": 8,
+                "key": "Am",
+                "bpm": None,
+                "raw_tags": {},
             }
 
             worker = MIKImportWorker(tracks, max_workers=1)
@@ -230,10 +236,16 @@ class TestMIKImportWorker:
     def test_mik_worker_no_data(self, qapp):
         tracks = [_make_song("/a.mp3")]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader,
+        ):
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
-                "energy": None, "key": None, "bpm": None, "raw_tags": {}
+                "energy": None,
+                "key": None,
+                "bpm": None,
+                "raw_tags": {},
             }
 
             worker = MIKImportWorker(tracks, max_workers=1)
@@ -250,10 +262,16 @@ class TestMIKImportWorker:
     def test_mik_worker_skips_existing_energy(self, qapp):
         tracks = [_make_song("/a.mp3", energy=5)]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader,
+        ):
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
-                "energy": 8, "key": None, "bpm": None, "raw_tags": {}
+                "energy": 8,
+                "key": None,
+                "bpm": None,
+                "raw_tags": {},
             }
 
             worker = MIKImportWorker(tracks, max_workers=1)
@@ -284,7 +302,10 @@ class TestMoodWorker:
         mock_backend = MagicMock()
         mock_backend.is_available = False
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend),
+        ):
             worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
@@ -304,7 +325,10 @@ class TestMoodWorker:
         mock_backend.is_available = True
         mock_backend.get_mood_tags.return_value = ["happy"]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend),
+        ):
             worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             results = []
             worker.finished_work.connect(lambda r: results.append(r))
@@ -320,8 +344,10 @@ class TestMoodWorker:
     def test_mood_worker_online_params(self, qapp):
         """MoodWorker should accept enable_online and lastfm_api_key params."""
         worker = MoodWorker(
-            [], max_workers=1,
-            enable_online=True, lastfm_api_key="test_key",
+            [],
+            max_workers=1,
+            enable_online=True,
+            lastfm_api_key="test_key",
         )
         assert worker._enable_online is True
         assert worker._lastfm_api_key == "test_key"
@@ -342,7 +368,8 @@ class TestAnalysisPanelHandlers:
         panel.set_database(mock_db, [_make_song("/a.mp3")])
 
         result = {
-            "analyzed": 1, "failed": 0,
+            "analyzed": 1,
+            "failed": 0,
             "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 7, "status": "ok"}],
         }
         panel._on_energy_finished(result)
@@ -373,8 +400,17 @@ class TestAnalysisPanelHandlers:
         panel.set_database(mock_db, [_make_song("/a.mp3")])
 
         result = {
-            "found": 1, "updated": 1,
-            "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 8, "key": "Am", "status": "updated"}],
+            "found": 1,
+            "updated": 1,
+            "results": [
+                {
+                    "file_path": "/a.mp3",
+                    "format": ".mp3",
+                    "energy": 8,
+                    "key": "Am",
+                    "status": "updated",
+                }
+            ],
         }
         panel._on_mik_finished(result)
 
@@ -396,7 +432,8 @@ class TestAnalysisPanelHandlers:
     def test_mood_finished_success(self, qapp):
         panel = AnalysisPanel()
         result = {
-            "analyzed": 2, "failed": 0,
+            "analyzed": 2,
+            "failed": 0,
             "results": [
                 {"file_path": "/a.mp3", "format": ".mp3", "mood": "happy", "status": "ok (local)"},
                 {"file_path": "/b.mp3", "format": ".mp3", "mood": "sad", "status": "ok (lastfm)"},
@@ -421,7 +458,8 @@ class TestAnalysisPanelHandlers:
         panel.database_changed.connect(lambda: signals.append(True))
 
         result = {
-            "analyzed": 1, "failed": 0,
+            "analyzed": 1,
+            "failed": 0,
             "results": [{"file_path": "/a.mp3", "format": ".mp3", "energy": 5, "status": "ok"}],
         }
         panel._on_energy_finished(result)
@@ -435,10 +473,12 @@ class TestAnalysisPanelHandlers:
 
         # Apply 30 results (more than _SAVE_INTERVAL of 25)
         for i in range(30):
-            panel._apply_result_to_db({
-                "file_path": f"/song{i}.mp3",
-                "tag_updates": {"Grouping": str(i)},
-            })
+            panel._apply_result_to_db(
+                {
+                    "file_path": f"/song{i}.mp3",
+                    "tag_updates": {"Grouping": str(i)},
+                }
+            )
 
         # save() should NOT have been called during streaming
         mock_db.save.assert_not_called()
@@ -492,10 +532,10 @@ class TestAnalysisPanelLimits:
     def test_max_duration_filters_long_tracks(self, qapp):
         panel = AnalysisPanel()
         tracks = [
-            Song(file_path="/short.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),   # 3 min
+            Song(file_path="/short.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),  # 3 min
             Song(file_path="/medium.mp3", tags=Tags(), infos=Infos(SongLength=420.0)),  # 7 min
-            Song(file_path="/long.mp3", tags=Tags(), infos=Infos(SongLength=3600.0)),   # 60 min
-            Song(file_path="/no_info.mp3", tags=Tags()),                                # no duration
+            Song(file_path="/long.mp3", tags=Tags(), infos=Infos(SongLength=3600.0)),  # 60 min
+            Song(file_path="/no_info.mp3", tags=Tags()),  # no duration
         ]
         panel._tracks = tracks
         panel.max_duration_spin.setValue(10)  # 10 minutes
@@ -514,14 +554,14 @@ class TestAnalysisPanelLimits:
         """Duration filter is applied first, then count limit."""
         panel = AnalysisPanel()
         tracks = [
-            Song(file_path="/a.mp3", tags=Tags(), infos=Infos(SongLength=120.0)),   # 2 min
-            Song(file_path="/b.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),   # 3 min
+            Song(file_path="/a.mp3", tags=Tags(), infos=Infos(SongLength=120.0)),  # 2 min
+            Song(file_path="/b.mp3", tags=Tags(), infos=Infos(SongLength=180.0)),  # 3 min
             Song(file_path="/c.mp3", tags=Tags(), infos=Infos(SongLength=7200.0)),  # 120 min
-            Song(file_path="/d.mp3", tags=Tags(), infos=Infos(SongLength=240.0)),   # 4 min
+            Song(file_path="/d.mp3", tags=Tags(), infos=Infos(SongLength=240.0)),  # 4 min
         ]
         panel._tracks = tracks
         panel.max_duration_spin.setValue(5)  # 5 min max
-        panel.limit_spin.setValue(2)         # only 2 tracks
+        panel.limit_spin.setValue(2)  # only 2 tracks
 
         with patch("vdj_manager.ui.widgets.analysis_panel.Path") as MockPath:
             MockPath.return_value.exists.return_value = True
@@ -672,10 +712,16 @@ class TestWorkerResultReady:
     def test_mik_worker_emits_result_ready(self, qapp):
         tracks = [_make_song("/a.mp3")]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader:
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.audio_features.MixedInKeyReader") as MockReader,
+        ):
             reader_instance = MockReader.return_value
             reader_instance.read_tags.return_value = {
-                "energy": 8, "key": "Am", "bpm": None, "raw_tags": {}
+                "energy": 8,
+                "key": "Am",
+                "bpm": None,
+                "raw_tags": {},
             }
 
             worker = MIKImportWorker(tracks, max_workers=1)
@@ -696,7 +742,10 @@ class TestWorkerResultReady:
         mock_backend.is_available = True
         mock_backend.get_mood_tags.return_value = ["happy"]
 
-        with _PATCH_POOL, patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend):
+        with (
+            _PATCH_POOL,
+            patch("vdj_manager.analysis.mood_backend.get_backend", return_value=mock_backend),
+        ):
             worker = MoodWorker(tracks, max_workers=1, enable_online=False, model_name="heuristic")
             streamed = []
             worker.result_ready.connect(lambda r: streamed.append(r))
@@ -766,7 +815,9 @@ class TestWorkerPauseResume:
 
             assert len(results) == 1
             # Should have processed fewer than all tracks
-            total_processed = results[0]["analyzed"] + results[0]["failed"] + results[0].get("cached", 0)
+            total_processed = (
+                results[0]["analyzed"] + results[0]["failed"] + results[0].get("cached", 0)
+            )
             assert total_processed <= len(tracks)
 
     def test_mood_worker_cancel(self, qapp):

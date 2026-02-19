@@ -1,9 +1,9 @@
 """Checkpoint manager for saving and loading task state."""
 
 import uuid
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
 
 from vdj_manager.config import CHECKPOINT_DIR
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
@@ -61,7 +61,9 @@ class CheckpointManager:
         Returns:
             New TaskState instance with unique ID.
         """
-        task_id = f"{task_type.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        task_id = (
+            f"{task_type.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        )
 
         return TaskState(
             task_id=task_id,
@@ -109,7 +111,7 @@ class CheckpointManager:
         try:
             json_str = checkpoint_path.read_text(encoding="utf-8")
             return TaskState.from_json(json_str)
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError):
             # Invalid checkpoint file
             return None
 

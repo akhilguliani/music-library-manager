@@ -9,7 +9,6 @@ import contextlib
 import os
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -36,7 +35,7 @@ class WaveformCache:
     MeasurementCache to prevent file descriptor leaks.
     """
 
-    def __init__(self, db_path: Optional[Path] = None) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or DEFAULT_WAVEFORM_CACHE_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -60,7 +59,7 @@ class WaveformCache:
         finally:
             conn.close()
 
-    def get(self, file_path: str, width: int = 800) -> Optional[np.ndarray]:
+    def get(self, file_path: str, width: int = 800) -> np.ndarray | None:
         """Retrieve cached waveform peaks if file hasn't changed.
 
         Returns None on cache miss or stale entry.

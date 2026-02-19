@@ -10,7 +10,6 @@ import re
 import threading
 import time
 from functools import lru_cache
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +285,7 @@ def _clean_title(title: str) -> str:
 class TagToMoodMapper:
     """Maps freeform tags/genres to canonical moods via weighted scoring."""
 
-    def map_tags(self, tags: list[tuple[str, int]]) -> Optional[str]:
+    def map_tags(self, tags: list[tuple[str, int]]) -> str | None:
         """Map Last.fm tags (name, count) to a mood using weighted scoring.
 
         Args:
@@ -308,7 +307,7 @@ class TagToMoodMapper:
             return None
         return max(scores, key=scores.get)  # type: ignore[arg-type]
 
-    def map_genres(self, genres: list[str]) -> Optional[str]:
+    def map_genres(self, genres: list[str]) -> str | None:
         """Map MusicBrainz genres to a mood using unweighted scoring.
 
         Args:
@@ -334,6 +333,7 @@ class TagToMoodMapper:
 # ---------------------------------------------------------------------------
 # Rate limiter
 # ---------------------------------------------------------------------------
+
 
 class _RateLimiter:
     """Thread-safe token-bucket rate limiter."""
@@ -380,17 +380,18 @@ def _retry_on_network_error(
 
     retryable = (ConnectionError, OSError, URLError) + tuple(extra_exceptions)
 
-    last_exc = None
     for attempt in range(max_retries + 1):
         try:
             return func()
         except retryable as e:
-            last_exc = e
             if attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 logger.debug(
                     "Network error (attempt %d/%d), retrying in %.1fs: %s",
-                    attempt + 1, max_retries + 1, delay, e,
+                    attempt + 1,
+                    max_retries + 1,
+                    delay,
+                    e,
                 )
                 time.sleep(delay)
             else:
@@ -407,6 +408,7 @@ _musicbrainz_limiter = _RateLimiter(rate=1.0)
 # Last.fm lookup
 # ---------------------------------------------------------------------------
 
+
 class LastFmLookup:
     """Look up mood from Last.fm track tags."""
 
@@ -414,7 +416,7 @@ class LastFmLookup:
         self._api_key = api_key
         self._mapper = TagToMoodMapper()
 
-    def get_mood(self, artist: str, title: str) -> Optional[str]:
+    def get_mood(self, artist: str, title: str) -> str | None:
         """Get mood for a track from Last.fm top tags.
 
         Retries on transient network errors with exponential backoff.
@@ -450,7 +452,7 @@ class LastFmLookup:
             logger.warning("Last.fm track lookup failed for %s - %s", artist, title, exc_info=True)
             return None
 
-    def get_mood_from_artist(self, artist: str) -> Optional[str]:
+    def get_mood_from_artist(self, artist: str) -> str | None:
         """Get mood from artist's top tags (fallback when track has no tags).
 
         Retries on transient network errors with exponential backoff.
@@ -490,13 +492,14 @@ class LastFmLookup:
 # MusicBrainz lookup
 # ---------------------------------------------------------------------------
 
+
 class MusicBrainzLookup:
     """Look up mood from MusicBrainz genres."""
 
     def __init__(self) -> None:
         self._mapper = TagToMoodMapper()
 
-    def get_mood(self, artist: str, title: str) -> Optional[str]:
+    def get_mood(self, artist: str, title: str) -> str | None:
         """Get mood for a track from MusicBrainz genres.
 
         Retries on transient network errors with exponential backoff.
@@ -516,9 +519,7 @@ class MusicBrainzLookup:
         def _do_lookup():
             _musicbrainz_limiter.wait()
             musicbrainzngs.set_useragent("VDJ-Manager", "0.1.0", "")
-            result = musicbrainzngs.search_recordings(
-                artist=artist, recording=title, limit=1
-            )
+            result = musicbrainzngs.search_recordings(artist=artist, recording=title, limit=1)
             recordings = result.get("recording-list", [])
             if not recordings:
                 return None
@@ -544,10 +545,11 @@ class MusicBrainzLookup:
 # Top-level picklable lookup function
 # ---------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=2048)
 def _cached_online_lookup(
-    artist: str, title: str, lastfm_api_key: Optional[str]
-) -> tuple[Optional[str], str]:
+    artist: str, title: str, lastfm_api_key: str | None
+) -> tuple[str | None, str]:
     """Cached online lookup (deduplicates identical artist+title pairs).
 
     Cleans metadata before querying and falls back to artist-level tags
@@ -584,8 +586,8 @@ def _cached_online_lookup(
 def lookup_online_mood(
     artist: str,
     title: str,
-    lastfm_api_key: Optional[str] = None,
-) -> tuple[Optional[str], str]:
+    lastfm_api_key: str | None = None,
+) -> tuple[str | None, str]:
     """Look up mood from online databases.
 
     Cleans artist/title metadata, then tries Last.fm track tags,

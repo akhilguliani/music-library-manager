@@ -7,7 +7,7 @@ from PySide6.QtCore import Signal
 
 from vdj_manager.core.backup import BackupManager
 from vdj_manager.core.database import VDJDatabase
-from vdj_manager.core.models import Song, DatabaseStats
+from vdj_manager.core.models import DatabaseStats, Song
 from vdj_manager.files.validator import FileValidator
 from vdj_manager.ui.workers.base_worker import SimpleWorker
 

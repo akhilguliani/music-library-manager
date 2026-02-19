@@ -1,7 +1,5 @@
 """Tests for mood backend protocol, registry, and utilities."""
 
-from unittest.mock import patch
-
 import pytest
 
 from vdj_manager.analysis.mood_backend import (
@@ -109,10 +107,12 @@ class TestGetBackend:
     def test_heuristic_backend(self):
         backend = get_backend(MoodModel.HEURISTIC)
         from vdj_manager.analysis.mood import MoodAnalyzer
+
         assert isinstance(backend, MoodAnalyzer)
 
     def test_mtg_jamendo_backend(self):
         from vdj_manager.analysis.mood_mtg_jamendo import MTGJamendoBackend
+
         backend = get_backend(MoodModel.MTG_JAMENDO)
         assert isinstance(backend, MTGJamendoBackend)
 

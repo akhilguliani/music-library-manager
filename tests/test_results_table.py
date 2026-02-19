@@ -3,12 +3,10 @@
 import csv
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable, ResultsTable
 
@@ -231,11 +229,14 @@ class TestResultsTableExportCsv:
 
     def test_export_csv(self, qapp):
         table = ResultsTable()
-        table.add_result("/music/song.mp3", {
-            "success": True,
-            "current_lufs": -14.0,
-            "gain_db": 0.5,
-        })
+        table.add_result(
+            "/music/song.mp3",
+            {
+                "success": True,
+                "current_lufs": -14.0,
+                "gain_db": 0.5,
+            },
+        )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             csv_path = f.name

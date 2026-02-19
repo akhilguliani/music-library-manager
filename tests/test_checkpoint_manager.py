@@ -1,9 +1,10 @@
 """Tests for checkpoint manager and task state."""
 
-import pytest
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+import pytest
 
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager

@@ -8,10 +8,10 @@ import logging
 import random
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +39,11 @@ class TrackInfo:
     artist: str = ""
     album: str = ""
     duration_s: float = 0.0
-    bpm: Optional[float] = None
-    key: Optional[str] = None
-    energy: Optional[int] = None
-    mood: Optional[str] = None
-    rating: Optional[int] = None
+    bpm: float | None = None
+    key: str | None = None
+    energy: int | None = None
+    mood: str | None = None
+    rating: int | None = None
     cue_points: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -51,11 +51,13 @@ class TrackInfo:
         """Create TrackInfo from a VDJ Song model."""
         cues = []
         for poi in song.cue_points:
-            cues.append({
-                "pos": poi.pos,
-                "name": poi.name or f"Cue {poi.num or ''}".strip(),
-                "num": poi.num,
-            })
+            cues.append(
+                {
+                    "pos": poi.pos,
+                    "name": poi.name or f"Cue {poi.num or ''}".strip(),
+                    "num": poi.num,
+                }
+            )
 
         return cls(
             file_path=song.file_path,
@@ -102,7 +104,7 @@ class PlaybackEngine:
 
         # State
         self._state = PlaybackState.STOPPED
-        self._current_track: Optional[TrackInfo] = None
+        self._current_track: TrackInfo | None = None
         self._position_s: float = 0.0
         self._duration_s: float = 0.0
         self._volume: int = 80
@@ -126,7 +128,7 @@ class PlaybackEngine:
         self._on_track_finished: list[Callable] = []
 
         # Position polling thread
-        self._poll_thread: Optional[threading.Thread] = None
+        self._poll_thread: threading.Thread | None = None
         self._poll_running = False
 
     # --- Lifecycle ---
@@ -137,13 +139,11 @@ class PlaybackEngine:
             import vlc
 
             self._vlc_instance = vlc.Instance("--no-xlib", "--quiet")
-            self._media_player = self._vlc_instance.media_player_new()
+            self._media_player = self._vlc_instance.media_player_new()  # type: ignore[attr-defined]
 
             # Register VLC end-reached event
-            em = self._media_player.event_manager()
-            em.event_attach(
-                vlc.EventType.MediaPlayerEndReached, self._on_vlc_end_reached
-            )
+            em = self._media_player.event_manager()  # type: ignore[attr-defined]
+            em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_vlc_end_reached)
 
             self._initialized = True
             return True
@@ -171,7 +171,7 @@ class PlaybackEngine:
 
     # --- Playback control ---
 
-    def play(self, track: Optional[TrackInfo] = None) -> None:
+    def play(self, track: TrackInfo | None = None) -> None:
         """Play track (or resume if no track given)."""
         with self._lock:
             if not self._initialized:
@@ -179,16 +179,16 @@ class PlaybackEngine:
 
             if track is not None:
                 self._load_track(track)
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
             elif self._state == PlaybackState.PAUSED:
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
             elif self._state == PlaybackState.STOPPED and self._current_track:
                 self._load_track(self._current_track)
-                self._media_player.play()
+                self._media_player.play()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PLAYING)
                 self._start_position_polling()
 
@@ -198,7 +198,7 @@ class PlaybackEngine:
             if not self._initialized:
                 return
             if self._state == PlaybackState.PLAYING:
-                self._media_player.pause()
+                self._media_player.pause()  # type: ignore[attr-defined]
                 self._set_state(PlaybackState.PAUSED)
 
     def stop(self) -> None:
@@ -206,7 +206,7 @@ class PlaybackEngine:
         with self._lock:
             if not self._initialized:
                 return
-            self._media_player.stop()
+            self._media_player.stop()  # type: ignore[attr-defined]
             self._stop_position_polling()
             self._position_s = 0.0
             self._set_state(PlaybackState.STOPPED)
@@ -280,7 +280,9 @@ class PlaybackEngine:
         """Set the playback queue and optionally start playing."""
         with self._lock:
             self._queue = list(tracks)
-            self._queue_index = max(0, min(start_index, len(self._queue) - 1)) if self._queue else -1
+            self._queue_index = (
+                max(0, min(start_index, len(self._queue) - 1)) if self._queue else -1
+            )
             self._fire_queue_callbacks()
             if self._queue and 0 <= self._queue_index < len(self._queue):
                 self.play(self._queue[self._queue_index])
@@ -289,6 +291,15 @@ class PlaybackEngine:
         """Add a track to the end of the queue."""
         with self._lock:
             self._queue.append(track)
+            self._fire_queue_callbacks()
+
+    def insert_next(self, track: TrackInfo) -> None:
+        """Insert a track immediately after the current position in the queue."""
+        with self._lock:
+            if not self._queue or self._queue_index < 0:
+                self._queue.append(track)
+            else:
+                self._queue.insert(self._queue_index + 1, track)
             self._fire_queue_callbacks()
 
     def remove_from_queue(self, index: int) -> None:
@@ -335,9 +346,7 @@ class PlaybackEngine:
             if not self._queue:
                 return
             if self._shuffle:
-                remaining = [
-                    i for i in range(len(self._queue)) if i != self._queue_index
-                ]
+                remaining = [i for i in range(len(self._queue)) if i != self._queue_index]
                 if remaining:
                     self._queue_index = random.choice(remaining)
                 elif self._repeat_mode == "all":
@@ -400,7 +409,7 @@ class PlaybackEngine:
         return self._state
 
     @property
-    def current_track(self) -> Optional[TrackInfo]:
+    def current_track(self) -> TrackInfo | None:
         """Currently loaded track."""
         return self._current_track
 
@@ -530,13 +539,9 @@ class PlaybackEngine:
         # Handle repeat mode
         if repeat == "one" and track:
             # Use a timer thread to avoid VLC deadlock
-            threading.Thread(
-                target=self._replay_current, daemon=True
-            ).start()
+            threading.Thread(target=self._replay_current, daemon=True).start()
         else:
-            threading.Thread(
-                target=self._advance_after_end, daemon=True
-            ).start()
+            threading.Thread(target=self._advance_after_end, daemon=True).start()
 
     def _replay_current(self) -> None:
         """Replay the current track (called from thread)."""
@@ -554,9 +559,7 @@ class PlaybackEngine:
         if self._poll_running:
             return
         self._poll_running = True
-        self._poll_thread = threading.Thread(
-            target=self._poll_position, daemon=True
-        )
+        self._poll_thread = threading.Thread(target=self._poll_position, daemon=True)
         self._poll_thread.start()
 
     def _stop_position_polling(self) -> None:

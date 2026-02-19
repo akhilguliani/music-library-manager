@@ -1,13 +1,11 @@
 """Album art extraction from audio file tags using mutagen."""
 
 import logging
-from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def extract_album_art(file_path: str) -> Optional[bytes]:
+def extract_album_art(file_path: str) -> bytes | None:
     """Extract embedded album art from an audio file.
 
     Supports MP3 (ID3 APIC), MP4/M4A (covr), FLAC, OGG.
@@ -42,6 +40,7 @@ def extract_album_art(file_path: str) -> Optional[bytes]:
             pics = audio.tags.get("metadata_block_picture")
             if pics:
                 import base64
+
                 from mutagen.flac import Picture
 
                 pic = Picture(base64.b64decode(pics[0]))

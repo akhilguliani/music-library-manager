@@ -1,29 +1,26 @@
 """Export panel for Serato format conversion."""
 
 from pathlib import Path
-from typing import Any
 
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QGroupBox,
-    QFormLayout,
-    QCheckBox,
     QListWidget,
     QListWidgetItem,
-    QFileDialog,
     QMessageBox,
+    QPushButton,
     QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.core.database import VDJDatabase
-from vdj_manager.core.models import Song, Playlist
+from vdj_manager.core.models import Playlist, Song
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
-from vdj_manager.ui.workers.export_workers import SeratoExportWorker, CrateExportWorker
+from vdj_manager.ui.workers.export_workers import CrateExportWorker, SeratoExportWorker
 
 
 class ExportPanel(QWidget):
@@ -93,11 +90,13 @@ class ExportPanel(QWidget):
         # Info
         info_group = QGroupBox("Serato Export")
         info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel(
-            "Export your VirtualDJ library to Serato format.\n"
-            "Writes BPM, key, and cue points to audio file tags.\n"
-            "Requires: mutagen"
-        ))
+        info_layout.addWidget(
+            QLabel(
+                "Export your VirtualDJ library to Serato format.\n"
+                "Writes BPM, key, and cue points to audio file tags.\n"
+                "Requires: mutagen"
+            )
+        )
         self.info_label = QLabel("No database loaded")
         info_layout.addWidget(self.info_label)
         options_layout.addWidget(info_group)
@@ -147,10 +146,12 @@ class ExportPanel(QWidget):
         # Results section
         results_group = QGroupBox("Export Results")
         results_layout = QVBoxLayout(results_group)
-        self.export_results = ConfigurableResultsTable([
-            {"name": "Track", "key": "file_path", "width": 400},
-            {"name": "Status", "key": "status", "width": 150},
-        ])
+        self.export_results = ConfigurableResultsTable(
+            [
+                {"name": "Track", "key": "file_path", "width": 400},
+                {"name": "Status", "key": "status", "width": 150},
+            ]
+        )
         results_layout.addWidget(self.export_results)
         splitter.addWidget(results_group)
 
@@ -166,14 +167,15 @@ class ExportPanel(QWidget):
             return
 
         audio_count = sum(
-            1 for t in self._tracks
-            if not t.is_netsearch and not t.is_windows_path
-            and t.extension in {".mp3", ".m4a", ".aac", ".flac", ".wav", ".aiff", ".aif", ".ogg", ".opus"}
+            1
+            for t in self._tracks
+            if not t.is_netsearch
+            and not t.is_windows_path
+            and t.extension
+            in {".mp3", ".m4a", ".aac", ".flac", ".wav", ".aiff", ".aif", ".ogg", ".opus"}
         )
         playlist_count = len(self._playlists)
-        self.info_label.setText(
-            f"{audio_count} audio tracks, {playlist_count} playlists"
-        )
+        self.info_label.setText(f"{audio_count} audio tracks, {playlist_count} playlists")
 
     def _populate_playlist_list(self) -> None:
         """Populate the playlist browser."""
@@ -183,19 +185,30 @@ class ExportPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, pl)
             self.playlist_list.addItem(item)
 
-    def _on_playlist_selected(self, current: QListWidgetItem | None, previous: QListWidgetItem | None) -> None:
+    def _on_playlist_selected(
+        self, current: QListWidgetItem | None, previous: QListWidgetItem | None
+    ) -> None:
         """Handle playlist selection."""
         self.export_playlist_btn.setEnabled(current is not None and self._database is not None)
 
     def _get_exportable_tracks(self) -> list[Song]:
         """Get tracks that can be exported."""
         audio_extensions = {
-            ".mp3", ".m4a", ".aac", ".flac", ".wav",
-            ".aiff", ".aif", ".ogg", ".opus",
+            ".mp3",
+            ".m4a",
+            ".aac",
+            ".flac",
+            ".wav",
+            ".aiff",
+            ".aif",
+            ".ogg",
+            ".opus",
         }
         return [
-            t for t in self._tracks
-            if not t.is_netsearch and not t.is_windows_path
+            t
+            for t in self._tracks
+            if not t.is_netsearch
+            and not t.is_windows_path
             and t.extension in audio_extensions
             and Path(t.file_path).exists()
         ]
@@ -219,9 +232,9 @@ class ExportPanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Export",
-            f"Export {len(tracks)} tracks to Serato format?\n"
-            "This will modify audio file tags.",
+            self,
+            "Confirm Export",
+            f"Export {len(tracks)} tracks to Serato format?\n" "This will modify audio file tags.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -232,9 +245,7 @@ class ExportPanel(QWidget):
         self.export_status.setText("Exporting...")
         self.export_results.clear()
 
-        self._export_worker = SeratoExportWorker(
-            tracks, cues_only=self.cues_only_check.isChecked()
-        )
+        self._export_worker = SeratoExportWorker(tracks, cues_only=self.cues_only_check.isChecked())
         self._export_worker.finished_work.connect(self._on_export_finished)
         self._export_worker.error.connect(self._on_export_error)
         self._export_worker.start()
@@ -287,10 +298,12 @@ class ExportPanel(QWidget):
         self.export_status.setText(
             f"Created crate '{result['crate_name']}' with {result['track_count']} tracks"
         )
-        self.export_results.add_result({
-            "file_path": result["crate_path"],
-            "status": f"crate created ({result['track_count']} tracks)",
-        })
+        self.export_results.add_result(
+            {
+                "file_path": result["crate_path"],
+                "status": f"crate created ({result['track_count']} tracks)",
+            }
+        )
         self.export_completed.emit()
 
     @Slot(str)

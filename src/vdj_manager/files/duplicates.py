@@ -2,8 +2,8 @@
 
 import hashlib
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from ..core.models import Song
 
@@ -196,18 +196,13 @@ class DuplicateDetector:
             },
         }
 
-        result["summary"]["metadata_groups"] = len(result["by_metadata"])
-        result["summary"]["filename_groups"] = len(result["by_filename"])
+        result["summary"]["metadata_groups"] = len(result["by_metadata"])  # type: ignore[index]
+        result["summary"]["filename_groups"] = len(result["by_filename"])  # type: ignore[index]
 
         if include_hash:
             hash_dupes = self.find_by_hash(songs)
-            result["by_hash"] = [
-                [s.file_path for s in group]
-                for group in hash_dupes
-            ]
-            result["summary"]["exact_duplicates"] = sum(
-                len(group) - 1 for group in hash_dupes
-            )
+            result["by_hash"] = [[s.file_path for s in group] for group in hash_dupes]  # type: ignore[misc]
+            result["summary"]["exact_duplicates"] = sum(len(group) - 1 for group in hash_dupes)  # type: ignore[index]
 
         return result
 

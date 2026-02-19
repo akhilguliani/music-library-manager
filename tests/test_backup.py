@@ -1,9 +1,10 @@
 """Tests for backup manager."""
 
-import pytest
-from pathlib import Path
-from tempfile import TemporaryDirectory, NamedTemporaryFile
 from datetime import datetime
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+
+import pytest
 
 from vdj_manager.core.backup import BackupManager
 
@@ -18,7 +19,7 @@ def temp_backup_dir():
 @pytest.fixture
 def sample_db_file():
     """Create a sample database file."""
-    with NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as f:
+    with NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
         f.write('<?xml version="1.0"?><VirtualDJ_Database></VirtualDJ_Database>')
         f.flush()
         yield Path(f.name)
@@ -64,10 +65,13 @@ class TestBackupManager:
     def test_get_latest_backup(self, temp_backup_dir, sample_db_file):
         """Test getting latest backup."""
         import time
+
         mgr = BackupManager(backup_dir=temp_backup_dir)
 
         mgr.create_backup(sample_db_file, label="old")
-        time.sleep(1.1)  # Ensure different timestamps (need >1 second for reliable mtime difference)
+        time.sleep(
+            1.1
+        )  # Ensure different timestamps (need >1 second for reliable mtime difference)
         latest_path = mgr.create_backup(sample_db_file, label="latest")
 
         latest = mgr.get_latest_backup()
@@ -129,6 +133,7 @@ class TestBackupManager:
         by creation order. The fix touches the file after copying to update mtime.
         """
         import time
+
         mgr = BackupManager(backup_dir=temp_backup_dir)
 
         # Create first backup
@@ -143,6 +148,6 @@ class TestBackupManager:
         second_mtime = second_backup.stat().st_mtime
 
         # Second backup should have a later mtime
-        assert second_mtime > first_mtime, (
-            f"Second backup mtime ({second_mtime}) should be > first backup mtime ({first_mtime})"
-        )
+        assert (
+            second_mtime > first_mtime
+        ), f"Second backup mtime ({second_mtime}) should be > first backup mtime ({first_mtime})"

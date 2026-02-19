@@ -1,18 +1,19 @@
 """Tests for file validator."""
 
-import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from vdj_manager.files.validator import FileValidator
+import pytest
+
 from vdj_manager.core.models import Song
+from vdj_manager.files.validator import FileValidator
 
 
 @pytest.fixture
 def temp_audio_file():
     """Create a temporary 'audio' file."""
-    with NamedTemporaryFile(suffix='.mp3', delete=False) as f:
-        f.write(b'fake audio data')
+    with NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(b"fake audio data")
         f.flush()
         yield Path(f.name)
     Path(f.name).unlink(missing_ok=True)

@@ -2,18 +2,17 @@
 
 from typing import Any
 
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QTextEdit,
-    QGroupBox,
-    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
 
 from vdj_manager.ui.models.task_state import TaskStatus
 

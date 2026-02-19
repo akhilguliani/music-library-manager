@@ -1,10 +1,8 @@
 """Tests for OperationPanel base class and ProgressSimpleWorker."""
 
-import time
-
 import pytest
-from PySide6.QtWidgets import QApplication, QWidget, QLabel
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from vdj_manager.ui.widgets.operation_panel import OperationPanel
 from vdj_manager.ui.workers.base_worker import ProgressSimpleWorker
@@ -79,6 +77,7 @@ class TestOperationPanel:
     def test_start_button_enabled_with_database(self, qapp):
         panel = ConcretePanel()
         from unittest.mock import MagicMock
+
         mock_db = MagicMock()
         panel.set_database(mock_db)
         assert panel.start_btn.isEnabled()
@@ -86,6 +85,7 @@ class TestOperationPanel:
     def test_set_database_none_disables(self, qapp):
         panel = ConcretePanel()
         from unittest.mock import MagicMock
+
         panel.set_database(MagicMock())
         assert panel.start_btn.isEnabled()
         panel.set_database(None)
@@ -108,6 +108,7 @@ class TestOperationPanel:
     def test_on_operation_finished(self, qapp):
         panel = ConcretePanel()
         from unittest.mock import MagicMock
+
         panel.set_database(MagicMock())
 
         panel._on_operation_finished(True, "Done!")

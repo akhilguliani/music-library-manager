@@ -1,10 +1,6 @@
 """Tests for VDJDatabase.update_song_infos and update_song_pois methods."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
-from lxml import etree
 
 from vdj_manager.core.database import VDJDatabase
 
@@ -14,7 +10,7 @@ def _create_test_db(tmp_path, songs_xml=""):
     db_path = tmp_path / "database.xml"
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\r\n'
-        "<VirtualDJ_Database Version=\"2024\">\r\n"
+        '<VirtualDJ_Database Version="2024">\r\n'
         f"{songs_xml}"
         "</VirtualDJ_Database>\r\n"
     )

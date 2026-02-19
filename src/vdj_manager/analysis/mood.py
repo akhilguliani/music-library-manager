@@ -8,7 +8,6 @@ Implements the MoodBackend protocol from mood_backend.py.
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ class MoodAnalyzer:
             return None
 
         try:
-            audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()
+            audio = self._es.MonoLoader(filename=file_path, sampleRate=16000)()  # type: ignore[union-attr]
             return self._compute_heuristic_scores(audio)
         except Exception:
             logger.warning("Mood analysis failed for %s", file_path, exc_info=True)
@@ -70,13 +69,13 @@ class MoodAnalyzer:
         On error, returns {"unknown": 0.0} so callers get a valid dict.
         """
         try:
-            rhythm_extractor = self._es.RhythmExtractor2013(method="multifeature")
+            rhythm_extractor = self._es.RhythmExtractor2013(method="multifeature")  # type: ignore[union-attr]
             bpm, beats, beats_confidence, _, _ = rhythm_extractor(audio)
 
-            spectrum = self._es.Spectrum()(audio)
-            centroid = self._es.Centroid(range=22050 / 2)(spectrum)
+            spectrum = self._es.Spectrum()(audio)  # type: ignore[union-attr]
+            centroid = self._es.Centroid(range=22050 / 2)(spectrum)  # type: ignore[union-attr]
 
-            rms = self._es.RMS()(audio)
+            rms = self._es.RMS()(audio)  # type: ignore[union-attr]
 
             return {
                 "energetic": min(1.0, bpm / 140) * 0.5 + min(1.0, rms * 10) * 0.5,
@@ -104,7 +103,7 @@ class MoodAnalyzer:
             return None
         return select_top_moods(scores, threshold, max_tags)
 
-    def get_mood_tag(self, file_path: str) -> Optional[str]:
+    def get_mood_tag(self, file_path: str) -> str | None:
         """Get the single top mood tag for a file.
 
         Backward-compatible convenience method.

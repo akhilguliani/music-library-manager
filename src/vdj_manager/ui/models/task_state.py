@@ -1,10 +1,10 @@
 """Task state dataclass for checkpoint persistence."""
 
-from dataclasses import dataclass, field, asdict
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
-import json
 
 
 class TaskType(str, Enum):
@@ -89,9 +89,9 @@ class TaskState:
     @property
     def is_resumable(self) -> bool:
         """Check if this task can be resumed."""
-        return self.status in (TaskStatus.PAUSED, TaskStatus.RUNNING) and len(
-            self.pending_paths
-        ) > 0
+        return (
+            self.status in (TaskStatus.PAUSED, TaskStatus.RUNNING) and len(self.pending_paths) > 0
+        )
 
     @property
     def is_complete(self) -> bool:

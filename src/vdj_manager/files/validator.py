@@ -1,7 +1,8 @@
 """File validation utilities."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+from typing import Any
 
 from ..config import AUDIO_EXTENSIONS, NON_AUDIO_EXTENSIONS
 from ..core.models import Song
@@ -118,7 +119,7 @@ class FileValidator:
         Returns:
             Dict with categorized song lists (and 'extensions' if collect_extensions)
         """
-        categories = {
+        categories: dict[str, Any] = {
             "audio_exists": [],
             "audio_missing": [],
             "non_audio": [],

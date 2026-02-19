@@ -1,13 +1,14 @@
 """Tests for pausable worker base class."""
 
-import pytest
 import time
 from typing import Any
+
+import pytest
 
 # Skip all tests if PySide6 is not available
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus, TaskType

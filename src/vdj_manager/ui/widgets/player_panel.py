@@ -1,26 +1,33 @@
 """Full-featured player panel (Tab 5)."""
 
-from pathlib import Path
+from __future__ import annotations
 
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSlider,
     QSplitter,
-    QListWidget,
-    QListWidgetItem,
-    QGroupBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QPixmap, QImage
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
-from vdj_manager.ui.widgets.waveform_widget import WaveformWidget
+from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
+
+if TYPE_CHECKING:
+    from vdj_manager.ui.workers.player_workers import WaveformWorker
 from vdj_manager.ui.widgets.star_rating_widget import StarRatingWidget
+from vdj_manager.ui.widgets.waveform_widget import WaveformWidget
 
 
 class PlayerPanel(QWidget):
@@ -49,8 +56,9 @@ class PlayerPanel(QWidget):
         super().__init__(parent)
         self._bridge = bridge
         self._current_track: TrackInfo | None = None
-        self._waveform_worker = None
+        self._waveform_worker: WaveformWorker | None = None
         self._duration_s = 0.0
+        self._syncing_cues = False
         self._setup_ui()
         self._connect_signals()
 
@@ -151,10 +159,21 @@ class PlayerPanel(QWidget):
         meta_row.addLayout(speed_col)
         top_layout.addLayout(meta_row)
 
-        # Waveform
+        # Waveform + Cue Table splitter
+        waveform_splitter = QSplitter(Qt.Orientation.Vertical)
+
         self.waveform = WaveformWidget()
         self.waveform.setMinimumHeight(80)
-        top_layout.addWidget(self.waveform)
+        waveform_splitter.addWidget(self.waveform)
+
+        self.cue_table = CueTableWidget()
+        self.cue_table.setMaximumHeight(200)
+        waveform_splitter.addWidget(self.cue_table)
+
+        waveform_splitter.setStretchFactor(0, 3)
+        waveform_splitter.setStretchFactor(1, 1)
+
+        top_layout.addWidget(waveform_splitter)
 
         layout.addWidget(top, stretch=0)
 
@@ -206,7 +225,10 @@ class PlayerPanel(QWidget):
 
         # Waveform seek and cue editing
         self.waveform.seek_requested.connect(self._bridge.seek)
-        self.waveform.cues_changed.connect(self._on_cues_changed)
+        self.waveform.cues_changed.connect(self._on_waveform_cues_changed)
+
+        # Cue table editing
+        self.cue_table.cues_changed.connect(self._on_cue_table_cues_changed)
 
         # Speed slider
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
@@ -252,6 +274,9 @@ class PlayerPanel(QWidget):
         # Cue points
         if track.cue_points:
             self.waveform.set_cue_points(track.cue_points)
+            self.cue_table.set_cue_points(track.cue_points)
+        else:
+            self.cue_table.set_cue_points([])
 
     @Slot(float, float)
     def _on_position_changed(self, pos: float, dur: float) -> None:
@@ -299,8 +324,27 @@ class PlayerPanel(QWidget):
             self.rating_changed.emit(self._current_track.file_path, rating)
 
     @Slot(list)
-    def _on_cues_changed(self, cue_dicts: list) -> None:
-        """Forward cue point changes with the current track's file path."""
+    def _on_waveform_cues_changed(self, cue_dicts: list) -> None:
+        """Waveform edited cues — sync to table and persist."""
+        if self._syncing_cues:
+            return
+        self._syncing_cues = True
+        self.cue_table.set_cue_points(cue_dicts)
+        self._syncing_cues = False
+        self._persist_cues(cue_dicts)
+
+    @Slot(list)
+    def _on_cue_table_cues_changed(self, cue_dicts: list) -> None:
+        """Table edited cues — sync to waveform and persist."""
+        if self._syncing_cues:
+            return
+        self._syncing_cues = True
+        self.waveform.set_cue_points(cue_dicts)
+        self._syncing_cues = False
+        self._persist_cues(cue_dicts)
+
+    def _persist_cues(self, cue_dicts: list) -> None:
+        """Update current track and emit cues_changed for database persistence."""
         if self._current_track:
             self._current_track.cue_points = cue_dicts
             self.cues_changed.emit(self._current_track.file_path, cue_dicts)
@@ -334,7 +378,8 @@ class PlayerPanel(QWidget):
                 img.loadFromData(art_bytes)
                 if not img.isNull():
                     pixmap = QPixmap.fromImage(img).scaled(
-                        120, 120,
+                        120,
+                        120,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )

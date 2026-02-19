@@ -11,7 +11,6 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from ..config import CHECKPOINT_DIR
 
@@ -42,7 +41,7 @@ class AnalysisCache:
                  Defaults to ``~/.vdj_manager/analysis.db``.
     """
 
-    def __init__(self, db_path: Optional[Path] = None) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or DEFAULT_ANALYSIS_CACHE_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -84,7 +83,7 @@ class AnalysisCache:
     # Public API
     # ------------------------------------------------------------------
 
-    def get(self, file_path: str, analysis_type: str) -> Optional[str]:
+    def get(self, file_path: str, analysis_type: str) -> str | None:
         """Look up a cached analysis result.
 
         Returns the cached result value if the file has not been modified
@@ -104,8 +103,7 @@ class AnalysisCache:
 
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM analysis_results "
-                "WHERE file_path = ? AND analysis_type = ?",
+                "SELECT * FROM analysis_results " "WHERE file_path = ? AND analysis_type = ?",
                 (file_path, analysis_type),
             ).fetchone()
 
@@ -156,9 +154,7 @@ class AnalysisCache:
                 ),
             )
 
-    def get_batch(
-        self, file_paths: list[str], analysis_type: str
-    ) -> dict[str, str]:
+    def get_batch(self, file_paths: list[str], analysis_type: str) -> dict[str, str]:
         """Look up cached results for multiple files.
 
         Uses a single ``WHERE IN`` query instead of N individual lookups,
@@ -260,9 +256,7 @@ class AnalysisCache:
             ``db_size_bytes`` (file size on disk).
         """
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM analysis_results"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM analysis_results").fetchone()
             count = row["cnt"] if row else 0
 
         try:

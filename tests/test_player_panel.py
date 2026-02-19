@@ -1,14 +1,12 @@
 """Tests for the PlayerPanel widget."""
 
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
 from vdj_manager.player.bridge import PlaybackBridge
-from vdj_manager.player.engine import PlaybackState, TrackInfo
+from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.widgets.player_panel import PlayerPanel
 
 
@@ -49,8 +47,7 @@ class TestPlayerPanel:
             energy=7,
             mood="#happy",
         )
-        with patch.object(panel, "_load_album_art"), \
-             patch.object(panel, "_load_waveform"):
+        with patch.object(panel, "_load_album_art"), patch.object(panel, "_load_waveform"):
             bridge._emit_track(track)
             qapp.processEvents()
 
@@ -72,8 +69,7 @@ class TestPlayerPanel:
                 {"pos": 90.0, "name": "Drop", "num": 2},
             ],
         )
-        with patch.object(panel, "_load_album_art"), \
-             patch.object(panel, "_load_waveform"):
+        with patch.object(panel, "_load_album_art"), patch.object(panel, "_load_waveform"):
             bridge._emit_track(track)
             qapp.processEvents()
 
@@ -89,8 +85,7 @@ class TestPlayerPanel:
         """Track without metadata should show defaults."""
         panel, bridge = player_panel
         track = TrackInfo(file_path="/music/cool_track.mp3")
-        with patch.object(panel, "_load_album_art"), \
-             patch.object(panel, "_load_waveform"):
+        with patch.object(panel, "_load_album_art"), patch.object(panel, "_load_waveform"):
             bridge._emit_track(track)
             qapp.processEvents()
 
@@ -160,8 +155,7 @@ class TestPlayerPanel:
         panel, bridge = player_panel
         # Set a current track first
         track = TrackInfo(file_path="/rated.mp3", title="Rated")
-        with patch.object(panel, "_load_album_art"), \
-             patch.object(panel, "_load_waveform"):
+        with patch.object(panel, "_load_album_art"), patch.object(panel, "_load_waveform"):
             bridge._emit_track(track)
             qapp.processEvents()
 
@@ -201,8 +195,7 @@ class TestPlayerPanel:
         """Waveform cue changes should emit cues_changed with file path."""
         panel, bridge = player_panel
         track = TrackInfo(file_path="/test/cue_edit.mp3", title="Cue Edit")
-        with patch.object(panel, "_load_album_art"), \
-             patch.object(panel, "_load_waveform"):
+        with patch.object(panel, "_load_album_art"), patch.object(panel, "_load_waveform"):
             bridge._emit_track(track)
             qapp.processEvents()
 

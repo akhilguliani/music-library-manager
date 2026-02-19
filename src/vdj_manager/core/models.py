@@ -2,12 +2,13 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+
 from pydantic import BaseModel, Field, computed_field
 
 
 class PoiType(str, Enum):
     """Types of Point of Interest markers in VDJ."""
+
     CUE = "cue"
     BEATGRID = "beatgrid"
     LOOP = "loop"
@@ -17,42 +18,48 @@ class PoiType(str, Enum):
 
 class Poi(BaseModel):
     """Point of Interest marker (cue points, loops, beatgrid, etc.)."""
+
     type: PoiType = Field(alias="Type")
     pos: float = Field(alias="Pos", description="Position in seconds")
-    name: Optional[str] = Field(default=None, alias="Name")
-    num: Optional[int] = Field(default=None, alias="Num", description="Cue point number (1-8)")
-    size: Optional[float] = Field(default=None, alias="Size", description="Loop size in seconds")
-    point: Optional[float] = Field(default=None, alias="Point")
-    bpm: Optional[float] = Field(default=None, alias="Bpm", description="Local BPM at this position")
+    name: str | None = Field(default=None, alias="Name")
+    num: int | None = Field(default=None, alias="Num", description="Cue point number (1-8)")
+    size: float | None = Field(default=None, alias="Size", description="Loop size in seconds")
+    point: float | None = Field(default=None, alias="Point")
+    bpm: float | None = Field(default=None, alias="Bpm", description="Local BPM at this position")
 
     model_config = {"populate_by_name": True}
 
 
 class Tags(BaseModel):
     """Song metadata tags."""
-    author: Optional[str] = Field(default=None, alias="Author")
-    title: Optional[str] = Field(default=None, alias="Title")
-    genre: Optional[str] = Field(default=None, alias="Genre")
-    album: Optional[str] = Field(default=None, alias="Album")
-    track_number: Optional[int] = Field(default=None, alias="TrackNumber")
-    year: Optional[int] = Field(default=None, alias="Year")
-    composer: Optional[str] = Field(default=None, alias="Composer")
-    grouping: Optional[str] = Field(default=None, alias="Grouping", description="Used for Energy tags")
-    remix: Optional[str] = Field(default=None, alias="Remix")
-    label: Optional[str] = Field(default=None, alias="Label")
-    comment: Optional[str] = Field(default=None, alias="Comment", description="Often contains Camelot key")
-    bpm: Optional[float] = Field(default=None, alias="Bpm", description="User-set BPM")
-    key: Optional[str] = Field(default=None, alias="Key", description="User-set key")
-    color: Optional[str] = Field(default=None, alias="Color")
-    rating: Optional[int] = Field(default=None, alias="Rating", description="0-5 star rating")
-    flag: Optional[int] = Field(default=None, alias="Flag")
-    user2: Optional[str] = Field(default=None, alias="User2", description="Hashtag-based style/mood tags")
+
+    author: str | None = Field(default=None, alias="Author")
+    title: str | None = Field(default=None, alias="Title")
+    genre: str | None = Field(default=None, alias="Genre")
+    album: str | None = Field(default=None, alias="Album")
+    track_number: int | None = Field(default=None, alias="TrackNumber")
+    year: int | None = Field(default=None, alias="Year")
+    composer: str | None = Field(default=None, alias="Composer")
+    grouping: str | None = Field(default=None, alias="Grouping", description="Used for Energy tags")
+    remix: str | None = Field(default=None, alias="Remix")
+    label: str | None = Field(default=None, alias="Label")
+    comment: str | None = Field(
+        default=None, alias="Comment", description="Often contains Camelot key"
+    )
+    bpm: float | None = Field(default=None, alias="Bpm", description="User-set BPM")
+    key: str | None = Field(default=None, alias="Key", description="User-set key")
+    color: str | None = Field(default=None, alias="Color")
+    rating: int | None = Field(default=None, alias="Rating", description="0-5 star rating")
+    flag: int | None = Field(default=None, alias="Flag")
+    user2: str | None = Field(
+        default=None, alias="User2", description="Hashtag-based style/mood tags"
+    )
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
-    def energy_level(self) -> Optional[int]:
+    def energy_level(self) -> int | None:
         """Extract energy level from Grouping field.
 
         Supports both plain number format ("7") and legacy "Energy 7" format.
@@ -80,28 +87,32 @@ class Tags(BaseModel):
 
 class Infos(BaseModel):
     """Technical information about the audio file."""
-    song_length: Optional[float] = Field(default=None, alias="SongLength", description="Duration in seconds")
-    first_seen: Optional[int] = Field(default=None, alias="FirstSeen", description="Unix timestamp")
-    last_played: Optional[int] = Field(default=None, alias="LastPlay", description="Unix timestamp")
-    play_count: Optional[int] = Field(default=None, alias="PlayCount")
-    bitrate: Optional[int] = Field(default=None, alias="Bitrate", description="Bitrate in kbps")
-    cover: Optional[str] = Field(default=None, alias="Cover", description="Cover art path or base64")
+
+    song_length: float | None = Field(
+        default=None, alias="SongLength", description="Duration in seconds"
+    )
+    first_seen: int | None = Field(default=None, alias="FirstSeen", description="Unix timestamp")
+    last_played: int | None = Field(default=None, alias="LastPlay", description="Unix timestamp")
+    play_count: int | None = Field(default=None, alias="PlayCount")
+    bitrate: int | None = Field(default=None, alias="Bitrate", description="Bitrate in kbps")
+    cover: str | None = Field(default=None, alias="Cover", description="Cover art path or base64")
 
     model_config = {"populate_by_name": True}
 
 
 class Scan(BaseModel):
     """VDJ audio analysis results."""
-    bpm: Optional[float] = Field(default=None, alias="Bpm", description="BPM as fraction of 60")
-    key: Optional[str] = Field(default=None, alias="Key", description="Detected key")
-    volume: Optional[float] = Field(default=None, alias="Volume", description="Gain adjustment")
-    flag: Optional[int] = Field(default=None, alias="Flag")
+
+    bpm: float | None = Field(default=None, alias="Bpm", description="BPM as fraction of 60")
+    key: str | None = Field(default=None, alias="Key", description="Detected key")
+    volume: float | None = Field(default=None, alias="Volume", description="Gain adjustment")
+    flag: int | None = Field(default=None, alias="Flag")
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
-    def actual_bpm(self) -> Optional[float]:
+    def actual_bpm(self) -> float | None:
         """Convert VDJ BPM fraction to actual BPM (e.g., 0.5 -> 120)."""
         if self.bpm is None or self.bpm == 0:
             return None
@@ -110,6 +121,7 @@ class Scan(BaseModel):
 
 class Link(BaseModel):
     """Link to related songs (stems, remixes, etc.)."""
+
     source: str = Field(alias="Source")
 
     model_config = {"populate_by_name": True}
@@ -117,41 +129,42 @@ class Link(BaseModel):
 
 class Song(BaseModel):
     """Complete VirtualDJ song entry."""
+
     file_path: str = Field(alias="FilePath")
-    file_size: Optional[int] = Field(default=None, alias="FileSize")
-    tags: Optional[Tags] = None
-    infos: Optional[Infos] = None
-    scan: Optional[Scan] = None
+    file_size: int | None = Field(default=None, alias="FileSize")
+    tags: Tags | None = None
+    infos: Infos | None = None
+    scan: Scan | None = None
     pois: list[Poi] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def path(self) -> Path:
         """Return file path as Path object."""
         return Path(self.file_path)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def extension(self) -> str:
         """Return lowercase file extension."""
         return Path(self.file_path).suffix.lower()
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_windows_path(self) -> bool:
         """Check if path is a Windows path."""
         return len(self.file_path) > 1 and self.file_path[1] == ":"
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_netsearch(self) -> bool:
         """Check if this is a streaming/netsearch entry."""
         return "://" in self.file_path and not self.file_path.startswith("file://")
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def display_name(self) -> str:
         """Return display name (artist - title or filename)."""
@@ -163,12 +176,12 @@ class Song(BaseModel):
         return Path(self.file_path).stem
 
     @property
-    def energy(self) -> Optional[int]:
+    def energy(self) -> int | None:
         """Get energy level from tags."""
         return self.tags.energy_level if self.tags else None
 
     @property
-    def mood(self) -> Optional[str]:
+    def mood(self) -> str | None:
         """Get mood from User2 hashtags (last hashtag added by mood analysis)."""
         if not self.tags or not self.tags.user2:
             return None
@@ -179,7 +192,7 @@ class Song(BaseModel):
         return mood_tags[-1] if mood_tags else None
 
     @property
-    def actual_bpm(self) -> Optional[float]:
+    def actual_bpm(self) -> float | None:
         """Get actual BPM value."""
         return self.scan.actual_bpm if self.scan else None
 
@@ -194,7 +207,7 @@ class Song(BaseModel):
         return [p for p in self.pois if p.type == PoiType.LOOP]
 
     @property
-    def beatgrid(self) -> Optional[Poi]:
+    def beatgrid(self) -> Poi | None:
         """Get beatgrid marker."""
         for p in self.pois:
             if p.type == PoiType.BEATGRID:
@@ -204,6 +217,7 @@ class Song(BaseModel):
 
 class Playlist(BaseModel):
     """VirtualDJ playlist (MyList)."""
+
     name: str = Field(alias="Name")
     file_paths: list[str] = Field(default_factory=list)
 
@@ -212,6 +226,7 @@ class Playlist(BaseModel):
 
 class DatabaseStats(BaseModel):
     """Statistics about a VDJ database."""
+
     total_songs: int = 0
     local_files: int = 0
     windows_paths: int = 0

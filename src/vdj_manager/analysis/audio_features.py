@@ -2,22 +2,24 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
     import librosa
     import numpy as np
+
     LIBROSA_AVAILABLE = True
 except ImportError:
     LIBROSA_AVAILABLE = False
 
 try:
     from mutagen import File as MutagenFile
+    from mutagen.flac import FLAC
     from mutagen.id3 import ID3
     from mutagen.mp4 import MP4
-    from mutagen.flac import FLAC
+
     MUTAGEN_AVAILABLE = True
 except ImportError:
     MUTAGEN_AVAILABLE = False
@@ -39,7 +41,7 @@ class AudioFeatureExtractor:
         self.sample_rate = sample_rate
         self.duration = duration
 
-    def load_audio(self, file_path: str, offset: Optional[float] = None) -> tuple:
+    def load_audio(self, file_path: str, offset: float | None = None) -> tuple:
         """Load audio file.
 
         Uses soundfile directly when possible to avoid librosa's audioread
@@ -67,8 +69,9 @@ class AudioFeatureExtractor:
             start_frame = int(offset * info.samplerate)
             n_frames = int(min(self.duration, total_duration - offset) * info.samplerate)
 
-            data, sr = sf.read(file_path, start=start_frame, frames=n_frames,
-                               dtype="float32", always_2d=False)
+            data, sr = sf.read(
+                file_path, start=start_frame, frames=n_frames, dtype="float32", always_2d=False
+            )
             # Convert to mono if stereo
             if data.ndim > 1:
                 data = np.mean(data, axis=1)
@@ -94,7 +97,7 @@ class AudioFeatureExtractor:
         )
         return y, sr
 
-    def extract_features(self, file_path: str) -> dict:
+    def extract_features(self, file_path: str) -> dict[str, float]:
         """Extract all audio features from a file.
 
         Args:
@@ -161,7 +164,7 @@ class MixedInKeyReader:
         if not MUTAGEN_AVAILABLE:
             raise ImportError("mutagen is required for reading audio tags")
 
-    def read_tags(self, file_path: str) -> dict:
+    def read_tags(self, file_path: str) -> dict[str, Any]:
         """Read Mixed In Key tags from an audio file.
 
         Args:
@@ -170,7 +173,7 @@ class MixedInKeyReader:
         Returns:
             Dict with MIK data (energy, key, bpm)
         """
-        result = {
+        result: dict[str, Any] = {
             "energy": None,
             "key": None,
             "bpm": None,
@@ -195,9 +198,9 @@ class MixedInKeyReader:
 
         return result
 
-    def _read_mp3_tags(self, file_path: str) -> dict:
+    def _read_mp3_tags(self, file_path: str) -> dict[str, Any]:
         """Read tags from MP3 file."""
-        result = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
+        result: dict[str, Any] = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
 
         try:
             audio = ID3(file_path)
@@ -239,14 +242,14 @@ class MixedInKeyReader:
 
         return result
 
-    def _read_mp4_tags(self, file_path: str) -> dict:
+    def _read_mp4_tags(self, file_path: str) -> dict[str, Any]:
         """Read tags from M4A/AAC file."""
-        result = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
+        result: dict[str, Any] = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
 
         try:
             audio = MP4(file_path)
 
-            for key, value in audio.tags.items():
+            for key, value in audio.tags.items():  # type: ignore[attr-defined]
                 result["raw_tags"][key] = str(value[0]) if value else ""
 
                 key_upper = key.upper()
@@ -275,14 +278,14 @@ class MixedInKeyReader:
 
         return result
 
-    def _read_flac_tags(self, file_path: str) -> dict:
+    def _read_flac_tags(self, file_path: str) -> dict[str, Any]:
         """Read tags from FLAC file."""
-        result = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
+        result: dict[str, Any] = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
 
         try:
             audio = FLAC(file_path)
 
-            for key, value in audio.tags:
+            for key, value in audio.tags:  # type: ignore[union-attr]
                 result["raw_tags"][key.upper()] = value
 
                 key_upper = key.upper()
@@ -309,9 +312,9 @@ class MixedInKeyReader:
 
         return result
 
-    def _read_generic_tags(self, file_path: str) -> dict:
+    def _read_generic_tags(self, file_path: str) -> dict[str, Any]:
         """Read tags using generic mutagen interface."""
-        result = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
+        result: dict[str, Any] = {"energy": None, "key": None, "bpm": None, "raw_tags": {}}
 
         try:
             audio = MutagenFile(file_path, easy=True)
