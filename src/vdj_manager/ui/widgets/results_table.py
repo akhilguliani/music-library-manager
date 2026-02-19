@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vdj_manager.ui.theme import DARK_THEME
+
 
 class ResultsTable(QWidget):
     """Table widget for displaying normalization/analysis results.
@@ -233,7 +235,7 @@ class ConfigurableResultsTable(QWidget):
 
         # Row count label
         self.row_count_label = QLabel("0 results")
-        self.row_count_label.setStyleSheet("color: gray; font-size: 11px;")
+        self.row_count_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px;")
         layout.addWidget(self.row_count_label)
 
     def clear(self) -> None:

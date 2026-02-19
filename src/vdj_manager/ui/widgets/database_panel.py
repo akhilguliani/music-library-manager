@@ -31,6 +31,7 @@ from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import DatabaseStats, Song
 from vdj_manager.ui.models.track_model import TrackTableModel
+from vdj_manager.ui.theme import DARK_THEME, ThemeManager
 from vdj_manager.ui.workers.database_worker import (
     BackupWorker,
     CleanWorker,
@@ -99,7 +100,9 @@ class DatabasePanel(QWidget):
 
         # Compact stats summary
         self.stats_summary_label = QLabel("No database loaded")
-        self.stats_summary_label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 4px;")
+        self.stats_summary_label.setStyleSheet(
+            f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
+        )
         layout.addWidget(self.stats_summary_label)
 
         # Create splitter for track table, tag editor, and log
@@ -174,7 +177,7 @@ class DatabasePanel(QWidget):
 
         # Status label (right-aligned)
         self.status_label = QLabel("Not loaded")
-        self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.status_label)
 
         return group
@@ -277,7 +280,7 @@ class DatabasePanel(QWidget):
         # Update UI
         self.load_btn.setEnabled(False)
         self.status_label.setText("Loading...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         # Start worker
         self._load_worker = DatabaseLoadWorker(path)
@@ -308,7 +311,7 @@ class DatabasePanel(QWidget):
             self._update_result_count()
 
             self.status_label.setText(f"Loaded {len(result.tracks)} tracks")
-            self.status_label.setStyleSheet("color: green;")
+            self._set_status_color("success")
             self._log_operation(f"Loaded database with {len(result.tracks)} tracks")
 
             # Enable action buttons
@@ -320,14 +323,14 @@ class DatabasePanel(QWidget):
             self.database_loaded.emit(self._database)
         else:
             self.status_label.setText(f"Error: {result.error}")
-            self.status_label.setStyleSheet("color: red;")
+            self._set_status_color("error")
 
     @Slot(str)
     def _on_load_error(self, error: str) -> None:
         """Handle loading error."""
         self.load_btn.setEnabled(True)
         self.status_label.setText(f"Error: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _update_stats(self, stats: DatabaseStats | None) -> None:
         """Update the statistics display.
@@ -338,7 +341,7 @@ class DatabasePanel(QWidget):
         if stats is None:
             self.stats_summary_label.setText("No database loaded")
             self.stats_summary_label.setStyleSheet(
-                "color: gray; font-size: 11px; padding: 2px 4px;"
+                f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
             )
             return
 
@@ -354,7 +357,9 @@ class DatabasePanel(QWidget):
             parts.append(f"{stats.netsearch:,} streaming")
 
         self.stats_summary_label.setText("  |  ".join(parts))
-        self.stats_summary_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 4px;")
+        self.stats_summary_label.setStyleSheet(
+            f"color: {DARK_THEME.text_muted}; font-size: 11px; padding: 2px 4px;"
+        )
 
     @Slot(str)
     def _on_search_changed(self, text: str) -> None:
@@ -876,7 +881,7 @@ class DatabasePanel(QWidget):
         self._database.save()
 
         self.status_label.setText(f"Tags saved for {track.display_name}")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Tags saved for {track.display_name}")
 
         # Refresh track list
@@ -956,11 +961,11 @@ class DatabasePanel(QWidget):
             ok = editor.write_tags(file_path, file_tags)
             if ok:
                 self.status_label.setText("File tags saved")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(f"File tags saved for {self._editing_track.display_name}")
             else:
                 self.status_label.setText("File tags save failed")
-                self.status_label.setStyleSheet("color: red;")
+                self._set_status_color("error")
         except Exception as e:
             QMessageBox.warning(self, "Write Error", f"Failed to write file tags:\n{e}")
 
@@ -986,13 +991,13 @@ class DatabasePanel(QWidget):
             ok = editor.write_tags(self._editing_track.file_path, file_tags)
             if ok:
                 self.status_label.setText("VDJ tags synced to file")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(f"VDJ \u2192 File sync for {self._editing_track.display_name}")
                 # Re-read to show updated values
                 self._on_file_tag_read()
             else:
                 self.status_label.setText("Sync failed")
-                self.status_label.setStyleSheet("color: red;")
+                self._set_status_color("error")
         except Exception as e:
             QMessageBox.warning(self, "Sync Error", f"Failed to sync:\n{e}")
 
@@ -1024,7 +1029,7 @@ class DatabasePanel(QWidget):
                 self._tracks = list(self._database.iter_songs())
                 self.track_model.set_tracks(self._tracks)
                 self.status_label.setText("File tags imported to VDJ")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(
                     f"File \u2192 VDJ import for {self._editing_track.display_name}"
                 )
@@ -1043,6 +1048,10 @@ class DatabasePanel(QWidget):
             self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
         self._update_result_count()
+
+    def _set_status_color(self, status: str) -> None:
+        """Update the status label color based on status keyword."""
+        self.status_label.setStyleSheet(f"color: {ThemeManager().status_color(status)}")
 
     def _log_operation(self, message: str) -> None:
         """Add a timestamped entry to the operation log.
@@ -1067,7 +1076,7 @@ class DatabasePanel(QWidget):
         db_path = self._database.db_path
         self.backup_btn.setEnabled(False)
         self.status_label.setText("Creating backup...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._backup_worker = BackupWorker(db_path)
         self._backup_worker.finished_work.connect(self._on_backup_finished)
@@ -1079,7 +1088,7 @@ class DatabasePanel(QWidget):
         """Handle backup completion."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup created: {Path(backup_path).name}")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Backup created: {Path(backup_path).name}")
 
     @Slot(str)
@@ -1087,7 +1096,7 @@ class DatabasePanel(QWidget):
         """Handle backup error."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _on_validate_clicked(self) -> None:
         """Handle validate button click."""
@@ -1099,7 +1108,7 @@ class DatabasePanel(QWidget):
 
         self.validate_btn.setEnabled(False)
         self.status_label.setText("Validating...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._validate_worker = ValidateWorker(self._tracks)
         self._validate_worker.finished_work.connect(self._on_validate_finished)
@@ -1122,7 +1131,7 @@ class DatabasePanel(QWidget):
             f"{non_audio} non-audio, {windows} Windows paths"
         )
         self.status_label.setText(summary)
-        self.status_label.setStyleSheet("color: green;" if missing == 0 else "color: orange;")
+        self._set_status_color("success" if missing == 0 else "warning")
 
         # Store for potential clean operation
         self._last_validation = report
@@ -1148,7 +1157,7 @@ class DatabasePanel(QWidget):
         """Handle validation error."""
         self.validate_btn.setEnabled(True)
         self.status_label.setText(f"Validation failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _on_clean_clicked(self) -> None:
         """Handle clean button click."""
@@ -1202,7 +1211,7 @@ class DatabasePanel(QWidget):
 
         self.clean_btn.setEnabled(False)
         self.status_label.setText("Cleaning...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._clean_worker = CleanWorker(self._database, to_remove)
         self._clean_worker.finished_work.connect(self._on_clean_finished)
@@ -1214,7 +1223,7 @@ class DatabasePanel(QWidget):
         """Handle clean completion."""
         self.clean_btn.setEnabled(True)
         self.status_label.setText(f"Cleaned {removed_count} entries")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Cleaned {removed_count} invalid entries")
 
         # Refresh tracks
@@ -1230,4 +1239,4 @@ class DatabasePanel(QWidget):
         """Handle clean error."""
         self.clean_btn.setEnabled(True)
         self.status_label.setText(f"Clean failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")

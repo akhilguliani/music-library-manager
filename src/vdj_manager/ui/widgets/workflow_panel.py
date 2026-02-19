@@ -31,6 +31,7 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.ui.theme import DARK_THEME
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import EnergyWorker, GenreWorker, MoodWorker
@@ -193,7 +194,7 @@ class WorkflowPanel(QWidget):
 
         # Info label
         self.info_label = QLabel("No database loaded")
-        self.info_label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 4px;")
+        self.info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;")
         layout.addWidget(self.info_label)
 
         # Action buttons
@@ -221,7 +222,7 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.energy_progress)
 
         self.energy_current_file = QLabel("")
-        self.energy_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.energy_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
         self.energy_current_file.setVisible(False)
         layout.addWidget(self.energy_current_file)
 
@@ -243,7 +244,7 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.mood_progress)
 
         self.mood_current_file = QLabel("")
-        self.mood_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.mood_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
         self.mood_current_file.setVisible(False)
         layout.addWidget(self.mood_current_file)
 
@@ -265,7 +266,7 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.genre_progress)
 
         self.genre_current_file = QLabel("")
-        self.genre_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.genre_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
         self.genre_current_file.setVisible(False)
         layout.addWidget(self.genre_current_file)
 
@@ -288,7 +289,7 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.norm_progress)
 
         self.norm_current_file = QLabel("")
-        self.norm_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.norm_current_file.setStyleSheet(f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;")
         self.norm_current_file.setVisible(False)
         layout.addWidget(self.norm_current_file)
 

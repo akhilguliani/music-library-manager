@@ -24,6 +24,7 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.ui.theme import DARK_THEME, ThemeManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
@@ -147,7 +148,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.energy_info_label = QLabel("No database loaded")
-        self.energy_info_label.setStyleSheet("color: gray;")
+        self.energy_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.energy_info_label)
 
         # Controls
@@ -199,7 +200,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mik_info_label = QLabel("No database loaded")
-        self.mik_info_label.setStyleSheet("color: gray;")
+        self.mik_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.mik_info_label)
 
         # Controls
@@ -244,7 +245,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mood_info_label = QLabel("No database loaded")
-        self.mood_info_label.setStyleSheet("color: gray;")
+        self.mood_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.mood_info_label)
 
         # Online mood controls
@@ -350,7 +351,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.genre_info_label = QLabel("No database loaded")
-        self.genre_info_label.setStyleSheet("color: gray;")
+        self.genre_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.genre_info_label)
 
         # Online toggle
@@ -419,23 +420,33 @@ class AnalysisPanel(QWidget):
 
     def _update_genre_api_key_label(self) -> None:
         """Update the Last.fm API key status label for the genre tab."""
+        tm = ThemeManager()
         key = get_lastfm_api_key()
         if key:
             self.genre_api_key_label.setText("API key: configured")
-            self.genre_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+            self.genre_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('success')}; font-size: 11px;"
+            )
         else:
             self.genre_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
-            self.genre_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
+            self.genre_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('warning')}; font-size: 11px;"
+            )
 
     def _update_api_key_label(self) -> None:
         """Update the Last.fm API key status label."""
+        tm = ThemeManager()
         key = get_lastfm_api_key()
         if key:
             self.mood_api_key_label.setText("API key: configured")
-            self.mood_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+            self.mood_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('success')}; font-size: 11px;"
+            )
         else:
             self.mood_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
-            self.mood_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
+            self.mood_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('warning')}; font-size: 11px;"
+            )
 
     def _update_track_info(self) -> None:
         """Update track info labels across all tabs."""

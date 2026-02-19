@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vdj_manager.ui.theme import DARK_THEME
+
 MAX_CUES = 8
 
 
@@ -92,7 +94,9 @@ class CueTableWidget(QWidget):
             # Column 3: delete button
             del_btn = QPushButton("\u00d7")
             del_btn.setFixedSize(24, 24)
-            del_btn.setStyleSheet("font-weight: bold; color: red; border: none;")
+            del_btn.setStyleSheet(
+                f"font-weight: bold; color: {DARK_THEME.status_error}; border: none; background: transparent;"
+            )
             del_btn.clicked.connect(lambda checked=False, r=row: self._on_delete_clicked(r))
             self.table.setCellWidget(row, 3, del_btn)
 

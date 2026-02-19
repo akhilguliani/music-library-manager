@@ -184,7 +184,10 @@ class TestDatabasePanelValidate:
         with patch.object(QMessageBox, "information"):
             panel._on_validate_finished(report)
 
-        assert "green" in panel.status_label.styleSheet()
+        # Status should use the success color from the theme
+        from vdj_manager.ui.theme import DARK_THEME
+
+        assert DARK_THEME.status_success in panel.status_label.styleSheet()
 
     def test_on_validate_error(self, qapp):
         panel = DatabasePanel()
