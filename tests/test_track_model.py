@@ -71,7 +71,7 @@ class TestTrackTableModel:
         model = TrackTableModel()
         assert model is not None
         assert model.rowCount() == 0
-        assert model.columnCount() == 8  # Art + 7 data columns
+        assert model.columnCount() == 9  # Art + 8 data columns
 
     def test_set_tracks(self, app, sample_tracks):
         """Test setting tracks updates the model."""

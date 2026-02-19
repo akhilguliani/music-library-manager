@@ -43,10 +43,11 @@ class TrackTableModel(QAbstractTableModel):
         ("Energy", "energy"),
         ("Duration", "duration"),
         ("Genre", "genre"),
+        ("Mood", "mood"),
     ]
 
     # Columns that support inline editing (by index)
-    EDITABLE_COLUMNS = {1, 2, 3, 4, 5, 7}  # Title, Artist, BPM, Key, Energy, Genre
+    EDITABLE_COLUMNS = {1, 2, 3, 4, 5, 7, 8}  # Title, Artist, BPM, Key, Energy, Genre, Mood
 
     def __init__(self, parent: Any = None) -> None:
         """Initialize the track model.
@@ -221,6 +222,10 @@ class TrackTableModel(QAbstractTableModel):
         elif column == 7:  # Genre
             if track.tags and track.tags.genre:
                 return track.tags.genre
+            return ""
+        elif column == 8:  # Mood
+            if track.tags and track.tags.user2:
+                return track.tags.user2
             return ""
 
         return ""

@@ -290,6 +290,7 @@ class DatabasePanel(QWidget):
         self.track_table.setItemDelegateForColumn(4, KeyEditDelegate(self.track_table))
         self.track_table.setItemDelegateForColumn(5, EnergyEditDelegate(self.track_table))
         self.track_table.setItemDelegateForColumn(7, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(8, TextEditDelegate(self.track_table))
 
         # Edit triggers: F2 or single-click on selected cell (preserves double-click-to-play)
         self.track_table.setEditTriggers(
@@ -484,6 +485,7 @@ class DatabasePanel(QWidget):
         "key": "Key",
         "energy": "Grouping",
         "genre": "Genre",
+        "mood": "User2",
     }
 
     def _on_tag_edit_requested(self, file_path: str, field: str, value: str) -> None:
