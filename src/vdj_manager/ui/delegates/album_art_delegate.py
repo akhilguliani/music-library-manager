@@ -21,7 +21,7 @@ _PLACEHOLDER_KEY = "__placeholder__"
 class _ArtLoadSignals(QObject):
     """Signals for the art loading runnable (QRunnable can't emit signals directly)."""
 
-    art_loaded = Signal(str, QPixmap)  # file_path, pixmap
+    art_loaded = Signal(str, QImage)  # file_path, image (QImage is thread-safe)
 
 
 class _ArtLoadRunnable(QRunnable):
@@ -43,22 +43,23 @@ class _ArtLoadRunnable(QRunnable):
                 img = QImage()
                 img.loadFromData(art_bytes)
                 if not img.isNull():
-                    pixmap = QPixmap.fromImage(img).scaled(
+                    # Scale using QImage (thread-safe), NOT QPixmap
+                    scaled = img.scaled(
                         self.size,
                         self.size,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )
-                    self.signals.art_loaded.emit(self.file_path, pixmap)
+                    self.signals.art_loaded.emit(self.file_path, scaled)
                     return
         except Exception:
             logger.debug("Failed to load album art for %s", self.file_path)
-        # Emit empty pixmap to signal "no art" (so we don't retry)
-        self.signals.art_loaded.emit(self.file_path, QPixmap())
+        # Emit empty image to signal "no art" (so we don't retry)
+        self.signals.art_loaded.emit(self.file_path, QImage())
 
 
 class AlbumArtCache(QObject):
-    """LRU-ish cache for album art pixmaps with async background loading.
+    """FIFO cache for album art pixmaps with async background loading.
 
     Signals:
         art_ready(str): Emitted when art for a file_path becomes available.
@@ -70,6 +71,7 @@ class AlbumArtCache(QObject):
         super().__init__(parent)
         self._cache: dict[str, QPixmap | None] = {}
         self._pending: set[str] = set()
+        self._active_runnables: dict[str, _ArtLoadRunnable] = {}
         self._max_size = max_size
         self._pool = QThreadPool.globalInstance()
         self._placeholder: QPixmap | None = None
@@ -87,6 +89,8 @@ class AlbumArtCache(QObject):
             self._pending.add(file_path)
             runnable = _ArtLoadRunnable(file_path)
             runnable.signals.art_loaded.connect(self._on_art_loaded)
+            # Hold reference to prevent signal object deletion before slot fires
+            self._active_runnables[file_path] = runnable
             self._pool.start(runnable)
 
         return None
@@ -101,18 +105,24 @@ class AlbumArtCache(QObject):
         """Clear the cache."""
         self._cache.clear()
         self._pending.clear()
+        self._active_runnables.clear()
 
-    def _on_art_loaded(self, file_path: str, pixmap: QPixmap) -> None:
-        """Handle completed art load."""
+    def _on_art_loaded(self, file_path: str, image: QImage) -> None:
+        """Handle completed art load. Converts QImage to QPixmap on main thread."""
         self._pending.discard(file_path)
+        self._active_runnables.pop(file_path, None)
 
         # Evict oldest if at capacity
         if len(self._cache) >= self._max_size:
             oldest_key = next(iter(self._cache))
             del self._cache[oldest_key]
 
-        # Store None for empty pixmap (no art found) to avoid re-fetching
-        self._cache[file_path] = pixmap if not pixmap.isNull() else None
+        # Convert QImage→QPixmap on main thread (QPixmap is NOT thread-safe)
+        if not image.isNull():
+            self._cache[file_path] = QPixmap.fromImage(image)
+        else:
+            # Store None for empty image (no art found) to avoid re-fetching
+            self._cache[file_path] = None
         self.art_ready.emit(file_path)
 
     @staticmethod

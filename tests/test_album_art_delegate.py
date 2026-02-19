@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QModelIndex, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from vdj_manager.ui.delegates.album_art_delegate import (
@@ -55,19 +55,19 @@ class TestAlbumArtCache:
         assert len(cache._pending) == pending_count
 
     def test_on_art_loaded_caches_pixmap(self, app):
-        """Test _on_art_loaded stores pixmap in cache."""
+        """Test _on_art_loaded converts QImage to QPixmap and caches it."""
         cache = AlbumArtCache()
         cache._pending.add("/path/to/track.mp3")
 
-        pixmap = QPixmap(40, 40)
-        pixmap.fill(Qt.GlobalColor.red)
+        image = QImage(40, 40, QImage.Format.Format_RGB32)
+        image.fill(Qt.GlobalColor.red)
 
         signals_received = []
         cache.art_ready.connect(lambda fp: signals_received.append(fp))
 
-        cache._on_art_loaded("/path/to/track.mp3", pixmap)
+        cache._on_art_loaded("/path/to/track.mp3", image)
 
-        # Should be cached
+        # Should be cached as QPixmap (converted from QImage on main thread)
         assert "/path/to/track.mp3" in cache._cache
         cached = cache._cache["/path/to/track.mp3"]
         assert cached is not None
@@ -81,11 +81,11 @@ class TestAlbumArtCache:
         assert "/path/to/track.mp3" not in cache._pending
 
     def test_on_art_loaded_stores_none_for_empty(self, app):
-        """Test _on_art_loaded stores None for empty pixmap (no art found)."""
+        """Test _on_art_loaded stores None for empty QImage (no art found)."""
         cache = AlbumArtCache()
         cache._pending.add("/path/to/track.mp3")
 
-        cache._on_art_loaded("/path/to/track.mp3", QPixmap())
+        cache._on_art_loaded("/path/to/track.mp3", QImage())
 
         assert "/path/to/track.mp3" in cache._cache
         assert cache._cache["/path/to/track.mp3"] is None
@@ -129,9 +129,9 @@ class TestAlbumArtCache:
         for i in range(3):
             cache._cache[f"track{i}"] = QPixmap(10, 10)
 
-        # Add one more via _on_art_loaded
+        # Add one more via _on_art_loaded (takes QImage, converts to QPixmap)
         cache._pending.add("track3")
-        cache._on_art_loaded("track3", QPixmap(10, 10))
+        cache._on_art_loaded("track3", QImage(10, 10, QImage.Format.Format_RGB32))
 
         assert len(cache._cache) == 3
         assert "track0" not in cache._cache  # oldest evicted

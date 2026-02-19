@@ -206,6 +206,23 @@ class MainWindow(QMainWindow):
         if track:
             self._on_track_play_requested(track)
 
+    def _is_text_input_focused(self) -> bool:
+        """Check if a text input widget currently has focus."""
+        from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QSpinBox, QTextEdit
+
+        widget = QApplication.focusWidget()
+        return isinstance(widget, (QLineEdit, QTextEdit, QSpinBox, QComboBox))
+
+    def _on_play_pause_shortcut(self) -> None:
+        """Handle Space shortcut — only toggle play/pause when not typing."""
+        if not self._is_text_input_focused():
+            self._playback_bridge.toggle_play_pause()
+
+    def _on_shortcuts_shortcut(self) -> None:
+        """Handle ? shortcut — only open dialog when not typing."""
+        if not self._is_text_input_focused():
+            self._show_shortcuts_dialog()
+
     def _show_shortcuts_dialog(self) -> None:
         """Show the keyboard shortcuts help dialog."""
         dialog = ShortcutsDialog(self)
@@ -254,9 +271,12 @@ class MainWindow(QMainWindow):
         playback_menu = menu_bar.addMenu("&Playback")
 
         play_action = QAction("Play/Pause", self)
-        play_action.setShortcut(QKeySequence("Space"))
         play_action.triggered.connect(self._playback_bridge.toggle_play_pause)
         playback_menu.addAction(play_action)
+        # Space shortcut via QShortcut (not menu) — ApplicationShortcut but only
+        # fires when no text input widget has focus (checked in _on_play_pause)
+        self._play_shortcut = QShortcut(QKeySequence("Space"), self)
+        self._play_shortcut.activated.connect(self._on_play_pause_shortcut)
 
         next_action = QAction("Next Track", self)
         next_action.setShortcut(QKeySequence("Ctrl+Right"))
@@ -272,9 +292,11 @@ class MainWindow(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
 
         shortcuts_action = QAction("Keyboard &Shortcuts", self)
-        shortcuts_action.setShortcut(QKeySequence("?"))
         shortcuts_action.triggered.connect(self._show_shortcuts_dialog)
         help_menu.addAction(shortcuts_action)
+        # ? shortcut via QShortcut — only fires when no text input has focus
+        self._shortcuts_shortcut = QShortcut(QKeySequence("?"), self)
+        self._shortcuts_shortcut.activated.connect(self._on_shortcuts_shortcut)
 
         help_menu.addSeparator()
 

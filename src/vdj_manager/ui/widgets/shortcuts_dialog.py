@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 
 # Shortcut definitions grouped by category
 SHORTCUT_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
@@ -75,7 +75,7 @@ class ShortcutsDialog(QDialog):
             # Category header
             header = QLabel(category)
             header.setStyleSheet(
-                f"font-weight: bold; font-size: 13px; color: {DARK_THEME.accent};"
+                f"font-weight: bold; font-size: 13px; color: {ThemeManager().theme.accent};"
             )
             content_layout.addWidget(header)
 
@@ -84,15 +84,15 @@ class ShortcutsDialog(QDialog):
                 key_label = QLabel(key)
                 key_label.setStyleSheet(
                     f"font-family: monospace; font-weight: bold; "
-                    f"color: {DARK_THEME.text_primary}; "
-                    f"background: {DARK_THEME.bg_surface}; "
+                    f"color: {ThemeManager().theme.text_primary}; "
+                    f"background: {ThemeManager().theme.bg_surface}; "
                     f"padding: 2px 8px; border-radius: 3px;"
                 )
                 key_label.setFixedWidth(130)
                 row.addWidget(key_label)
 
                 desc_label = QLabel(description)
-                desc_label.setStyleSheet(f"color: {DARK_THEME.text_secondary};")
+                desc_label.setStyleSheet(f"color: {ThemeManager().theme.text_secondary};")
                 row.addWidget(desc_label)
                 row.addStretch()
 

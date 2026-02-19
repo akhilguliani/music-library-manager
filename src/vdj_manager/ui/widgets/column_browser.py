@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -28,6 +29,9 @@ class ColumnBrowser(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._tracks: list[Song] = []
+        # Pre-built indexes: genre -> [tracks], (genre, artist) -> [tracks]
+        self._genre_index: dict[str, list[Song]] = defaultdict(list)
+        self._genre_artist_index: dict[tuple[str, str], list[Song]] = defaultdict(list)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -54,17 +58,23 @@ class ColumnBrowser(QWidget):
     def set_tracks(self, tracks: list[Song]) -> None:
         """Set the track list and rebuild all browser lists."""
         self._tracks = list(tracks)
+        self._build_indexes()
         self._rebuild_genres()
+
+    def _build_indexes(self) -> None:
+        """Pre-build genre and genre+artist indexes for O(1) lookups."""
+        self._genre_index = defaultdict(list)
+        self._genre_artist_index = defaultdict(list)
+        for t in self._tracks:
+            genre = t.tags.genre if t.tags and t.tags.genre else ""
+            artist = t.tags.author if t.tags and t.tags.author else ""
+            self._genre_index[genre].append(t)
+            self._genre_artist_index[(genre, artist)].append(t)
 
     def _rebuild_genres(self) -> None:
         """Rebuild genre list from all tracks."""
         self._genre_list.blockSignals(True)
         self._genre_list.clear()
-
-        genres: dict[str, int] = {}
-        for t in self._tracks:
-            g = t.tags.genre if t.tags and t.tags.genre else ""
-            genres[g] = genres.get(g, 0) + 1
 
         total = len(self._tracks)
         all_item = QListWidgetItem(f"All ({total})")
@@ -72,9 +82,9 @@ class ColumnBrowser(QWidget):
         self._genre_list.addItem(all_item)
         all_item.setSelected(True)
 
-        for genre in sorted(genres.keys()):
+        for genre in sorted(self._genre_index.keys()):
             label = genre if genre else "(No Genre)"
-            item = QListWidgetItem(f"{label} ({genres[genre]})")
+            item = QListWidgetItem(f"{label} ({len(self._genre_index[genre])})")
             item.setData(Qt.ItemDataRole.UserRole, genre)
             self._genre_list.addItem(item)
 
@@ -92,27 +102,43 @@ class ColumnBrowser(QWidget):
         return values
 
     def _filtered_by_genre(self) -> list[Song]:
-        """Get tracks filtered by selected genres."""
+        """Get tracks filtered by selected genres using index."""
         genres = self._get_selected_values(self._genre_list)
         if not genres:
             return self._tracks
-        return [
-            t
-            for t in self._tracks
-            if (t.tags.genre if t.tags and t.tags.genre else "") in genres
-        ]
+        result: list[Song] = []
+        for g in genres:
+            result.extend(self._genre_index.get(g, []))
+        return result
 
     def _filtered_by_artist(self) -> list[Song]:
-        """Get tracks filtered by genre AND artist."""
-        tracks = self._filtered_by_genre()
+        """Get tracks filtered by genre AND artist using index."""
+        genres = self._get_selected_values(self._genre_list)
         artists = self._get_selected_values(self._artist_list)
-        if not artists:
-            return tracks
-        return [
-            t
-            for t in tracks
-            if (t.tags.author if t.tags and t.tags.author else "") in artists
-        ]
+
+        if not genres and not artists:
+            return self._tracks
+
+        # Use the composite index for efficient filtering
+        if genres and artists:
+            result: list[Song] = []
+            for g in genres:
+                for a in artists:
+                    result.extend(self._genre_artist_index.get((g, a), []))
+            return result
+        elif genres:
+            # Only genre filter
+            result = []
+            for g in genres:
+                result.extend(self._genre_index.get(g, []))
+            return result
+        else:
+            # Only artist filter — iterate genre_artist_index
+            result = []
+            for (g, a), tracks in self._genre_artist_index.items():
+                if a in artists:
+                    result.extend(tracks)
+            return result
 
     def _rebuild_artists(self) -> None:
         """Rebuild artist list based on selected genres."""

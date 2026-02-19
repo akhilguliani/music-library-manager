@@ -195,15 +195,19 @@ class TrackTableModel(QAbstractTableModel):
                 return track.tags.author
             return ""
         elif column == 3:  # BPM
+            # Prefer Tags.bpm (user-set, actual BPM), fall back to Scan.actual_bpm
+            if track.tags and track.tags.bpm is not None:
+                return f"{track.tags.bpm:.1f}"
             bpm = track.actual_bpm
             if bpm is not None:
                 return f"{bpm:.1f}"
             return ""
         elif column == 4:  # Key
-            if track.scan and track.scan.key:
-                return track.scan.key
+            # Prefer Tags.key (user-set), fall back to Scan.key
             if track.tags and track.tags.key:
                 return track.tags.key
+            if track.scan and track.scan.key:
+                return track.scan.key
             return ""
         elif column == 5:  # Energy
             energy = track.energy

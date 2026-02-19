@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 
 
 class EmptyStateWidget(QWidget):
@@ -34,7 +34,7 @@ class EmptyStateWidget(QWidget):
         if icon:
             icon_label = QLabel(icon)
             icon_label.setStyleSheet(
-                f"font-size: 48px; color: {DARK_THEME.text_disabled};"
+                f"font-size: 48px; color: {ThemeManager().theme.text_disabled};"
             )
             icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(icon_label)
@@ -42,7 +42,7 @@ class EmptyStateWidget(QWidget):
         if title:
             title_label = QLabel(title)
             title_label.setStyleSheet(
-                f"font-size: 16px; font-weight: bold; color: {DARK_THEME.text_secondary};"
+                f"font-size: 16px; font-weight: bold; color: {ThemeManager().theme.text_secondary};"
             )
             title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(title_label)
@@ -50,7 +50,7 @@ class EmptyStateWidget(QWidget):
         if description:
             desc_label = QLabel(description)
             desc_label.setStyleSheet(
-                f"font-size: 12px; color: {DARK_THEME.text_muted};"
+                f"font-size: 12px; color: {ThemeManager().theme.text_muted};"
             )
             desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             desc_label.setWordWrap(True)

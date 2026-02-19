@@ -402,6 +402,9 @@ class DatabasePanel(QWidget):
             self._database = result.database
             self._tracks = result.tracks
 
+            # Clear stale album art cache from previous database
+            self._art_cache.clear()
+
             # Switch from empty state to main content
             self._stacked.setCurrentIndex(1)
 
@@ -493,13 +496,30 @@ class DatabasePanel(QWidget):
             return
 
         self._database.update_song_tags(file_path, **{xml_attr: value or None})
-        self._database.save()
 
-        # Refresh tracks to reflect the change
-        self._tracks = list(self._database.iter_songs())
-        self.track_model.set_tracks(self._tracks)
+        # Update the in-memory track to reflect the change without full model reset
+        updated_song = self._database.get_song(file_path)
+        if updated_song is not None:
+            for i, track in enumerate(self._tracks):
+                if track.file_path == file_path:
+                    self._tracks[i] = updated_song
+                    # Emit dataChanged for just this row (preserves selection/scroll)
+                    left = self.track_model.index(i, 0)
+                    right = self.track_model.index(i, self.track_model.columnCount() - 1)
+                    self.track_model.dataChanged.emit(left, right)
+                    break
 
-        self._log(f"Updated {field} for {file_path.rsplit('/', 1)[-1]}")
+        # Debounced save — batch rapid edits instead of saving after every keystroke
+        if not hasattr(self, "_save_timer"):
+            from PySide6.QtCore import QTimer
+
+            self._save_timer = QTimer(self)
+            self._save_timer.setSingleShot(True)
+            self._save_timer.setInterval(2000)
+            self._save_timer.timeout.connect(self._database.save)
+        self._save_timer.start()
+
+        self._log_operation(f"Updated {field} for {file_path.rsplit('/', 1)[-1]}")
 
     def _on_column_filter_changed(self, column: int, text: str) -> None:
         """Handle per-column filter change."""
@@ -532,18 +552,25 @@ class DatabasePanel(QWidget):
             # "All" selected in all lists — no inclusion filter
             self._column_filter_model.set_inclusion_filter(None)
         else:
+            # Use sets for O(1) membership tests
+            genre_set = set(genres) if genres else None
+            artist_set = set(artists) if artists else None
+            album_set = set(albums) if albums else None
             # Compute matching file paths
             matching = set()
             for t in self._tracks:
-                g = t.tags.genre if t.tags and t.tags.genre else ""
-                a = t.tags.author if t.tags and t.tags.author else ""
-                al = t.tags.album if t.tags and t.tags.album else ""
-                if genres and g not in genres:
-                    continue
-                if artists and a not in artists:
-                    continue
-                if albums and al not in albums:
-                    continue
+                if genre_set is not None:
+                    g = t.tags.genre if t.tags and t.tags.genre else ""
+                    if g not in genre_set:
+                        continue
+                if artist_set is not None:
+                    a = t.tags.author if t.tags and t.tags.author else ""
+                    if a not in artist_set:
+                        continue
+                if album_set is not None:
+                    al = t.tags.album if t.tags and t.tags.album else ""
+                    if al not in album_set:
+                        continue
                 matching.add(t.file_path)
             self._column_filter_model.set_inclusion_filter(matching)
         self._update_result_count()
