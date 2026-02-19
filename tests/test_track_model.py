@@ -294,3 +294,52 @@ class TestTrackTableModel:
 
         model.notify_art_changed("/nonexistent/path.mp3")
         assert len(changed) == 0
+
+    def test_flags_editable_columns(self, app, sample_tracks):
+        """Test editable columns have ItemIsEditable flag."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        # Title (1), Artist (2), BPM (3), Key (4), Energy (5), Genre (7) are editable
+        for col in [1, 2, 3, 4, 5, 7]:
+            flags = model.flags(model.index(0, col))
+            assert flags & Qt.ItemFlag.ItemIsEditable
+
+    def test_flags_non_editable_columns(self, app, sample_tracks):
+        """Test non-editable columns lack ItemIsEditable flag."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        # Art (0) and Duration (6) are not editable
+        for col in [0, 6]:
+            flags = model.flags(model.index(0, col))
+            assert not (flags & Qt.ItemFlag.ItemIsEditable)
+
+    def test_set_data_emits_tag_edit_requested(self, app, sample_tracks):
+        """Test setData emits tag_edit_requested signal."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        edits = []
+        model.tag_edit_requested.connect(lambda fp, field, val: edits.append((fp, field, val)))
+
+        result = model.setData(model.index(0, 1), "New Title", Qt.ItemDataRole.EditRole)
+        assert result is True
+        assert len(edits) == 1
+        assert edits[0] == ("/path/to/track1.mp3", "title", "New Title")
+
+    def test_set_data_non_editable_returns_false(self, app, sample_tracks):
+        """Test setData returns False for non-editable columns."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        result = model.setData(model.index(0, 0), "test", Qt.ItemDataRole.EditRole)
+        assert result is False
+
+    def test_set_data_wrong_role_returns_false(self, app, sample_tracks):
+        """Test setData returns False for non-EditRole."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        result = model.setData(model.index(0, 1), "test", Qt.ItemDataRole.DisplayRole)
+        assert result is False

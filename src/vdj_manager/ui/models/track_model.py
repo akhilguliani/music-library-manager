@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 
 from vdj_manager.core.models import Song
 
@@ -28,6 +28,9 @@ class TrackTableModel(QAbstractTableModel):
         7: Genre
     """
 
+    # Signal emitted when a tag edit is committed: (file_path, field_name, new_value)
+    tag_edit_requested = Signal(str, str, str)
+
     COLUMNS = [
         ("", "art"),
         ("Title", "title"),
@@ -38,6 +41,9 @@ class TrackTableModel(QAbstractTableModel):
         ("Duration", "duration"),
         ("Genre", "genre"),
     ]
+
+    # Columns that support inline editing (by index)
+    EDITABLE_COLUMNS = {1, 2, 3, 4, 5, 7}  # Title, Artist, BPM, Key, Energy, Genre
 
     def __init__(self, parent: Any = None) -> None:
         """Initialize the track model.
@@ -133,6 +139,25 @@ class TrackTableModel(QAbstractTableModel):
             return track.file_path
 
         return None
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:  # type: ignore[override]
+        """Return item flags, adding Editable for supported columns."""
+        base_flags = super().flags(index)
+        if index.isValid() and index.column() in self.EDITABLE_COLUMNS:
+            return base_flags | Qt.ItemFlag.ItemIsEditable
+        return base_flags
+
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # type: ignore[override]
+        """Handle edit commits by emitting tag_edit_requested signal."""
+        if role != Qt.ItemDataRole.EditRole:
+            return False
+        if not index.isValid() or index.column() not in self.EDITABLE_COLUMNS:
+            return False
+
+        track = self._tracks[index.row()]
+        field_name = self.COLUMNS[index.column()][1]
+        self.tag_edit_requested.emit(track.file_path, field_name, str(value))
+        return True
 
     def _get_display_value(self, track: Song, column: int) -> str:
         """Get the display string for a track column.

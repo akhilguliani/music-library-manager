@@ -32,6 +32,12 @@ from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import DatabaseStats, Song
 from vdj_manager.ui.delegates.album_art_delegate import AlbumArtCache, AlbumArtDelegate
+from vdj_manager.ui.delegates.tag_edit_delegates import (
+    BPMEditDelegate,
+    EnergyEditDelegate,
+    KeyEditDelegate,
+    TextEditDelegate,
+)
 from vdj_manager.ui.models.multi_column_filter import MultiColumnFilterProxyModel
 from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
@@ -235,6 +241,23 @@ class DatabasePanel(QWidget):
         self.track_table.setItemDelegateForColumn(0, self._art_delegate)
         self._art_cache.art_ready.connect(self.track_model.notify_art_changed)
 
+        # Inline tag editing delegates
+        self.track_table.setItemDelegateForColumn(1, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(2, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(3, BPMEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(4, KeyEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(5, EnergyEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(7, TextEditDelegate(self.track_table))
+
+        # Edit triggers: F2 or single-click on selected cell (preserves double-click-to-play)
+        self.track_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.EditKeyPressed
+            | QAbstractItemView.EditTrigger.SelectedClicked
+        )
+
+        # Connect tag edit signal
+        self.track_model.tag_edit_requested.connect(self._on_tag_edit_requested)
+
         # Row height for album art thumbnails
         self.track_table.verticalHeader().setDefaultSectionSize(44)
 
@@ -400,6 +423,34 @@ class DatabasePanel(QWidget):
         """Handle search input change."""
         self.proxy_model.setFilterFixedString(text)
         self._update_result_count()
+
+    # Map model field names to VDJ XML attribute names
+    _FIELD_TO_XML = {
+        "title": "Title",
+        "artist": "Author",
+        "bpm": "Bpm",
+        "key": "Key",
+        "energy": "Grouping",
+        "genre": "Genre",
+    }
+
+    def _on_tag_edit_requested(self, file_path: str, field: str, value: str) -> None:
+        """Handle inline tag edit from the track table."""
+        if self._database is None:
+            return
+
+        xml_attr = self._FIELD_TO_XML.get(field)
+        if xml_attr is None:
+            return
+
+        self._database.update_song_tags(file_path, **{xml_attr: value or None})
+        self._database.save()
+
+        # Refresh tracks to reflect the change
+        self._tracks = list(self._database.iter_songs())
+        self.track_model.set_tracks(self._tracks)
+
+        self._log(f"Updated {field} for {file_path.rsplit('/', 1)[-1]}")
 
     def _on_column_filter_changed(self, column: int, text: str) -> None:
         """Handle per-column filter change."""
