@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from vdj_manager.ui.main_window import MainWindow
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
+from vdj_manager.ui.theme import generate_stylesheet
 from vdj_manager.ui.widgets.resume_dialog import check_and_show_resume_dialog
 
 
@@ -48,6 +49,7 @@ def main() -> int:
     setup_logging(verbose=bool(os.environ.get("VDJ_VERBOSE")))
 
     app = create_application()
+    app.setStyleSheet(generate_stylesheet())
 
     window = MainWindow()
     window.show()
