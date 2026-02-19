@@ -1,4 +1,4 @@
-"""Analysis panel with energy, mood, and MIK import sub-tabs."""
+"""Analysis panel with energy, mood, genre, and MIK import sub-tabs."""
 
 import logging
 import multiprocessing
@@ -28,6 +28,7 @@ from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
     EnergyWorker,
+    GenreWorker,
     MIKImportWorker,
     MoodWorker,
 )
@@ -41,6 +42,7 @@ class AnalysisPanel(QWidget):
     Provides sub-tabs for:
     - Energy level analysis (1-10 scale)
     - Mood classification
+    - Genre detection
     - Mixed In Key tag import
 
     Signals:
@@ -57,6 +59,7 @@ class AnalysisPanel(QWidget):
         self._energy_worker: EnergyWorker | None = None
         self._mik_worker: MIKImportWorker | None = None
         self._mood_worker: MoodWorker | None = None
+        self._genre_worker: GenreWorker | None = None
         self._unsaved_count: int = 0
 
         self._setup_ui()
@@ -83,6 +86,9 @@ class AnalysisPanel(QWidget):
         self.mood_btn.setEnabled(has_db)
         self.mood_reanalyze_btn.setEnabled(has_db)
         self.mood_reanalyze_all_btn.setEnabled(has_db)
+        self.genre_btn.setEnabled(has_db)
+        self.genre_untagged_btn.setEnabled(has_db)
+        self.genre_redetect_btn.setEnabled(has_db)
         self._update_track_info()
 
     def _setup_ui(self) -> None:
@@ -130,6 +136,7 @@ class AnalysisPanel(QWidget):
         self._create_energy_tab()
         self._create_mik_tab()
         self._create_mood_tab()
+        self._create_genre_tab()
 
         layout.addWidget(self.sub_tabs)
 
@@ -336,6 +343,90 @@ class AnalysisPanel(QWidget):
 
         self.sub_tabs.addTab(tab, "Mood")
 
+    def _create_genre_tab(self) -> None:
+        """Create the genre detection sub-tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        # Info
+        self.genre_info_label = QLabel("No database loaded")
+        self.genre_info_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.genre_info_label)
+
+        # Online toggle
+        online_layout = QHBoxLayout()
+        self.genre_online_checkbox = QCheckBox("Enable online lookup (Last.fm / MusicBrainz)")
+        self.genre_online_checkbox.setChecked(True)
+        self.genre_online_checkbox.setToolTip(
+            "Look up genre from online databases by artist+title when file tags are empty"
+        )
+        self.genre_online_checkbox.stateChanged.connect(lambda _: self._update_track_info())
+        online_layout.addWidget(self.genre_online_checkbox)
+
+        self.genre_api_key_label = QLabel("")
+        self._update_genre_api_key_label()
+        online_layout.addWidget(self.genre_api_key_label)
+
+        online_layout.addStretch()
+        layout.addLayout(online_layout)
+
+        # Controls
+        controls_layout = QHBoxLayout()
+
+        self.genre_btn = QPushButton("Detect Genre")
+        self.genre_btn.setEnabled(False)
+        self.genre_btn.setToolTip("Detect genre for all audio tracks")
+        self.genre_btn.clicked.connect(lambda: self._on_genre_clicked(untagged_only=False))
+        controls_layout.addWidget(self.genre_btn)
+
+        self.genre_untagged_btn = QPushButton("Untagged Only")
+        self.genre_untagged_btn.setEnabled(False)
+        self.genre_untagged_btn.setToolTip("Only detect genre for tracks without genre tags")
+        self.genre_untagged_btn.clicked.connect(lambda: self._on_genre_clicked(untagged_only=True))
+        controls_layout.addWidget(self.genre_untagged_btn)
+
+        self.genre_redetect_btn = QPushButton("Re-detect All")
+        self.genre_redetect_btn.setEnabled(False)
+        self.genre_redetect_btn.setToolTip("Invalidate genre cache and re-detect all tracks")
+        self.genre_redetect_btn.clicked.connect(self._on_genre_redetect_all_clicked)
+        controls_layout.addWidget(self.genre_redetect_btn)
+
+        controls_layout.addStretch()
+
+        self.genre_status = QLabel("")
+        controls_layout.addWidget(self.genre_status)
+
+        layout.addLayout(controls_layout)
+
+        # Progress widget with pause/resume/cancel
+        self.genre_progress = ProgressWidget()
+        self.genre_progress.setVisible(False)
+        layout.addWidget(self.genre_progress)
+
+        # Results table
+        self.genre_results = ConfigurableResultsTable(
+            [
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Genre", "key": "genre", "width": 120},
+                {"name": "Source", "key": "source", "width": 80},
+                {"name": "Status", "key": "status", "width": 100},
+            ]
+        )
+        layout.addWidget(self.genre_results)
+
+        self.sub_tabs.addTab(tab, "Genre")
+
+    def _update_genre_api_key_label(self) -> None:
+        """Update the Last.fm API key status label for the genre tab."""
+        key = get_lastfm_api_key()
+        if key:
+            self.genre_api_key_label.setText("API key: configured")
+            self.genre_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+        else:
+            self.genre_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
+            self.genre_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
+
     def _update_api_key_label(self) -> None:
         """Update the Last.fm API key status label."""
         key = get_lastfm_api_key()
@@ -349,7 +440,12 @@ class AnalysisPanel(QWidget):
     def _update_track_info(self) -> None:
         """Update track info labels across all tabs."""
         if not self._tracks:
-            for label in (self.energy_info_label, self.mik_info_label, self.mood_info_label):
+            for label in (
+                self.energy_info_label,
+                self.mik_info_label,
+                self.mood_info_label,
+                self.genre_info_label,
+            ):
                 label.setText("No database loaded")
             return
 
@@ -388,6 +484,20 @@ class AnalysisPanel(QWidget):
         else:
             self.mood_info_label.setText(
                 f"{len(mood_tracks)} eligible tracks, {len(unknown_mood)} with #unknown mood"
+            )
+
+        genre_tracks = self._get_genre_tracks()
+        genre_local = [t for t in genre_tracks if not t.is_windows_path]
+        genre_remote = [t for t in genre_tracks if t.is_windows_path]
+        no_genre = [t for t in genre_tracks if not (t.tags and t.tags.genre)]
+        if genre_remote:
+            self.genre_info_label.setText(
+                f"{len(genre_tracks)} tracks ({len(genre_local)} local, "
+                f"{len(genre_remote)} remote), {len(no_genre)} without genre"
+            )
+        else:
+            self.genre_info_label.setText(
+                f"{len(genre_tracks)} eligible tracks, {len(no_genre)} without genre"
             )
 
     def _get_audio_tracks(self, untagged_only: bool = False) -> list[Song]:
@@ -461,9 +571,56 @@ class AnalysisPanel(QWidget):
 
         return tracks
 
+    def _get_genre_tracks(self, untagged_only: bool = False) -> list[Song]:
+        """Get tracks eligible for genre detection.
+
+        Like _get_mood_tracks, includes Windows-path tracks when online
+        mode is enabled since online lookup only needs artist/title metadata.
+
+        Args:
+            untagged_only: If True, only return tracks without genre tags.
+
+        Returns:
+            List of Song objects.
+        """
+        tracks = []
+        for track in self._tracks:
+            if track.is_netsearch:
+                continue
+            if track.extension not in AUDIO_EXTENSIONS:
+                continue
+            if untagged_only and track.tags and track.tags.genre:
+                continue
+            file_exists = not track.is_windows_path and Path(track.file_path).exists()
+            has_metadata = track.tags and (track.tags.author or track.tags.title)
+            if not file_exists and not has_metadata and not track.is_windows_path:
+                continue
+            tracks.append(track)
+
+        # Duration filter
+        max_duration = self.max_duration_spin.value() * 60
+        if max_duration > 0:
+            tracks = [
+                t
+                for t in tracks
+                if not (t.infos and t.infos.song_length and t.infos.song_length > max_duration)
+            ]
+
+        # Count limit
+        limit = self.limit_spin.value()
+        if limit > 0:
+            tracks = tracks[:limit]
+
+        return tracks
+
     def is_running(self) -> bool:
         """Check if any analysis operation is currently running."""
-        for worker in (self._energy_worker, self._mik_worker, self._mood_worker):
+        for worker in (
+            self._energy_worker,
+            self._mik_worker,
+            self._mood_worker,
+            self._genre_worker,
+        ):
             if worker is not None and worker.isRunning():
                 return True
         return False
@@ -918,3 +1075,168 @@ class AnalysisPanel(QWidget):
         self.mood_reanalyze_btn.setEnabled(True)
         self.mood_reanalyze_all_btn.setEnabled(True)
         self.mood_status.setText(f"Error: {error}")
+
+    # ------------------------------------------------------------------
+    # Genre handlers
+    # ------------------------------------------------------------------
+
+    def _on_genre_clicked(self, untagged_only: bool = False) -> None:
+        """Handle genre detection button click."""
+        if self.is_running():
+            QMessageBox.warning(self, "Already Running", "An analysis is already in progress.")
+            return
+        if self._database is None:
+            return
+
+        tracks = self._get_genre_tracks(untagged_only=untagged_only)
+        if not tracks:
+            QMessageBox.information(self, "No Tracks", "No tracks to analyze.")
+            return
+
+        # Auto-backup before modifying
+        try:
+            from vdj_manager.core.backup import BackupManager
+
+            BackupManager().create_backup(self._database.db_path, label="pre_genre")
+        except Exception:
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
+
+        self.genre_btn.setEnabled(False)
+        self.genre_untagged_btn.setEnabled(False)
+        self.genre_redetect_btn.setEnabled(False)
+        self.genre_status.setText("Detecting...")
+        self.genre_results.clear()
+
+        enable_online = self.genre_online_checkbox.isChecked()
+        lastfm_api_key = get_lastfm_api_key() if enable_online else None
+
+        self._genre_worker = GenreWorker(
+            tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=enable_online,
+            lastfm_api_key=lastfm_api_key,
+        )
+        self._genre_worker.finished_work.connect(self._on_genre_finished)
+        self._genre_worker.error.connect(self._on_genre_error)
+        self._genre_worker.result_ready.connect(self.genre_results.add_result)
+        self._genre_worker.result_ready.connect(self._apply_result_to_db)
+
+        # Set up progress widget
+        self.genre_progress.reset()
+        self.genre_progress.start(len(tracks))
+        self.genre_progress.setVisible(True)
+        self._genre_worker.progress.connect(self.genre_progress.update_progress)
+        self._genre_worker.status_changed.connect(self.genre_progress.on_status_changed)
+        self._genre_worker.finished_work.connect(
+            lambda _: self.genre_progress.on_finished(True, "Done")
+        )
+        self.genre_progress.pause_requested.connect(self._genre_worker.pause)
+        self.genre_progress.resume_requested.connect(self._genre_worker.resume)
+        self.genre_progress.cancel_requested.connect(self._genre_worker.cancel)
+
+        self._genre_worker.start()
+
+    def _on_genre_redetect_all_clicked(self) -> None:
+        """Re-detect genre for ALL tracks, invalidating genre cache first."""
+        if self.is_running():
+            QMessageBox.warning(self, "Already Running", "An analysis is already in progress.")
+            return
+        if self._database is None:
+            return
+
+        tracks = self._get_genre_tracks()
+        if not tracks:
+            QMessageBox.information(self, "No Tracks", "No tracks to analyze.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Re-detect All",
+            f"This will re-detect genre for all {len(tracks)} audio tracks, "
+            "invalidating existing genre cache.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Invalidate all genre cache entries
+        from vdj_manager.analysis.analysis_cache import AnalysisCache
+
+        cache = AnalysisCache(db_path=DEFAULT_ANALYSIS_CACHE_PATH)
+        cache.invalidate_by_type("genre")
+
+        # Auto-backup
+        try:
+            from vdj_manager.core.backup import BackupManager
+
+            BackupManager().create_backup(self._database.db_path, label="pre_genre_redetect")
+        except Exception:
+            logger.warning("Auto-backup failed before analysis", exc_info=True)
+
+        self.genre_btn.setEnabled(False)
+        self.genre_untagged_btn.setEnabled(False)
+        self.genre_redetect_btn.setEnabled(False)
+        self.genre_status.setText(f"Re-detecting all {len(tracks)} tracks...")
+        self.genre_results.clear()
+
+        enable_online = self.genre_online_checkbox.isChecked()
+        lastfm_api_key = get_lastfm_api_key() if enable_online else None
+
+        self._genre_worker = GenreWorker(
+            tracks,
+            max_workers=self.workers_spin.value(),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=enable_online,
+            lastfm_api_key=lastfm_api_key,
+            skip_cache=True,
+        )
+        self._genre_worker.finished_work.connect(self._on_genre_finished)
+        self._genre_worker.error.connect(self._on_genre_error)
+        self._genre_worker.result_ready.connect(self.genre_results.add_result)
+        self._genre_worker.result_ready.connect(self._apply_result_to_db)
+
+        self.genre_progress.reset()
+        self.genre_progress.start(len(tracks))
+        self.genre_progress.setVisible(True)
+        self._genre_worker.progress.connect(self.genre_progress.update_progress)
+        self._genre_worker.status_changed.connect(self.genre_progress.on_status_changed)
+        self._genre_worker.finished_work.connect(
+            lambda _: self.genre_progress.on_finished(True, "Done")
+        )
+        self.genre_progress.pause_requested.connect(self._genre_worker.pause)
+        self.genre_progress.resume_requested.connect(self._genre_worker.resume)
+        self.genre_progress.cancel_requested.connect(self._genre_worker.cancel)
+
+        self._genre_worker.start()
+
+    @Slot(object)
+    def _on_genre_finished(self, result: dict) -> None:
+        """Handle genre detection completion."""
+        self._save_if_needed()
+        self.genre_btn.setEnabled(True)
+        self.genre_untagged_btn.setEnabled(True)
+        self.genre_redetect_btn.setEnabled(True)
+
+        analyzed = result["analyzed"]
+        failed = result["failed"]
+        cached = result.get("cached", 0)
+        parts = [f"{analyzed} detected"]
+        if cached:
+            parts.append(f"{cached} cached")
+        parts.append(f"{failed} failed")
+        summary = f"Done: {', '.join(parts)}"
+        summary += self._format_failure_summary(result.get("results", []), failed)
+        self.genre_status.setText(summary)
+
+        if analyzed + cached > 0:
+            self.database_changed.emit()
+
+    @Slot(str)
+    def _on_genre_error(self, error: str) -> None:
+        """Handle genre detection error."""
+        self.genre_btn.setEnabled(True)
+        self.genre_untagged_btn.setEnabled(True)
+        self.genre_redetect_btn.setEnabled(True)
+        self.genre_status.setText(f"Error: {error}")

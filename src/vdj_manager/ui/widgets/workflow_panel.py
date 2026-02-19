@@ -33,13 +33,13 @@ from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
-from vdj_manager.ui.workers.analysis_workers import EnergyWorker, MoodWorker
+from vdj_manager.ui.workers.analysis_workers import EnergyWorker, GenreWorker, MoodWorker
 
 logger = logging.getLogger(__name__)
 
 
 class WorkflowPanel(QWidget):
-    """Unified launcher for parallel energy, mood, and normalization workflows.
+    """Unified launcher for parallel energy, mood, genre, and normalization workflows.
 
     Allows the user to configure and launch multiple analysis operations
     simultaneously, with per-operation progress tracking.
@@ -57,6 +57,7 @@ class WorkflowPanel(QWidget):
         self._tracks: list[Song] = []
         self._energy_worker: EnergyWorker | None = None
         self._mood_worker: MoodWorker | None = None
+        self._genre_worker: GenreWorker | None = None
         self._norm_worker: NormalizationWorker | None = None
         self._unsaved_count: int = 0
         self._workers_running: int = 0
@@ -64,6 +65,7 @@ class WorkflowPanel(QWidget):
         # Per-operation result counters
         self._energy_counts = {"analyzed": 0, "cached": 0, "failed": 0}
         self._mood_counts = {"analyzed": 0, "cached": 0, "failed": 0}
+        self._genre_counts = {"analyzed": 0, "cached": 0, "failed": 0}
         self._norm_counts = {"measured": 0, "failed": 0}
 
         self._setup_ui()
@@ -150,6 +152,23 @@ class WorkflowPanel(QWidget):
 
         mood_online_row.addStretch()
         config_layout.addLayout(mood_online_row)
+
+        # Genre row
+        genre_row = QHBoxLayout()
+        self.genre_check = QCheckBox("Genre Detection")
+        self.genre_check.setChecked(True)
+        genre_row.addWidget(self.genre_check)
+        genre_row.addStretch()
+        config_layout.addLayout(genre_row)
+
+        # Genre online sub-option
+        genre_online_row = QHBoxLayout()
+        genre_online_row.addSpacing(24)
+        self.genre_online_check = QCheckBox("Online lookup (Last.fm / MusicBrainz)")
+        self.genre_online_check.setChecked(True)
+        genre_online_row.addWidget(self.genre_online_check)
+        genre_online_row.addStretch()
+        config_layout.addLayout(genre_online_row)
 
         # Normalization row
         norm_row = QHBoxLayout()
@@ -240,6 +259,29 @@ class WorkflowPanel(QWidget):
         self.mood_results_table.setVisible(False)
         layout.addWidget(self.mood_results_table)
 
+        # --- Genre progress + current file + results table ---
+        self.genre_progress = ProgressWidget()
+        self.genre_progress.setVisible(False)
+        layout.addWidget(self.genre_progress)
+
+        self.genre_current_file = QLabel("")
+        self.genre_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.genre_current_file.setVisible(False)
+        layout.addWidget(self.genre_current_file)
+
+        self.genre_results_table = ConfigurableResultsTable(
+            columns=[
+                {"name": "Track", "key": "file_path"},
+                {"name": "Fmt", "key": "format", "width": 50},
+                {"name": "Genre", "key": "genre", "width": 100},
+                {"name": "Source", "key": "source", "width": 70},
+                {"name": "Status", "key": "status", "width": 80},
+            ]
+        )
+        self.genre_results_table.setMaximumHeight(200)
+        self.genre_results_table.setVisible(False)
+        layout.addWidget(self.genre_results_table)
+
         # --- Norm progress + current file + results table ---
         self.norm_progress = ProgressWidget()
         self.norm_progress.setVisible(False)
@@ -324,6 +366,8 @@ class WorkflowPanel(QWidget):
             checked.append("energy")
         if self.mood_check.isChecked():
             checked.append("mood")
+        if self.genre_check.isChecked():
+            checked.append("genre")
         if self.norm_check.isChecked():
             checked.append("norm")
 
@@ -348,6 +392,9 @@ class WorkflowPanel(QWidget):
 
         if "mood" in checked:
             self._start_mood()
+
+        if "genre" in checked:
+            self._start_genre()
 
         if "norm" in checked:
             self._start_norm()
@@ -435,6 +482,44 @@ class WorkflowPanel(QWidget):
         self.mood_progress.cancel_requested.connect(self._mood_worker.cancel)
 
         self._mood_worker.start()
+
+    def _start_genre(self) -> None:
+        """Start genre detection worker."""
+        tracks = self._get_genre_tracks()
+        if not tracks:
+            return
+
+        enable_online = self.genre_online_check.isChecked()
+        lastfm_api_key = get_lastfm_api_key() if enable_online else None
+
+        self._workers_running += 1
+        self._genre_counts = {"analyzed": 0, "cached": 0, "failed": 0}
+        self._genre_worker = GenreWorker(
+            tracks,
+            max_workers=1 if enable_online else max(1, multiprocessing.cpu_count() - 1),
+            cache_db_path=str(DEFAULT_ANALYSIS_CACHE_PATH),
+            enable_online=enable_online,
+            lastfm_api_key=lastfm_api_key,
+        )
+        self._genre_worker.result_ready.connect(self._apply_result_to_db)
+        self._genre_worker.result_ready.connect(self._on_genre_result)
+        self._genre_worker.finished_work.connect(self._on_genre_finished)
+        self._genre_worker.error.connect(lambda e: self.status_label.setText(f"Genre error: {e}"))
+
+        self.genre_progress.reset()
+        self.genre_progress.start(len(tracks))
+        self.genre_progress.setVisible(True)
+        self.genre_current_file.setText("")
+        self.genre_current_file.setVisible(True)
+        self.genre_results_table.clear()
+        self.genre_results_table.setVisible(True)
+        self._genre_worker.progress.connect(self.genre_progress.update_progress)
+        self._genre_worker.status_changed.connect(self.genre_progress.on_status_changed)
+        self.genre_progress.pause_requested.connect(self._genre_worker.pause)
+        self.genre_progress.resume_requested.connect(self._genre_worker.resume)
+        self.genre_progress.cancel_requested.connect(self._genre_worker.cancel)
+
+        self._genre_worker.start()
 
     def _start_norm(self) -> None:
         """Start normalization measurement worker."""
@@ -527,6 +612,23 @@ class WorkflowPanel(QWidget):
 
         self.mood_results_table.add_result(result)
 
+    @Slot(dict)
+    def _on_genre_result(self, result: dict) -> None:
+        """Handle a single genre detection result for UI display."""
+        file_path = result.get("file_path", "")
+        filename = Path(file_path).name if file_path else ""
+        self.genre_current_file.setText(f"Processing: {filename}")
+
+        status = result.get("status", "ok")
+        if status == "cached":
+            self._genre_counts["cached"] += 1
+        elif status in ("failed", "none") or str(status).startswith("error"):
+            self._genre_counts["failed"] += 1
+        else:
+            self._genre_counts["analyzed"] += 1
+
+        self.genre_results_table.add_result(result)
+
     @Slot(str, dict)
     def _on_norm_result(self, file_path: str, result: dict) -> None:
         """Handle a single normalization result for UI display.
@@ -583,6 +685,19 @@ class WorkflowPanel(QWidget):
         self._workers_running -= 1
         self._check_all_done()
 
+    def _on_genre_finished(self, result: dict) -> None:
+        """Handle genre worker completion."""
+        failed = result.get("failed", 0) if isinstance(result, dict) else 0
+        c = self._genre_counts
+        summary = f"Genre: {c['analyzed']} detected, {c['cached']} cached, {c['failed']} failed"
+        self.genre_current_file.setText(summary)
+        if failed > 0:
+            self.genre_progress.on_finished(False, f"Genre: {failed} failed")
+        else:
+            self.genre_progress.on_finished(True, "Genre: Done")
+        self._workers_running -= 1
+        self._check_all_done()
+
     def _on_norm_finished(self, success, message="") -> None:
         """Handle normalization worker completion."""
         c = self._norm_counts
@@ -615,9 +730,29 @@ class WorkflowPanel(QWidget):
                 logger.error("Failed to save database after workflow", exc_info=True)
                 self.status_label.setText("Failed to save database!")
 
+    def _get_genre_tracks(self) -> list[Song]:
+        """Get tracks eligible for genre detection (includes Windows-path when online enabled)."""
+        tracks = []
+        for track in self._tracks:
+            if track.is_netsearch:
+                continue
+            if track.extension not in AUDIO_EXTENSIONS:
+                continue
+            file_exists = not track.is_windows_path and Path(track.file_path).exists()
+            has_metadata = track.tags and (track.tags.author or track.tags.title)
+            if not file_exists and not has_metadata and not track.is_windows_path:
+                continue
+            tracks.append(track)
+        return tracks
+
     def _on_cancel_all_clicked(self) -> None:
         """Cancel all running workers."""
-        for worker in (self._energy_worker, self._mood_worker, self._norm_worker):
+        for worker in (
+            self._energy_worker,
+            self._mood_worker,
+            self._genre_worker,
+            self._norm_worker,
+        ):
             if worker is not None and worker.isRunning():
                 worker.cancel()
         self.status_label.setText("Cancelling...")
