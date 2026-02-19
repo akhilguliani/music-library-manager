@@ -6,6 +6,9 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from vdj_manager.core.models import Song
 
+# Custom role for album art delegate: returns file_path for art lookup
+ALBUM_ART_ROLE = Qt.ItemDataRole.UserRole + 1
+
 
 class TrackTableModel(QAbstractTableModel):
     """Table model for displaying track data with efficient virtual scrolling.
@@ -15,16 +18,18 @@ class TrackTableModel(QAbstractTableModel):
     Qt's built-in virtual scrolling.
 
     Columns:
-        0: Title (or display name)
-        1: Artist
-        2: BPM
-        3: Key
-        4: Energy
-        5: Duration
-        6: Genre
+        0: Art (album art thumbnail)
+        1: Title (or display name)
+        2: Artist
+        3: BPM
+        4: Key
+        5: Energy
+        6: Duration
+        7: Genre
     """
 
     COLUMNS = [
+        ("", "art"),
         ("Title", "title"),
         ("Artist", "artist"),
         ("BPM", "bpm"),
@@ -110,10 +115,12 @@ class TrackTableModel(QAbstractTableModel):
         col = index.column()
 
         if role == Qt.ItemDataRole.DisplayRole:
+            if col == 0:  # Art column has no text
+                return None
             return self._get_display_value(track, col)
         elif role == Qt.ItemDataRole.TextAlignmentRole:
             # Right-align numeric columns
-            if col in (2, 4, 5):  # BPM, Energy, Duration
+            if col in (3, 5, 6):  # BPM, Energy, Duration
                 return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         elif role == Qt.ItemDataRole.ToolTipRole:
@@ -121,6 +128,9 @@ class TrackTableModel(QAbstractTableModel):
         elif role == Qt.ItemDataRole.UserRole:
             # Return the Song object itself
             return track
+        elif role == ALBUM_ART_ROLE:
+            # Return file_path for album art delegate
+            return track.file_path
 
         return None
 
@@ -134,35 +144,35 @@ class TrackTableModel(QAbstractTableModel):
         Returns:
             Display string for the cell.
         """
-        if column == 0:  # Title
+        if column == 1:  # Title
             if track.tags and track.tags.title:
                 return track.tags.title
             return track.display_name
-        elif column == 1:  # Artist
+        elif column == 2:  # Artist
             if track.tags and track.tags.author:
                 return track.tags.author
             return ""
-        elif column == 2:  # BPM
+        elif column == 3:  # BPM
             bpm = track.actual_bpm
             if bpm is not None:
                 return f"{bpm:.1f}"
             return ""
-        elif column == 3:  # Key
+        elif column == 4:  # Key
             if track.scan and track.scan.key:
                 return track.scan.key
             if track.tags and track.tags.key:
                 return track.tags.key
             return ""
-        elif column == 4:  # Energy
+        elif column == 5:  # Energy
             energy = track.energy
             if energy is not None:
                 return str(energy)
             return ""
-        elif column == 5:  # Duration
+        elif column == 6:  # Duration
             if track.infos and track.infos.song_length:
                 return self._format_duration(track.infos.song_length)
             return ""
-        elif column == 6:  # Genre
+        elif column == 7:  # Genre
             if track.tags and track.tags.genre:
                 return track.tags.genre
             return ""
@@ -248,3 +258,13 @@ class TrackTableModel(QAbstractTableModel):
             if track.file_path == file_path:
                 return i
         return -1
+
+    def notify_art_changed(self, file_path: str) -> None:
+        """Notify that album art for a track has been loaded.
+
+        Emits dataChanged for the art column of the matching row.
+        """
+        row = self.find_track_row(file_path)
+        if row >= 0:
+            idx = self.index(row, 0)
+            self.dataChanged.emit(idx, idx, [ALBUM_ART_ROLE])

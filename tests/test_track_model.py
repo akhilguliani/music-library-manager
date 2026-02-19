@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from vdj_manager.core.models import Infos, Scan, Song, Tags
-from vdj_manager.ui.models.track_model import TrackTableModel
+from vdj_manager.ui.models.track_model import ALBUM_ART_ROLE, TrackTableModel
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,7 @@ class TestTrackTableModel:
         model = TrackTableModel()
         assert model is not None
         assert model.rowCount() == 0
-        assert model.columnCount() == 7
+        assert model.columnCount() == 8  # Art + 7 data columns
 
     def test_set_tracks(self, app, sample_tracks):
         """Test setting tracks updates the model."""
@@ -94,28 +94,32 @@ class TestTrackTableModel:
         """Test header data."""
         model = TrackTableModel()
 
-        # Check column headers
-        assert model.headerData(0, Qt.Orientation.Horizontal) == "Title"
-        assert model.headerData(1, Qt.Orientation.Horizontal) == "Artist"
-        assert model.headerData(2, Qt.Orientation.Horizontal) == "BPM"
-        assert model.headerData(3, Qt.Orientation.Horizontal) == "Key"
-        assert model.headerData(4, Qt.Orientation.Horizontal) == "Energy"
-        assert model.headerData(5, Qt.Orientation.Horizontal) == "Duration"
-        assert model.headerData(6, Qt.Orientation.Horizontal) == "Genre"
+        # Check column headers (column 0 is Art with empty header)
+        assert model.headerData(0, Qt.Orientation.Horizontal) == ""
+        assert model.headerData(1, Qt.Orientation.Horizontal) == "Title"
+        assert model.headerData(2, Qt.Orientation.Horizontal) == "Artist"
+        assert model.headerData(3, Qt.Orientation.Horizontal) == "BPM"
+        assert model.headerData(4, Qt.Orientation.Horizontal) == "Key"
+        assert model.headerData(5, Qt.Orientation.Horizontal) == "Energy"
+        assert model.headerData(6, Qt.Orientation.Horizontal) == "Duration"
+        assert model.headerData(7, Qt.Orientation.Horizontal) == "Genre"
 
     def test_data_display_role(self, app, sample_tracks):
         """Test data retrieval with DisplayRole."""
         model = TrackTableModel()
         model.set_tracks(sample_tracks)
 
+        # Art column returns None for DisplayRole
+        assert model.data(model.index(0, 0)) is None
+
         # First track - full metadata
-        assert model.data(model.index(0, 0)) == "Track One"  # Title
-        assert model.data(model.index(0, 1)) == "Artist One"  # Artist
-        assert model.data(model.index(0, 2)) == "120.0"  # BPM (60/0.5)
-        assert model.data(model.index(0, 3)) == "Am"  # Key
-        assert model.data(model.index(0, 4)) == "7"  # Energy
-        assert model.data(model.index(0, 5)) == "3:00"  # Duration (180.5 seconds)
-        assert model.data(model.index(0, 6)) == "Dance"  # Genre
+        assert model.data(model.index(0, 1)) == "Track One"  # Title
+        assert model.data(model.index(0, 2)) == "Artist One"  # Artist
+        assert model.data(model.index(0, 3)) == "120.0"  # BPM (60/0.5)
+        assert model.data(model.index(0, 4)) == "Am"  # Key
+        assert model.data(model.index(0, 5)) == "7"  # Energy
+        assert model.data(model.index(0, 6)) == "3:00"  # Duration (180.5 seconds)
+        assert model.data(model.index(0, 7)) == "Dance"  # Genre
 
     def test_data_missing_metadata(self, app, sample_tracks):
         """Test data retrieval with missing metadata."""
@@ -123,13 +127,13 @@ class TestTrackTableModel:
         model.set_tracks(sample_tracks)
 
         # Third track - minimal metadata
-        assert model.data(model.index(2, 0)) == "Track Three"  # Title
-        assert model.data(model.index(2, 1)) == "Artist Three"  # Artist
-        assert model.data(model.index(2, 2)) == ""  # No BPM
-        assert model.data(model.index(2, 3)) == ""  # No Key
-        assert model.data(model.index(2, 4)) == ""  # No Energy
-        assert model.data(model.index(2, 5)) == ""  # No Duration
-        assert model.data(model.index(2, 6)) == ""  # No Genre
+        assert model.data(model.index(2, 1)) == "Track Three"  # Title
+        assert model.data(model.index(2, 2)) == "Artist Three"  # Artist
+        assert model.data(model.index(2, 3)) == ""  # No BPM
+        assert model.data(model.index(2, 4)) == ""  # No Key
+        assert model.data(model.index(2, 5)) == ""  # No Energy
+        assert model.data(model.index(2, 6)) == ""  # No Duration
+        assert model.data(model.index(2, 7)) == ""  # No Genre
 
     def test_data_tooltip_role(self, app, sample_tracks):
         """Test tooltip shows file path."""
@@ -148,18 +152,38 @@ class TestTrackTableModel:
         assert isinstance(song, Song)
         assert song.file_path == "/path/to/track1.mp3"
 
+    def test_data_album_art_role(self, app, sample_tracks):
+        """Test ALBUM_ART_ROLE returns file_path for art lookup."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        file_path = model.data(model.index(0, 0), ALBUM_ART_ROLE)
+        assert file_path == "/path/to/track1.mp3"
+
     def test_data_alignment(self, app, sample_tracks):
         """Test text alignment for different columns."""
         model = TrackTableModel()
         model.set_tracks(sample_tracks)
 
-        # Text columns should be left-aligned
-        title_align = model.data(model.index(0, 0), Qt.ItemDataRole.TextAlignmentRole)
+        # Art column should be left-aligned (default)
+        art_align = model.data(model.index(0, 0), Qt.ItemDataRole.TextAlignmentRole)
+        assert art_align & Qt.AlignmentFlag.AlignLeft
+
+        # Title column should be left-aligned
+        title_align = model.data(model.index(0, 1), Qt.ItemDataRole.TextAlignmentRole)
         assert title_align & Qt.AlignmentFlag.AlignLeft
 
-        # Numeric columns should be right-aligned
-        bpm_align = model.data(model.index(0, 2), Qt.ItemDataRole.TextAlignmentRole)
+        # BPM column (3) should be right-aligned
+        bpm_align = model.data(model.index(0, 3), Qt.ItemDataRole.TextAlignmentRole)
         assert bpm_align & Qt.AlignmentFlag.AlignRight
+
+        # Energy column (5) should be right-aligned
+        energy_align = model.data(model.index(0, 5), Qt.ItemDataRole.TextAlignmentRole)
+        assert energy_align & Qt.AlignmentFlag.AlignRight
+
+        # Duration column (6) should be right-aligned
+        dur_align = model.data(model.index(0, 6), Qt.ItemDataRole.TextAlignmentRole)
+        assert dur_align & Qt.AlignmentFlag.AlignRight
 
     def test_get_track(self, app, sample_tracks):
         """Test getting track by row."""
@@ -243,5 +267,30 @@ class TestTrackTableModel:
         model.set_tracks(tracks)
 
         assert model.rowCount() == 1000
-        assert model.data(model.index(500, 0)) == "Track 500"
-        assert model.data(model.index(999, 1)) == "Artist 999"
+        assert model.data(model.index(500, 1)) == "Track 500"  # Title column
+        assert model.data(model.index(999, 2)) == "Artist 999"  # Artist column
+
+    def test_notify_art_changed(self, app, sample_tracks):
+        """Test notify_art_changed emits dataChanged for art column."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        changed = []
+        model.dataChanged.connect(lambda tl, br, roles: changed.append((tl.row(), tl.column(), roles)))
+
+        model.notify_art_changed("/path/to/track2.mp3")
+        assert len(changed) == 1
+        assert changed[0][0] == 1  # row 1
+        assert changed[0][1] == 0  # art column
+        assert ALBUM_ART_ROLE in changed[0][2]
+
+    def test_notify_art_changed_not_found(self, app, sample_tracks):
+        """Test notify_art_changed does nothing for unknown path."""
+        model = TrackTableModel()
+        model.set_tracks(sample_tracks)
+
+        changed = []
+        model.dataChanged.connect(lambda tl, br, roles: changed.append(True))
+
+        model.notify_art_changed("/nonexistent/path.mp3")
+        assert len(changed) == 0

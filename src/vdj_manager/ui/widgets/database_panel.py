@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import DatabaseStats, Song
+from vdj_manager.ui.delegates.album_art_delegate import AlbumArtCache, AlbumArtDelegate
 from vdj_manager.ui.models.track_model import TrackTableModel
 from vdj_manager.ui.theme import DARK_THEME, ThemeManager
 from vdj_manager.ui.workers.database_worker import (
@@ -217,10 +218,21 @@ class DatabasePanel(QWidget):
         self.track_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.track_table.customContextMenuRequested.connect(self._on_track_context_menu)
 
+        # Album art delegate + cache
+        self._art_cache = AlbumArtCache(parent=self)
+        self._art_delegate = AlbumArtDelegate(self._art_cache, parent=self.track_table)
+        self.track_table.setItemDelegateForColumn(0, self._art_delegate)
+        self._art_cache.art_ready.connect(self.track_model.notify_art_changed)
+
+        # Row height for album art thumbnails
+        self.track_table.verticalHeader().setDefaultSectionSize(44)
+
         # Set column resize modes
         header = self.track_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Title
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Artist
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Art
+        header.resizeSection(0, 44)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Title
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Artist
         header.setDefaultSectionSize(100)
 
         # Connect selection
