@@ -570,6 +570,15 @@ QSplitter::handle:pressed {{
     background-color: {splitter_pressed};
 }}
 
+/* ---- Scroll Areas & Frames ---- */
+QScrollArea {{
+    background-color: {t.bg_primary};
+    border: none;
+}}
+QScrollArea > QWidget > QWidget {{
+    background-color: {t.bg_primary};
+}}
+
 /* ---- Tooltips ---- */
 QToolTip {{
     background-color: {t.bg_surface_alt};
