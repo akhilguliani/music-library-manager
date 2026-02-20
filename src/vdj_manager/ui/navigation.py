@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from typing import NamedTuple, Protocol, runtime_checkable
 
-from PySide6.QtWidgets import QTabWidget, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class NavigationItem(NamedTuple):
@@ -70,3 +79,131 @@ class TabNavigationProvider:
 
     def panel_names(self) -> list[str]:
         return list(self._panels.keys())
+
+
+class SidebarItemButton(QPushButton):
+    """A single navigation item in the sidebar."""
+
+    def __init__(self, name: str, icon: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.nav_name = name
+        self.setFixedHeight(40)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 8, 0)
+        layout.setSpacing(8)
+
+        if icon:
+            icon_label = QLabel(icon)
+            icon_label.setFixedWidth(20)
+            icon_label.setStyleSheet("font-size: 16px; background: transparent; border: none;")
+            layout.addWidget(icon_label)
+
+        name_label = QLabel(name)
+        name_label.setStyleSheet("background: transparent; border: none;")
+        layout.addWidget(name_label)
+        layout.addStretch()
+
+    def set_active(self, active: bool) -> None:
+        """Set the active state for QSS styling."""
+        self.setProperty("active", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+
+class SidebarWidget(QWidget):
+    """Persistent left sidebar with section-grouped navigation items."""
+
+    panel_requested = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedWidth(200)
+        self.setObjectName("SidebarWidget")
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 8, 0, 8)
+        self._layout.setSpacing(0)
+
+        self._buttons: dict[str, SidebarItemButton] = {}
+        self._layout.addStretch()
+
+    def add_item(self, item: NavigationItem) -> None:
+        """Add a navigation item button to the sidebar."""
+        btn = SidebarItemButton(item.name, item.icon)
+        btn.clicked.connect(lambda: self.panel_requested.emit(item.name))
+        self._buttons[item.name] = btn
+        # Insert before the stretch at the end
+        self._layout.insertWidget(self._layout.count() - 1, btn)
+
+    def set_sections(self, sections: list[tuple[str, list[str]]]) -> None:
+        """Rebuild layout with section headers between groups.
+
+        Args:
+            sections: List of (section_name, [panel_names]) tuples.
+        """
+        # Remove all widgets from layout (keep references in _buttons)
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
+            if widget and widget not in self._buttons.values():
+                widget.deleteLater()
+
+        # Re-add with section headers
+        for section_name, panel_names in sections:
+            header = QLabel(section_name.upper())
+            header.setObjectName("SidebarSectionHeader")
+            header.setStyleSheet(
+                "font-size: 11px; font-weight: bold; color: #888888;"
+                " padding: 12px 12px 4px 12px; background: transparent;"
+            )
+            self._layout.addWidget(header)
+            for name in panel_names:
+                btn = self._buttons.get(name)
+                if btn is not None:
+                    self._layout.addWidget(btn)
+
+        self._layout.addStretch()
+
+    def set_active(self, name: str) -> None:
+        """Highlight the active panel button and deactivate others."""
+        for btn_name, btn in self._buttons.items():
+            btn.set_active(btn_name == name)
+
+
+class SidebarNavigationProvider:
+    """NavigationProvider backed by a SidebarWidget + QStackedWidget."""
+
+    def __init__(self, sidebar: SidebarWidget, stack: QStackedWidget) -> None:
+        self._sidebar = sidebar
+        self._stack = stack
+        self._panels: dict[str, int] = {}
+        self._order: list[str] = []
+        self._current: str = ""
+        sidebar.panel_requested.connect(self.navigate_to)
+
+    def navigate_to(self, name: str) -> bool:
+        """Navigate to a panel by name."""
+        index = self._panels.get(name)
+        if index is None:
+            return False
+        self._stack.setCurrentIndex(index)
+        self._sidebar.set_active(name)
+        self._current = name
+        return True
+
+    def current_panel_name(self) -> str:
+        """Get the name of the currently visible panel."""
+        return self._current
+
+    def register_panel(self, item: NavigationItem) -> None:
+        """Register a panel — adds to stack and sidebar."""
+        idx = self._stack.addWidget(item.panel)
+        self._panels[item.name] = idx
+        self._order.append(item.name)
+        self._sidebar.add_item(item)
+
+    def panel_names(self) -> list[str]:
+        """Get all registered panel names in registration order."""
+        return list(self._order)

@@ -2,11 +2,12 @@
 
 import logging
 
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow,
-    QTabWidget,
+    QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -15,8 +16,11 @@ logger = logging.getLogger(__name__)
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
-from vdj_manager.ui.constants import TabIndex
-from vdj_manager.ui.navigation import NavigationItem, TabNavigationProvider
+from vdj_manager.ui.navigation import (
+    NavigationItem,
+    SidebarNavigationProvider,
+    SidebarWidget,
+)
 from vdj_manager.ui.widgets.analysis_panel import AnalysisPanel
 from vdj_manager.ui.widgets.command_palette import CommandItem, CommandPalette
 from vdj_manager.ui.widgets.database_panel import DatabasePanel
@@ -30,7 +34,7 @@ from vdj_manager.ui.widgets.workflow_panel import WorkflowPanel
 
 
 class MainWindow(QMainWindow):
-    """Main application window with tabbed interface and mini player."""
+    """Main application window with sidebar navigation and mini player."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -52,35 +56,38 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
 
     def _setup_ui(self) -> None:
-        """Set up the main UI layout with tabs and mini player."""
+        """Set up the main UI layout with sidebar, panel stack, and mini player."""
         # Create PlaybackBridge (shared across all panels)
         self._playback_bridge = PlaybackBridge(self)
         vlc_available = self._playback_bridge.initialize()
 
-        # Central container: tabs + mini player at bottom
+        # Central container: splitter + mini player at bottom
         central = QWidget()
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
 
-        # Tab widget
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
-        self.tab_widget.setDocumentMode(True)
-        central_layout.addWidget(self.tab_widget, stretch=1)
+        # Sidebar + panel stack in a horizontal splitter
+        self._sidebar = SidebarWidget()
+        self._panel_stack = QStackedWidget()
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.addWidget(self._sidebar)
+        self._splitter.addWidget(self._panel_stack)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.setStretchFactor(0, 0)  # Sidebar: fixed
+        self._splitter.setStretchFactor(1, 1)  # Panel stack: stretch
+        central_layout.addWidget(self._splitter, stretch=1)
 
         # Mini player at bottom
         self.mini_player = MiniPlayer(self._playback_bridge)
-        self.mini_player.expand_requested.connect(
-            lambda: self.tab_widget.setCurrentIndex(TabIndex.PLAYER)
-        )
+        self.mini_player.expand_requested.connect(lambda: self._navigation.navigate_to("Player"))
         if not vlc_available:
             self.mini_player.set_vlc_unavailable()
         central_layout.addWidget(self.mini_player)
 
         self.setCentralWidget(central)
 
-        # Create tabs: Database(0), Normalization(1), Files(2), Analysis(3), Export(4), Player(5), Workflow(6)
+        # Create panels (no addTab — navigation registers them into the stack)
         self._create_database_tab()
         self._create_normalization_tab()
         self._create_files_tab()
@@ -98,27 +105,21 @@ class MainWindow(QMainWindow):
         self.database_panel.play_next_requested.connect(self._on_play_next_requested)
         self.database_panel.add_to_queue_requested.connect(self._on_add_to_queue_requested)
 
-        self.tab_widget.addTab(self.database_panel, "Database")
-
     def _create_normalization_tab(self) -> None:
         """Create the normalization control tab."""
         self.normalization_panel = NormalizationPanel()
-        self.tab_widget.addTab(self.normalization_panel, "Normalization")
 
     def _create_files_tab(self) -> None:
         """Create the file management tab."""
         self.files_panel = FilesPanel()
-        self.tab_widget.addTab(self.files_panel, "Files")
 
     def _create_analysis_tab(self) -> None:
         """Create the audio analysis tab."""
         self.analysis_panel = AnalysisPanel()
-        self.tab_widget.addTab(self.analysis_panel, "Analysis")
 
     def _create_export_tab(self) -> None:
         """Create the export tab."""
         self.export_panel = ExportPanel()
-        self.tab_widget.addTab(self.export_panel, "Export")
 
     def _create_player_tab(self) -> None:
         """Create the full player tab."""
@@ -127,28 +128,35 @@ class MainWindow(QMainWindow):
         self.player_panel.cues_changed.connect(self._on_cues_changed)
         self.player_panel.tracks_dropped.connect(self._on_tracks_dropped)
         self._playback_bridge.track_finished.connect(self._on_track_playback_finished)
-        self.tab_widget.addTab(self.player_panel, "Player")
 
     def _create_workflow_tab(self) -> None:
         """Create the workflow dashboard tab."""
         self.workflow_panel = WorkflowPanel()
         self.workflow_panel.database_changed.connect(self._on_workflow_database_changed)
-        self.tab_widget.addTab(self.workflow_panel, "Workflow")
 
     def _setup_navigation(self) -> None:
-        """Set up the NavigationProvider wrapping the tab widget."""
-        self._navigation = TabNavigationProvider(self.tab_widget)
+        """Set up the SidebarNavigationProvider with section groupings."""
+        self._navigation = SidebarNavigationProvider(self._sidebar, self._panel_stack)
         panels = [
-            ("Database", "", "Ctrl+1", self.database_panel),
-            ("Normalization", "", "Ctrl+2", self.normalization_panel),
-            ("Files", "", "Ctrl+3", self.files_panel),
-            ("Analysis", "", "Ctrl+4", self.analysis_panel),
-            ("Export", "", "Ctrl+5", self.export_panel),
-            ("Player", "", "Ctrl+6", self.player_panel),
-            ("Workflow", "", "Ctrl+7", self.workflow_panel),
+            ("Database", "\u25c9", "Ctrl+1", self.database_panel),
+            ("Normalization", "\u224b", "Ctrl+2", self.normalization_panel),
+            ("Files", "\u229e", "Ctrl+3", self.files_panel),
+            ("Analysis", "\u223f", "Ctrl+4", self.analysis_panel),
+            ("Export", "\u2197", "Ctrl+5", self.export_panel),
+            ("Player", "\u25b6", "Ctrl+6", self.player_panel),
+            ("Workflow", "\u26a1", "Ctrl+7", self.workflow_panel),
         ]
         for name, icon, shortcut, panel in panels:
             self._navigation.register_panel(NavigationItem(name, icon, shortcut, panel))
+
+        self._sidebar.set_sections(
+            [
+                ("Library", ["Database"]),
+                ("Tools", ["Normalization", "Files", "Analysis", "Export"]),
+                ("Player", ["Player", "Workflow"]),
+            ]
+        )
+        self._navigation.navigate_to("Database")
 
     def _setup_command_palette(self) -> None:
         """Set up the command palette with all available commands."""
@@ -292,20 +300,20 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = menu_bar.addMenu("&View")
 
-        tab_names = [
-            ("&Database", "Ctrl+1", TabIndex.DATABASE),
-            ("&Normalization", "Ctrl+2", TabIndex.NORMALIZATION),
-            ("&Files", "Ctrl+3", TabIndex.FILES),
-            ("&Analysis", "Ctrl+4", TabIndex.ANALYSIS),
-            ("&Export", "Ctrl+5", TabIndex.EXPORT),
-            ("&Player", "Ctrl+6", TabIndex.PLAYER),
-            ("&Workflow", "Ctrl+7", TabIndex.WORKFLOW),
+        view_panels = [
+            ("&Database", "Ctrl+1", "Database"),
+            ("&Normalization", "Ctrl+2", "Normalization"),
+            ("&Files", "Ctrl+3", "Files"),
+            ("&Analysis", "Ctrl+4", "Analysis"),
+            ("&Export", "Ctrl+5", "Export"),
+            ("&Player", "Ctrl+6", "Player"),
+            ("&Workflow", "Ctrl+7", "Workflow"),
         ]
-        for name, shortcut, idx in tab_names:
-            action = QAction(name, self)
+        for label, shortcut, panel_name in view_panels:
+            action = QAction(label, self)
             action.setShortcut(QKeySequence(shortcut))
             action.triggered.connect(
-                lambda checked=False, i=idx: self.tab_widget.setCurrentIndex(i)
+                lambda checked=False, n=panel_name: self._navigation.navigate_to(n)
             )
             view_menu.addAction(action)
 

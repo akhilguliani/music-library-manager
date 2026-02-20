@@ -645,4 +645,33 @@ QMessageBox {{
 QMessageBox QLabel {{
     color: {t.text_primary};
 }}
+
+/* ---- Sidebar Navigation ---- */
+SidebarWidget {{
+    background-color: {t.bg_secondary};
+    border-right: 1px solid {t.border};
+}}
+SidebarItemButton {{
+    background-color: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    padding: 8px 12px;
+    text-align: left;
+    color: {t.text_secondary};
+    font-size: 13px;
+}}
+SidebarItemButton:hover {{
+    background-color: {t.bg_hover};
+    color: {t.text_primary};
+}}
+SidebarItemButton:pressed {{
+    background-color: {t.bg_pressed};
+}}
+SidebarItemButton[active="true"] {{
+    border-left: 3px solid {t.accent};
+    color: {t.text_primary};
+    background-color: {t.bg_selected};
+    font-weight: bold;
+}}
 """

@@ -59,14 +59,13 @@ class TestMainWindowIntegration:
         # Export panel gets database
         assert window.export_panel._database is mock_db
 
-    def test_tab_count_is_seven(self, qapp):
+    def test_panel_count_is_seven(self, qapp):
         window = MainWindow()
-        assert window.tab_widget.count() == 7
+        assert len(window._navigation.panel_names()) == 7
 
-    def test_tab_names_correct(self, qapp):
+    def test_panel_names_correct(self, qapp):
         window = MainWindow()
-        names = [window.tab_widget.tabText(i) for i in range(7)]
-        assert names == [
+        assert window._navigation.panel_names() == [
             "Database",
             "Normalization",
             "Files",
