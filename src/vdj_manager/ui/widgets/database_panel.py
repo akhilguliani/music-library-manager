@@ -74,6 +74,7 @@ class DatabasePanel(QWidget):
     track_double_clicked = Signal(object)  # Song
     play_next_requested = Signal(object)  # list[Song]
     add_to_queue_requested = Signal(object)  # list[Song]
+    save_requested = Signal()  # Request debounced save via MainWindow
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the database panel.
@@ -523,15 +524,8 @@ class DatabasePanel(QWidget):
         self._database.update_song_tags(file_path, **{xml_attr: value or None})
         self._refresh_single_track(file_path)
 
-        # Debounced save — batch rapid edits instead of saving after every keystroke
-        if not hasattr(self, "_save_timer"):
-            from PySide6.QtCore import QTimer
-
-            self._save_timer = QTimer(self)
-            self._save_timer.setSingleShot(True)
-            self._save_timer.setInterval(2000)
-            self._save_timer.timeout.connect(self._database.save)
-        self._save_timer.start()
+        # Request debounced save via MainWindow (avoids binding to stale database)
+        self.save_requested.emit()
 
         self._log_operation(f"Updated {field} for {file_path.rsplit('/', 1)[-1]}")
 

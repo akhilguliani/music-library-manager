@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         self.database_panel.track_double_clicked.connect(self._on_track_play_requested)
         self.database_panel.play_next_requested.connect(self._on_play_next_requested)
         self.database_panel.add_to_queue_requested.connect(self._on_add_to_queue_requested)
+        self.database_panel.save_requested.connect(self._schedule_save)
 
     def _create_normalization_tab(self) -> None:
         """Create the normalization control tab."""

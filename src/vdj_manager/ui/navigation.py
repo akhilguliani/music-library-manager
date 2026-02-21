@@ -143,7 +143,7 @@ class SidebarWidget(QWidget):
         Args:
             sections: List of (section_name, [panel_names]) tuples.
         """
-        # Remove all widgets from layout (keep references in _buttons)
+        # Remove all items from layout (keep button references in _buttons)
         while self._layout.count():
             item = self._layout.takeAt(0)
             if item is None:
@@ -151,6 +151,9 @@ class SidebarWidget(QWidget):
             widget = item.widget()
             if widget and widget not in self._buttons.values():
                 widget.deleteLater()
+            elif not widget:
+                # Spacer items: delete the layout item to free memory
+                del item
 
         # Re-add with section headers
         for section_name, panel_names in sections:

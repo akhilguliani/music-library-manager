@@ -27,6 +27,7 @@ class EmptyStateWidget(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self._title_label: QLabel | None = None
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -40,12 +41,12 @@ class EmptyStateWidget(QWidget):
             layout.addWidget(icon_label)
 
         if title:
-            title_label = QLabel(title)
-            title_label.setStyleSheet(
+            self._title_label = QLabel(title)
+            self._title_label.setStyleSheet(
                 f"font-size: 16px; font-weight: bold; color: {ThemeManager().theme.text_secondary};"
             )
-            title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(title_label)
+            self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self._title_label)
 
         if description:
             desc_label = QLabel(description)
@@ -57,14 +58,6 @@ class EmptyStateWidget(QWidget):
     @property
     def title_text(self) -> str:
         """Get the title text (for testing)."""
-        layout = self.layout()
-        if layout is None:
-            return ""
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            if item is None:
-                continue
-            w = item.widget()
-            if w and isinstance(w, QLabel) and "font-weight: bold" in (w.styleSheet() or ""):
-                return w.text()
+        if self._title_label is not None:
+            return self._title_label.text()
         return ""
