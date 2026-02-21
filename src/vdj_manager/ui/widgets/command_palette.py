@@ -62,8 +62,9 @@ class CommandPalette(QDialog):
 
         parent_widget = self.parentWidget()
         if parent_widget:
-            x = parent_widget.x() + (parent_widget.width() - self.width()) // 2
-            y = parent_widget.y() + 80
+            global_pos = parent_widget.mapToGlobal(parent_widget.rect().topLeft())
+            x = global_pos.x() + (parent_widget.width() - self.width()) // 2
+            y = global_pos.y() + 80
             self.move(x, y)
 
         self.show()

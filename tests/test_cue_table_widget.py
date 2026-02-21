@@ -126,3 +126,4 @@ class TestCueTableWidget:
         assert CueTableWidget._parse_position("invalid") is None
         assert CueTableWidget._parse_position("-5.0") is None
         assert CueTableWidget._parse_position("-1:30.000") is None
+        assert CueTableWidget._parse_position("1:-30.000") is None  # negative seconds component

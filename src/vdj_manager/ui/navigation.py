@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vdj_manager.ui.theme import ThemeManager
+
 
 class NavigationItem(NamedTuple):
     """A navigable panel registration."""
@@ -159,8 +161,9 @@ class SidebarWidget(QWidget):
         for section_name, panel_names in sections:
             header = QLabel(section_name.upper())
             header.setObjectName("SidebarSectionHeader")
+            t = ThemeManager().theme
             header.setStyleSheet(
-                "font-size: 11px; font-weight: bold; color: #888888;"
+                f"font-size: 11px; font-weight: bold; color: {t.text_tertiary};"
                 " padding: 12px 12px 4px 12px; background: transparent;"
             )
             self._layout.addWidget(header)
@@ -208,6 +211,10 @@ class SidebarNavigationProvider:
         self._panels[item.name] = idx
         self._order.append(item.name)
         self._sidebar.add_item(item)
+        # Auto-activate first panel so sidebar always shows an active state
+        if len(self._panels) == 1:
+            self._current = item.name
+            self._sidebar.set_active(item.name)
 
     def panel_names(self) -> list[str]:
         """Get all registered panel names in registration order."""

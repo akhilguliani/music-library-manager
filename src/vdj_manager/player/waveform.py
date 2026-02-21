@@ -129,10 +129,10 @@ def generate_waveform_peaks(
             import librosa
 
             y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
-    except Exception:
+    except (RuntimeError, OSError):
+        # soundfile can't decode this format (MP3/M4A) — try ffmpeg pipe
         import subprocess
 
-        # Use ffmpeg to decode to WAV in-memory, then read with soundfile
         try:
             result = subprocess.run(
                 [
@@ -159,7 +159,7 @@ def generate_waveform_peaks(
                 y = data if data.ndim == 1 else data.mean(axis=1)
             else:
                 raise RuntimeError("ffmpeg decode failed")
-        except Exception:
+        except (RuntimeError, OSError, subprocess.TimeoutExpired):
             # Final fallback: librosa (may trigger audioread deprecation)
             import librosa
 

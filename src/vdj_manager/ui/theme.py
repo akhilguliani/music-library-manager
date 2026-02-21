@@ -6,6 +6,7 @@ generator so that individual widgets no longer need inline setStyleSheet() calls
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 
@@ -172,11 +173,14 @@ class ThemeManager:
     """Singleton that holds the active theme and provides color helpers."""
 
     _instance: ThemeManager | None = None
+    _lock = threading.Lock()
     _theme: ThemeColors = DARK_THEME
 
     def __new__(cls) -> ThemeManager:
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     @property

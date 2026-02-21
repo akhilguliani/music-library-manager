@@ -31,7 +31,7 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import EnergyWorker, GenreWorker, MoodWorker
@@ -62,6 +62,7 @@ class WorkflowPanel(QWidget):
         self._norm_worker: NormalizationWorker | None = None
         self._unsaved_count: int = 0
         self._workers_running: int = 0
+        self._completed_workers: set[str] = set()
 
         # Per-operation result counters
         self._energy_counts = {"analyzed": 0, "cached": 0, "failed": 0}
@@ -195,7 +196,7 @@ class WorkflowPanel(QWidget):
         # Info label
         self.info_label = QLabel("No database loaded")
         self.info_label.setStyleSheet(
-            f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
+            f"color: {ThemeManager().theme.text_tertiary}; font-size: 11px; padding: 2px 4px;"
         )
         layout.addWidget(self.info_label)
 
@@ -225,7 +226,7 @@ class WorkflowPanel(QWidget):
 
         self.energy_current_file = QLabel("")
         self.energy_current_file.setStyleSheet(
-            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
         )
         self.energy_current_file.setVisible(False)
         layout.addWidget(self.energy_current_file)
@@ -249,7 +250,7 @@ class WorkflowPanel(QWidget):
 
         self.mood_current_file = QLabel("")
         self.mood_current_file.setStyleSheet(
-            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
         )
         self.mood_current_file.setVisible(False)
         layout.addWidget(self.mood_current_file)
@@ -273,7 +274,7 @@ class WorkflowPanel(QWidget):
 
         self.genre_current_file = QLabel("")
         self.genre_current_file.setStyleSheet(
-            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
         )
         self.genre_current_file.setVisible(False)
         layout.addWidget(self.genre_current_file)
@@ -298,7 +299,7 @@ class WorkflowPanel(QWidget):
 
         self.norm_current_file = QLabel("")
         self.norm_current_file.setStyleSheet(
-            f"color: {DARK_THEME.text_disabled}; font-size: 11px; padding-left: 4px;"
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
         )
         self.norm_current_file.setVisible(False)
         layout.addWidget(self.norm_current_file)
@@ -397,6 +398,7 @@ class WorkflowPanel(QWidget):
         self.run_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self._workers_running = 0
+        self._completed_workers.clear()
 
         if "energy" in checked:
             self._start_energy()
@@ -670,6 +672,9 @@ class WorkflowPanel(QWidget):
 
     def _on_energy_finished(self, result: dict) -> None:
         """Handle energy worker completion."""
+        if "energy" in self._completed_workers:
+            return
+        self._completed_workers.add("energy")
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
         c = self._energy_counts
         summary = f"Energy: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
@@ -683,6 +688,9 @@ class WorkflowPanel(QWidget):
 
     def _on_mood_finished(self, result: dict) -> None:
         """Handle mood worker completion."""
+        if "mood" in self._completed_workers:
+            return
+        self._completed_workers.add("mood")
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
         c = self._mood_counts
         summary = f"Mood: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
@@ -696,6 +704,9 @@ class WorkflowPanel(QWidget):
 
     def _on_genre_finished(self, result: dict) -> None:
         """Handle genre worker completion."""
+        if "genre" in self._completed_workers:
+            return
+        self._completed_workers.add("genre")
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
         c = self._genre_counts
         summary = f"Genre: {c['analyzed']} detected, {c['cached']} cached, {c['failed']} failed"
@@ -707,8 +718,16 @@ class WorkflowPanel(QWidget):
         self._workers_running -= 1
         self._check_all_done()
 
-    def _on_norm_finished(self, success, message="") -> None:
-        """Handle normalization worker completion."""
+    @Slot(bool, str)
+    def _on_norm_finished(self, success: bool, message: str = "") -> None:
+        """Handle normalization worker completion.
+
+        Note: NormalizationWorker.finished_work emits (bool, str), unlike
+        analysis workers which emit finished_work(object/dict).
+        """
+        if "norm" in self._completed_workers:
+            return
+        self._completed_workers.add("norm")
         c = self._norm_counts
         summary = f"Normalization: {c['measured']} measured, {c['failed']} failed"
         self.norm_current_file.setText(summary)
@@ -721,6 +740,10 @@ class WorkflowPanel(QWidget):
 
     def _on_worker_error(self, name: str, error_msg: str) -> None:
         """Handle a worker error by decrementing the running count and showing the error."""
+        key = name.lower()
+        if key in self._completed_workers:
+            return  # Already counted down by finished handler
+        self._completed_workers.add(key)
         logger.error("%s worker error: %s", name, error_msg)
         self.status_label.setText(f"{name} error: {error_msg}")
         self._workers_running -= 1

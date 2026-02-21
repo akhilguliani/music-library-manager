@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 
 MAX_CUES = 8
 
@@ -95,7 +95,8 @@ class CueTableWidget(QWidget):
             del_btn = QPushButton("\u00d7")
             del_btn.setFixedSize(24, 24)
             del_btn.setStyleSheet(
-                f"font-weight: bold; color: {DARK_THEME.status_error}; border: none; background: transparent;"
+                f"font-weight: bold; color: {ThemeManager().theme.status_error};"
+                " border: none; background: transparent;"
             )
             cue_num = cue.get("num", row + 1)
             del_btn.clicked.connect(lambda checked=False, n=cue_num: self._on_delete_by_num(n))
@@ -177,6 +178,8 @@ class CueTableWidget(QWidget):
                 parts = text.split(":", 1)
                 minutes = int(parts[0])
                 sec_part = float(parts[1])
+                if minutes < 0 or sec_part < 0:
+                    return None
                 result = minutes * 60.0 + sec_part
             else:
                 result = float(text)

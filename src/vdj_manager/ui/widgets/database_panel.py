@@ -41,7 +41,7 @@ from vdj_manager.ui.delegates.tag_edit_delegates import (
 )
 from vdj_manager.ui.models.multi_column_filter import MultiColumnFilterProxyModel
 from vdj_manager.ui.models.track_model import TrackTableModel
-from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.theme import ThemeManager
 from vdj_manager.ui.widgets.column_browser import ColumnBrowser
 from vdj_manager.ui.widgets.column_filter_row import ColumnFilterRow
 from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
@@ -137,9 +137,7 @@ class DatabasePanel(QWidget):
 
         # Compact stats summary
         self.stats_summary_label = QLabel("No database loaded")
-        self.stats_summary_label.setStyleSheet(
-            f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
-        )
+        self.stats_summary_label.setProperty("class", "info")
         content_layout.addWidget(self.stats_summary_label)
 
         # Create splitter for track table, tag editor, and log
@@ -233,7 +231,7 @@ class DatabasePanel(QWidget):
 
         # Status label (right-aligned)
         self.status_label = QLabel("Not loaded")
-        self.status_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
+        self.status_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.status_label)
 
         return group
@@ -458,8 +456,9 @@ class DatabasePanel(QWidget):
         """
         if stats is None:
             self.stats_summary_label.setText("No database loaded")
+            t = ThemeManager().theme
             self.stats_summary_label.setStyleSheet(
-                f"color: {DARK_THEME.text_tertiary}; font-size: 11px; padding: 2px 4px;"
+                f"color: {t.text_tertiary}; font-size: 11px; padding: 2px 4px;"
             )
             return
 
@@ -475,8 +474,9 @@ class DatabasePanel(QWidget):
             parts.append(f"{stats.netsearch:,} streaming")
 
         self.stats_summary_label.setText("  |  ".join(parts))
+        t = ThemeManager().theme
         self.stats_summary_label.setStyleSheet(
-            f"color: {DARK_THEME.text_muted}; font-size: 11px; padding: 2px 4px;"
+            f"color: {t.text_muted}; font-size: 11px; padding: 2px 4px;"
         )
 
     @Slot()
@@ -927,7 +927,7 @@ class DatabasePanel(QWidget):
         file_tag_btn_layout.addStretch()
         self._file_tags_form.addRow(file_tag_btn_layout)
 
-        self.tag_tabs.addTab(self._file_tags_widget, "File Tags")
+        self._file_tags_tab_index = self.tag_tabs.addTab(self._file_tags_widget, "File Tags")
 
         # Auto-read file tags when switching to File Tags tab
         self.tag_tabs.currentChanged.connect(self._on_tag_tab_changed)
@@ -1081,7 +1081,7 @@ class DatabasePanel(QWidget):
             return
 
         self._database.update_song_tags(track.file_path, **updates)
-        self._database.save()
+        self.save_requested.emit()
 
         self.status_label.setText(f"Tags saved for {track.display_name}")
         self._set_status_color("success")
@@ -1094,7 +1094,7 @@ class DatabasePanel(QWidget):
 
     def _on_tag_tab_changed(self, index: int) -> None:
         """Auto-read file tags when switching to File Tags tab."""
-        if index == 2 and self._editing_track is not None:
+        if index == self._file_tags_tab_index and self._editing_track is not None:
             self._on_file_tag_read()
 
     def _on_file_tag_read(self) -> None:
@@ -1227,7 +1227,7 @@ class DatabasePanel(QWidget):
             vdj_kwargs = file_tags_to_vdj_kwargs(file_tags)
             if vdj_kwargs:
                 self._database.update_song_tags(self._editing_track.file_path, **vdj_kwargs)
-                self._database.save()
+                self.save_requested.emit()
                 self._refresh_single_track(self._editing_track.file_path)
                 self.status_label.setText("File tags imported to VDJ")
                 self._set_status_color("success")
