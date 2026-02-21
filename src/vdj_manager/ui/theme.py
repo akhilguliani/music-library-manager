@@ -234,7 +234,6 @@ QMainWindow, QDialog {{
 }}
 QWidget {{
     color: {t.text_primary};
-    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }}
 
 /* ---- Labels ---- */

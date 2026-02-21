@@ -146,6 +146,8 @@ class SidebarWidget(QWidget):
         # Remove all widgets from layout (keep references in _buttons)
         while self._layout.count():
             item = self._layout.takeAt(0)
+            if item is None:
+                break
             widget = item.widget()
             if widget and widget not in self._buttons.values():
                 widget.deleteLater()
