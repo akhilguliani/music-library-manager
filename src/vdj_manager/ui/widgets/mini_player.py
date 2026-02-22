@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
+from vdj_manager.ui.theme import DARK_THEME
 
 
 class MiniPlayer(QWidget):
@@ -38,13 +39,6 @@ class MiniPlayer(QWidget):
 
     def _setup_ui(self) -> None:
         self.setFixedHeight(60)
-        self.setStyleSheet(
-            "MiniPlayer { background-color: #1a1a2e; }"
-            "QLabel { color: #e0e0e0; }"
-            "QPushButton { color: #e0e0e0; background-color: #2a2a4e; "
-            "border: 1px solid #444; border-radius: 4px; padding: 2px 6px; }"
-            "QPushButton:hover { background-color: #3a3a5e; }"
-        )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
@@ -54,7 +48,8 @@ class MiniPlayer(QWidget):
         self.album_art = QLabel()
         self.album_art.setFixedSize(44, 44)
         self.album_art.setStyleSheet(
-            "background-color: #333; border-radius: 4px; color: #666; " "font-size: 20px;"
+            f"background-color: {DARK_THEME.bg_surface_alt}; border-radius: 4px; "
+            f"color: {DARK_THEME.text_muted}; font-size: 20px;"
         )
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setText("\u266b")  # Musical note
@@ -65,10 +60,16 @@ class MiniPlayer(QWidget):
         info_layout.setSpacing(0)
         info_layout.setContentsMargins(0, 0, 0, 0)
         self.title_label = QLabel("No track loaded")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        font = self.title_label.font()
+        font.setBold(True)
+        font.setPointSize(12)
+        self.title_label.setFont(font)
         self.title_label.setMaximumWidth(200)
         self.artist_label = QLabel("")
-        self.artist_label.setStyleSheet("font-size: 10px; color: #aaa;")
+        font = self.artist_label.font()
+        font.setPointSize(10)
+        self.artist_label.setFont(font)
+        self.artist_label.setStyleSheet(f"color: {DARK_THEME.text_secondary};")
         self.artist_label.setMaximumWidth(200)
         info_layout.addWidget(self.title_label)
         info_layout.addWidget(self.artist_label)
@@ -101,13 +102,18 @@ class MiniPlayer(QWidget):
 
         # Time display
         self.time_label = QLabel("0:00 / 0:00")
-        self.time_label.setStyleSheet("font-size: 11px; min-width: 85px;")
+        font = self.time_label.font()
+        font.setPointSize(11)
+        self.time_label.setFont(font)
+        self.time_label.setMinimumWidth(85)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.time_label)
 
         # Volume slider
         vol_label = QLabel("\U0001f50a")  # Speaker emoji
-        vol_label.setStyleSheet("font-size: 14px;")
+        font = vol_label.font()
+        font.setPointSize(14)
+        vol_label.setFont(font)
         layout.addWidget(vol_label)
 
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)

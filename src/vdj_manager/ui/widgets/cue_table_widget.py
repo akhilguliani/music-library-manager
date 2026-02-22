@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vdj_manager.ui.theme import ThemeManager
+
 MAX_CUES = 8
 
 
@@ -92,8 +94,12 @@ class CueTableWidget(QWidget):
             # Column 3: delete button
             del_btn = QPushButton("\u00d7")
             del_btn.setFixedSize(24, 24)
-            del_btn.setStyleSheet("font-weight: bold; color: red; border: none;")
-            del_btn.clicked.connect(lambda checked=False, r=row: self._on_delete_clicked(r))
+            del_btn.setStyleSheet(
+                f"font-weight: bold; color: {ThemeManager().theme.status_error};"
+                " border: none; background: transparent;"
+            )
+            cue_num = cue.get("num", row + 1)
+            del_btn.clicked.connect(lambda checked=False, n=cue_num: self._on_delete_by_num(n))
             self.table.setCellWidget(row, 3, del_btn)
 
         self.add_btn.setEnabled(len(self._cues) < MAX_CUES)
@@ -123,12 +129,14 @@ class CueTableWidget(QWidget):
                     item.setText(self._format_position(self._cues[row]["pos"]))
                     self._updating = False
 
-    def _on_delete_clicked(self, row: int) -> None:
-        """Remove a cue point row."""
-        if row < len(self._cues):
-            del self._cues[row]
-            self._refresh_table()
-            self._emit_cues_changed()
+    def _on_delete_by_num(self, cue_num: int) -> None:
+        """Remove a cue point by its unique cue number."""
+        for i, cue in enumerate(self._cues):
+            if cue.get("num") == cue_num:
+                del self._cues[i]
+                self._refresh_table()
+                self._emit_cues_changed()
+                return
 
     def _on_add_clicked(self) -> None:
         """Add a new cue point with next available number."""
@@ -170,6 +178,8 @@ class CueTableWidget(QWidget):
                 parts = text.split(":", 1)
                 minutes = int(parts[0])
                 sec_part = float(parts[1])
+                if minutes < 0 or sec_part < 0:
+                    return None
                 result = minutes * 60.0 + sec_part
             else:
                 result = float(text)

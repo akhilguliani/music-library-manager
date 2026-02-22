@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import (
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
+from vdj_manager.ui.models.track_model import TRACK_MIME_TYPE
+from vdj_manager.ui.theme import DARK_THEME
 from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
 
 if TYPE_CHECKING:
@@ -51,6 +54,7 @@ class PlayerPanel(QWidget):
 
     rating_changed = Signal(str, int)
     cues_changed = Signal(str, list)
+    tracks_dropped = Signal(list)  # list[str] file paths dropped onto queue
 
     def __init__(self, bridge: PlaybackBridge, parent=None):
         super().__init__(parent)
@@ -81,7 +85,7 @@ class PlayerPanel(QWidget):
         self.album_art = QLabel()
         self.album_art.setFixedSize(120, 120)
         self.album_art.setStyleSheet(
-            "background-color: #222; border-radius: 6px; color: #555; font-size: 40px;"
+            f"background-color: {DARK_THEME.bg_surface}; border-radius: 6px; color: {DARK_THEME.text_disabled}; font-size: 40px;"
         )
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setText("\u266b")
@@ -92,24 +96,30 @@ class PlayerPanel(QWidget):
         info_col.setSpacing(4)
 
         self.title_label = QLabel("No track loaded")
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #eee;")
+        font = self.title_label.font()
+        font.setPointSize(18)
+        font.setBold(True)
+        self.title_label.setFont(font)
         info_col.addWidget(self.title_label)
 
         self.artist_label = QLabel("")
-        self.artist_label.setStyleSheet("font-size: 14px; color: #aaa;")
+        font = self.artist_label.font()
+        font.setPointSize(14)
+        self.artist_label.setFont(font)
+        self.artist_label.setStyleSheet(f"color: {DARK_THEME.text_secondary};")
         info_col.addWidget(self.artist_label)
 
         # BPM / Key / Energy row
         detail_row = QHBoxLayout()
         detail_row.setSpacing(16)
         self.bpm_label = QLabel("BPM: --")
-        self.bpm_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.bpm_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
         self.key_label = QLabel("Key: --")
-        self.key_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.key_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
         self.energy_label = QLabel("Energy: --")
-        self.energy_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.energy_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
         self.mood_label = QLabel("Mood: --")
-        self.mood_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.mood_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
         for lbl in (self.bpm_label, self.key_label, self.energy_label, self.mood_label):
             detail_row.addWidget(lbl)
         detail_row.addStretch()
@@ -119,7 +129,7 @@ class PlayerPanel(QWidget):
         rating_row = QHBoxLayout()
         rating_row.setSpacing(8)
         rating_lbl = QLabel("Rating:")
-        rating_lbl.setStyleSheet("color: #888; font-size: 12px;")
+        rating_lbl.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
         rating_row.addWidget(rating_lbl)
         self.star_rating = StarRatingWidget()
         self.star_rating.rating_changed.connect(self._on_rating_changed)
@@ -134,7 +144,7 @@ class PlayerPanel(QWidget):
         speed_col = QVBoxLayout()
         speed_col.setSpacing(4)
         speed_title = QLabel("Speed")
-        speed_title.setStyleSheet("color: #888; font-size: 11px;")
+        speed_title.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px;")
         speed_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         speed_col.addWidget(speed_title)
 
@@ -146,13 +156,15 @@ class PlayerPanel(QWidget):
         speed_col.addWidget(self.speed_slider, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.speed_label = QLabel("1.0x")
-        self.speed_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        self.speed_label.setStyleSheet(f"color: {DARK_THEME.text_secondary}; font-size: 11px;")
         self.speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         speed_col.addWidget(self.speed_label)
 
         reset_speed = QPushButton("Reset")
         reset_speed.setFixedWidth(50)
-        reset_speed.setStyleSheet("font-size: 10px; padding: 2px;")
+        font = reset_speed.font()
+        font.setPointSize(10)
+        reset_speed.setFont(font)
         reset_speed.clicked.connect(lambda: self.speed_slider.setValue(100))
         speed_col.addWidget(reset_speed, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -184,9 +196,16 @@ class PlayerPanel(QWidget):
         queue_box = QGroupBox("Queue")
         queue_layout = QVBoxLayout(queue_box)
 
+        # Queue duration label
+        self.queue_duration_label = QLabel("0 tracks")
+        self.queue_duration_label.setStyleSheet(
+            f"color: {DARK_THEME.text_tertiary}; font-size: 11px;"
+        )
+        queue_layout.addWidget(self.queue_duration_label)
+
         self.queue_list = QListWidget()
         self.queue_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
-        self.queue_list.setStyleSheet("font-size: 12px;")
+        self.queue_list.setAcceptDrops(True)
         queue_layout.addWidget(self.queue_list)
 
         queue_btns = QHBoxLayout()
@@ -209,11 +228,38 @@ class PlayerPanel(QWidget):
         history_box = QGroupBox("History")
         history_layout = QVBoxLayout(history_box)
         self.history_list = QListWidget()
-        self.history_list.setStyleSheet("font-size: 12px;")
         history_layout.addWidget(self.history_list)
         splitter.addWidget(history_box)
 
         layout.addWidget(splitter, stretch=1)
+
+        # Accept drops on the whole panel (tracks dragged from database)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event) -> None:
+        """Accept drag events with track MIME data."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        """Accept drag move events with track MIME data."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        """Handle drop of tracks from database panel."""
+        if event.mimeData().hasFormat(TRACK_MIME_TYPE):
+            raw = bytes(event.mimeData().data(TRACK_MIME_TYPE))
+            file_paths = json.loads(raw.decode())
+            if file_paths:
+                self.tracks_dropped.emit(file_paths)
+            event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
 
     def _connect_signals(self) -> None:
         # Bridge signals
@@ -288,13 +334,30 @@ class PlayerPanel(QWidget):
     @Slot(list)
     def _on_queue_changed(self, queue: list) -> None:
         self.queue_list.clear()
+        total_duration = 0.0
         for track in queue:
             label = track.title or Path(track.file_path).stem
             if track.artist:
                 label = f"{track.artist} - {label}"
+            if track.duration_s and track.duration_s > 0:
+                mins = int(track.duration_s // 60)
+                secs = int(track.duration_s % 60)
+                label = f"{label}  [{mins}:{secs:02d}]"
+                total_duration += track.duration_s
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, track)
             self.queue_list.addItem(item)
+
+        # Update duration label
+        count = len(queue)
+        if total_duration > 0:
+            total_mins = int(total_duration // 60)
+            total_secs = int(total_duration % 60)
+            self.queue_duration_label.setText(
+                f"{count} track{'s' if count != 1 else ''} \u2022 {total_mins}:{total_secs:02d}"
+            )
+        else:
+            self.queue_duration_label.setText(f"{count} track{'s' if count != 1 else ''}")
 
     @Slot(object)
     def _on_track_finished(self, track: TrackInfo) -> None:

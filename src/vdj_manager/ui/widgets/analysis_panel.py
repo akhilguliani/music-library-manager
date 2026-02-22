@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -24,6 +25,8 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import (
@@ -79,6 +82,9 @@ class AnalysisPanel(QWidget):
         else:
             self._tracks = []
 
+        # Switch to content when database is loaded, empty state otherwise
+        self._stacked.setCurrentIndex(1 if database is not None else 0)
+
         has_db = database is not None and len(self._tracks) > 0
         self.energy_all_btn.setEnabled(has_db)
         self.energy_untagged_btn.setEnabled(has_db)
@@ -94,6 +100,21 @@ class AnalysisPanel(QWidget):
     def _setup_ui(self) -> None:
         """Set up the panel UI with sub-tabs."""
         layout = QVBoxLayout(self)
+
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Load a database from the Database tab to analyze energy, mood, and genre.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
         # Settings bar
         settings_group = QGroupBox("Settings")
@@ -128,7 +149,7 @@ class AnalysisPanel(QWidget):
         config_layout.addWidget(self.max_duration_spin)
 
         config_layout.addStretch()
-        layout.addWidget(settings_group)
+        content_layout.addWidget(settings_group)
 
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -138,7 +159,12 @@ class AnalysisPanel(QWidget):
         self._create_mood_tab()
         self._create_genre_tab()
 
-        layout.addWidget(self.sub_tabs)
+        content_layout.addWidget(self.sub_tabs)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     def _create_energy_tab(self) -> None:
         """Create the energy analysis sub-tab."""
@@ -147,7 +173,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.energy_info_label = QLabel("No database loaded")
-        self.energy_info_label.setStyleSheet("color: gray;")
+        self.energy_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.energy_info_label)
 
         # Controls
@@ -199,7 +225,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mik_info_label = QLabel("No database loaded")
-        self.mik_info_label.setStyleSheet("color: gray;")
+        self.mik_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.mik_info_label)
 
         # Controls
@@ -244,7 +270,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mood_info_label = QLabel("No database loaded")
-        self.mood_info_label.setStyleSheet("color: gray;")
+        self.mood_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.mood_info_label)
 
         # Online mood controls
@@ -350,7 +376,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.genre_info_label = QLabel("No database loaded")
-        self.genre_info_label.setStyleSheet("color: gray;")
+        self.genre_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
         layout.addWidget(self.genre_info_label)
 
         # Online toggle
@@ -419,23 +445,33 @@ class AnalysisPanel(QWidget):
 
     def _update_genre_api_key_label(self) -> None:
         """Update the Last.fm API key status label for the genre tab."""
+        tm = ThemeManager()
         key = get_lastfm_api_key()
         if key:
             self.genre_api_key_label.setText("API key: configured")
-            self.genre_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+            self.genre_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('success')}; font-size: 11px;"
+            )
         else:
             self.genre_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
-            self.genre_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
+            self.genre_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('warning')}; font-size: 11px;"
+            )
 
     def _update_api_key_label(self) -> None:
         """Update the Last.fm API key status label."""
+        tm = ThemeManager()
         key = get_lastfm_api_key()
         if key:
             self.mood_api_key_label.setText("API key: configured")
-            self.mood_api_key_label.setStyleSheet("color: green; font-size: 11px;")
+            self.mood_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('success')}; font-size: 11px;"
+            )
         else:
             self.mood_api_key_label.setText("API key: not set (set LASTFM_API_KEY env var)")
-            self.mood_api_key_label.setStyleSheet("color: orange; font-size: 11px;")
+            self.mood_api_key_label.setStyleSheet(
+                f"color: {tm.status_color('warning')}; font-size: 11px;"
+            )
 
     def _update_track_info(self) -> None:
         """Update track info labels across all tabs."""

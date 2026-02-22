@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QSplitter,
+    QStackedWidget,
     QTableView,
     QTabWidget,
     QVBoxLayout,
@@ -30,7 +32,19 @@ from PySide6.QtWidgets import (
 from vdj_manager.config import LOCAL_VDJ_DB, MYNVME_VDJ_DB
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import DatabaseStats, Song
+from vdj_manager.ui.delegates.album_art_delegate import AlbumArtCache, AlbumArtDelegate
+from vdj_manager.ui.delegates.tag_edit_delegates import (
+    BPMEditDelegate,
+    EnergyEditDelegate,
+    KeyEditDelegate,
+    TextEditDelegate,
+)
+from vdj_manager.ui.models.multi_column_filter import MultiColumnFilterProxyModel
 from vdj_manager.ui.models.track_model import TrackTableModel
+from vdj_manager.ui.theme import ThemeManager
+from vdj_manager.ui.widgets.column_browser import ColumnBrowser
+from vdj_manager.ui.widgets.column_filter_row import ColumnFilterRow
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.workers.database_worker import (
     BackupWorker,
     CleanWorker,
@@ -60,6 +74,7 @@ class DatabasePanel(QWidget):
     track_double_clicked = Signal(object)  # Song
     play_next_requested = Signal(object)  # list[Song]
     add_to_queue_requested = Signal(object)  # list[Song]
+    save_requested = Signal()  # Request debounced save via MainWindow
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the database panel.
@@ -79,6 +94,14 @@ class DatabasePanel(QWidget):
 
         self._setup_ui()
 
+        # Ctrl+F toggles per-column filter row
+        shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut.activated.connect(self.toggle_filter_row)
+
+        # Ctrl+B toggles column browser
+        browser_shortcut = QShortcut(QKeySequence("Ctrl+B"), self)
+        browser_shortcut.activated.connect(self.toggle_column_browser)
+
     @property
     def database(self) -> VDJDatabase | None:
         """Get the currently loaded database."""
@@ -97,17 +120,46 @@ class DatabasePanel(QWidget):
         selection_group = self._create_selection_group()
         layout.addWidget(selection_group)
 
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Select a database source above and click Load to get started.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
         # Compact stats summary
         self.stats_summary_label = QLabel("No database loaded")
-        self.stats_summary_label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 4px;")
-        layout.addWidget(self.stats_summary_label)
+        self.stats_summary_label.setProperty("class", "info")
+        content_layout.addWidget(self.stats_summary_label)
 
         # Create splitter for track table, tag editor, and log
         splitter = QSplitter(Qt.Orientation.Vertical)
 
+        # Horizontal splitter: column browser (left) + track table (right)
+        self._browser_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self._column_browser = ColumnBrowser()
+        self._column_browser.setVisible(False)
+        self._column_browser.filter_changed.connect(self._on_browser_filter_changed)
+        self._browser_splitter.addWidget(self._column_browser)
+
         # Track table group
         tracks_group = self._create_tracks_group()
-        splitter.addWidget(tracks_group)
+        self._browser_splitter.addWidget(tracks_group)
+
+        # Give most space to track table
+        self._browser_splitter.setStretchFactor(0, 1)
+        self._browser_splitter.setStretchFactor(1, 3)
+
+        splitter.addWidget(self._browser_splitter)
 
         # Tag editing group (hidden until a track is selected)
         tag_group = self._create_tag_edit_group()
@@ -128,7 +180,12 @@ class DatabasePanel(QWidget):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 1)
 
-        layout.addWidget(splitter)
+        content_layout.addWidget(splitter)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     def _create_selection_group(self) -> QGroupBox:
         """Create the database selection and actions group box."""
@@ -174,7 +231,7 @@ class DatabasePanel(QWidget):
 
         # Status label (right-aligned)
         self.status_label = QLabel("Not loaded")
-        self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.status_label)
 
         return group
@@ -189,7 +246,14 @@ class DatabasePanel(QWidget):
         search_layout.addWidget(QLabel("Search:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filter tracks...")
-        self.search_input.textChanged.connect(self._on_search_changed)
+        # Debounce search: 200ms delay avoids per-keystroke proxy invalidation
+        from PySide6.QtCore import QTimer
+
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(200)
+        self._search_debounce.timeout.connect(self._on_search_changed)
+        self.search_input.textChanged.connect(lambda _: self._search_debounce.start())
         search_layout.addWidget(self.search_input)
 
         self.result_count_label = QLabel("")
@@ -197,15 +261,19 @@ class DatabasePanel(QWidget):
 
         layout.addLayout(search_layout)
 
-        # Track table
+        # Track table with chained proxy models:
+        # TrackTableModel → QSortFilterProxyModel (global) → MultiColumnFilterProxyModel
         self.track_model = TrackTableModel()
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setSourceModel(self.track_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)  # Search all columns
 
+        self._column_filter_model = MultiColumnFilterProxyModel()
+        self._column_filter_model.setSourceModel(self.proxy_model)
+
         self.track_table = QTableView()
-        self.track_table.setModel(self.proxy_model)
+        self.track_table.setModel(self._column_filter_model)
         self.track_table.setAlternatingRowColors(True)
         self.track_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.track_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -213,12 +281,53 @@ class DatabasePanel(QWidget):
         self.track_table.verticalHeader().setVisible(False)
         self.track_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.track_table.customContextMenuRequested.connect(self._on_track_context_menu)
+        self.track_table.setDragEnabled(True)
+
+        # Album art delegate + cache
+        self._art_cache = AlbumArtCache(parent=self)
+        self._art_delegate = AlbumArtDelegate(self._art_cache, parent=self.track_table)
+        self.track_table.setItemDelegateForColumn(0, self._art_delegate)
+        self._art_cache.art_ready.connect(self.track_model.notify_art_changed)
+
+        # Inline tag editing delegates
+        self.track_table.setItemDelegateForColumn(1, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(2, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(3, BPMEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(4, KeyEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(5, EnergyEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(7, TextEditDelegate(self.track_table))
+        self.track_table.setItemDelegateForColumn(8, TextEditDelegate(self.track_table))
+
+        # Edit triggers: F2 or single-click on selected cell (preserves double-click-to-play)
+        self.track_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.EditKeyPressed
+            | QAbstractItemView.EditTrigger.SelectedClicked
+        )
+
+        # Connect tag edit signal
+        self.track_model.tag_edit_requested.connect(self._on_tag_edit_requested)
+
+        # Row height for album art thumbnails
+        self.track_table.verticalHeader().setDefaultSectionSize(44)
 
         # Set column resize modes
         header = self.track_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Title
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Artist
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Art
+        header.resizeSection(0, 44)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Title
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Artist
         header.setDefaultSectionSize(100)
+
+        # Per-column filter row (hidden by default, toggle with Ctrl+F)
+        self._filter_row = ColumnFilterRow(
+            header=header,
+            column_count=self.track_model.columnCount(),
+            skip_columns={0},  # Skip art column
+            parent=group,
+        )
+        self._filter_row.setVisible(False)
+        self._filter_row.filter_changed.connect(self._on_column_filter_changed)
+        layout.addWidget(self._filter_row)
 
         # Connect selection
         self.track_table.selectionModel().currentRowChanged.connect(self._on_track_selected)
@@ -277,7 +386,7 @@ class DatabasePanel(QWidget):
         # Update UI
         self.load_btn.setEnabled(False)
         self.status_label.setText("Loading...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         # Start worker
         self._load_worker = DatabaseLoadWorker(path)
@@ -300,6 +409,12 @@ class DatabasePanel(QWidget):
             self._database = result.database
             self._tracks = result.tracks
 
+            # Clear stale album art cache from previous database
+            self._art_cache.clear()
+
+            # Switch from empty state to main content
+            self._stacked.setCurrentIndex(1)
+
             # Update stats
             self._update_stats(result.stats)
 
@@ -307,8 +422,12 @@ class DatabasePanel(QWidget):
             self.track_model.set_tracks(result.tracks)
             self._update_result_count()
 
+            # Update column browser if visible
+            if self._column_browser.isVisible():
+                self._column_browser.set_tracks(result.tracks)
+
             self.status_label.setText(f"Loaded {len(result.tracks)} tracks")
-            self.status_label.setStyleSheet("color: green;")
+            self._set_status_color("success")
             self._log_operation(f"Loaded database with {len(result.tracks)} tracks")
 
             # Enable action buttons
@@ -320,14 +439,14 @@ class DatabasePanel(QWidget):
             self.database_loaded.emit(self._database)
         else:
             self.status_label.setText(f"Error: {result.error}")
-            self.status_label.setStyleSheet("color: red;")
+            self._set_status_color("error")
 
     @Slot(str)
     def _on_load_error(self, error: str) -> None:
         """Handle loading error."""
         self.load_btn.setEnabled(True)
         self.status_label.setText(f"Error: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _update_stats(self, stats: DatabaseStats | None) -> None:
         """Update the statistics display.
@@ -337,8 +456,9 @@ class DatabasePanel(QWidget):
         """
         if stats is None:
             self.stats_summary_label.setText("No database loaded")
+            t = ThemeManager().theme
             self.stats_summary_label.setStyleSheet(
-                "color: gray; font-size: 11px; padding: 2px 4px;"
+                f"color: {t.text_tertiary}; font-size: 11px; padding: 2px 4px;"
             )
             return
 
@@ -354,17 +474,108 @@ class DatabasePanel(QWidget):
             parts.append(f"{stats.netsearch:,} streaming")
 
         self.stats_summary_label.setText("  |  ".join(parts))
-        self.stats_summary_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 4px;")
+        t = ThemeManager().theme
+        self.stats_summary_label.setStyleSheet(
+            f"color: {t.text_muted}; font-size: 11px; padding: 2px 4px;"
+        )
 
-    @Slot(str)
-    def _on_search_changed(self, text: str) -> None:
-        """Handle search input change."""
-        self.proxy_model.setFilterFixedString(text)
+    @Slot()
+    def _on_search_changed(self) -> None:
+        """Handle debounced search input change."""
+        self.proxy_model.setFilterFixedString(self.search_input.text())
         self._update_result_count()
+
+    # Map model field names to VDJ XML attribute names
+    _FIELD_TO_XML = {
+        "title": "Title",
+        "artist": "Author",
+        "bpm": "Bpm",
+        "key": "Key",
+        "energy": "Grouping",
+        "genre": "Genre",
+        "mood": "User2",
+    }
+
+    def _refresh_single_track(self, file_path: str) -> None:
+        """Re-read a single track from the database and update the model in-place.
+
+        Avoids full model reset by emitting dataChanged for just one row.
+        """
+        if self._database is None:
+            return
+        updated_song = self._database.get_song(file_path)
+        if updated_song is not None:
+            i = self.track_model.find_track_row(file_path)
+            if i >= 0:
+                self._tracks[i] = updated_song
+                left = self.track_model.index(i, 0)
+                right = self.track_model.index(i, self.track_model.columnCount() - 1)
+                self.track_model.dataChanged.emit(left, right)
+
+    def _on_tag_edit_requested(self, file_path: str, field: str, value: str) -> None:
+        """Handle inline tag edit from the track table."""
+        if self._database is None:
+            return
+
+        xml_attr = self._FIELD_TO_XML.get(field)
+        if xml_attr is None:
+            return
+
+        self._database.update_song_tags(file_path, **{xml_attr: value or None})
+        self._refresh_single_track(file_path)
+
+        # Request debounced save via MainWindow (avoids binding to stale database)
+        self.save_requested.emit()
+
+        self._log_operation(f"Updated {field} for {file_path.rsplit('/', 1)[-1]}")
+
+    def _on_column_filter_changed(self, column: int, text: str) -> None:
+        """Handle per-column filter change."""
+        self._column_filter_model.set_column_filter(column, text)
+        self._update_result_count()
+
+    def toggle_filter_row(self) -> None:
+        """Toggle visibility of the per-column filter row."""
+        visible = not self._filter_row.isVisible()
+        self._filter_row.setVisible(visible)
+        if visible:
+            self._filter_row.set_focus_column(1)  # Focus Title column
+        else:
+            self._filter_row.clear_all()
+            self._column_filter_model.clear_all_filters()
+            self._update_result_count()
+
+    def toggle_column_browser(self) -> None:
+        """Toggle visibility of the column browser panel."""
+        visible = not self._column_browser.isVisible()
+        self._column_browser.setVisible(visible)
+        if visible and self._tracks:
+            self._column_browser.set_tracks(self._tracks)
+
+    def _on_browser_filter_changed(self, matching_paths: set | None) -> None:
+        """Handle column browser filter change.
+
+        Args:
+            matching_paths: Set of file paths to include, or None for "show all".
+        """
+        self._column_filter_model.set_inclusion_filter(matching_paths)
+        self._update_result_count()
+
+    def _map_to_source(self, view_index):
+        """Map a view index through both proxy models to the source model.
+
+        Args:
+            view_index: Index from the track_table's model (column_filter_model).
+
+        Returns:
+            Source model index (TrackTableModel).
+        """
+        mid_index = self._column_filter_model.mapToSource(view_index)
+        return self.proxy_model.mapToSource(mid_index)
 
     def _update_result_count(self) -> None:
         """Update the result count label."""
-        filtered = self.proxy_model.rowCount()
+        filtered = self._column_filter_model.rowCount()
         total = self.track_model.rowCount()
 
         if filtered == total:
@@ -379,10 +590,7 @@ class DatabasePanel(QWidget):
         if not indexes:
             return
 
-        # Get the source index from the proxy model
-        proxy_index = indexes[0]
-        source_index = self.proxy_model.mapToSource(proxy_index)
-
+        source_index = self._map_to_source(indexes[0])
         track = self.track_model.get_track(source_index.row())
         if track:
             self._populate_tag_fields(track)
@@ -391,7 +599,7 @@ class DatabasePanel(QWidget):
     @Slot()
     def _on_track_double_clicked(self, index) -> None:
         """Handle track double-click for playback."""
-        source_index = self.proxy_model.mapToSource(index)
+        source_index = self._map_to_source(index)
         track = self.track_model.get_track(source_index.row())
         if track:
             self.track_double_clicked.emit(track)
@@ -406,8 +614,7 @@ class DatabasePanel(QWidget):
         if not indexes:
             return None
 
-        proxy_index = indexes[0]
-        source_index = self.proxy_model.mapToSource(proxy_index)
+        source_index = self._map_to_source(indexes[0])
         return self.track_model.get_track(source_index.row())
 
     def get_filtered_tracks(self) -> list[Song]:
@@ -416,9 +623,10 @@ class DatabasePanel(QWidget):
         Returns:
             List of filtered Song objects.
         """
+        view_model = self._column_filter_model
         tracks = []
-        for row in range(self.proxy_model.rowCount()):
-            source_index = self.proxy_model.mapToSource(self.proxy_model.index(row, 0))
+        for row in range(view_model.rowCount()):
+            source_index = self._map_to_source(view_model.index(row, 0))
             track = self.track_model.get_track(source_index.row())
             if track:
                 tracks.append(track)
@@ -433,7 +641,7 @@ class DatabasePanel(QWidget):
         rows = sorted(self.track_table.selectionModel().selectedRows(), key=lambda idx: idx.row())
         tracks = []
         for proxy_index in rows:
-            source_index = self.proxy_model.mapToSource(proxy_index)
+            source_index = self._map_to_source(proxy_index)
             track = self.track_model.get_track(source_index.row())
             if track:
                 tracks.append(track)
@@ -719,7 +927,7 @@ class DatabasePanel(QWidget):
         file_tag_btn_layout.addStretch()
         self._file_tags_form.addRow(file_tag_btn_layout)
 
-        self.tag_tabs.addTab(self._file_tags_widget, "File Tags")
+        self._file_tags_tab_index = self.tag_tabs.addTab(self._file_tags_widget, "File Tags")
 
         # Auto-read file tags when switching to File Tags tab
         self.tag_tabs.currentChanged.connect(self._on_tag_tab_changed)
@@ -794,12 +1002,12 @@ class DatabasePanel(QWidget):
         self.tag_color_input.setText(tags.color or "" if tags else "")
         self.tag_flag_spin.setValue(tags.flag or 0 if tags else 0)
 
-        # Enable/disable file tag buttons based on file accessibility
-        is_accessible = not track.is_windows_path and Path(track.file_path).exists()
-        self.file_tag_read_btn.setEnabled(is_accessible)
-        self.file_tag_save_btn.setEnabled(is_accessible)
-        self.file_tag_sync_vdj_btn.setEnabled(is_accessible)
-        self.file_tag_import_btn.setEnabled(is_accessible)
+        # Enable file tag buttons for non-Windows paths (errors handled on click)
+        is_local = not track.is_windows_path
+        self.file_tag_read_btn.setEnabled(is_local)
+        self.file_tag_save_btn.setEnabled(is_local)
+        self.file_tag_sync_vdj_btn.setEnabled(is_local)
+        self.file_tag_import_btn.setEnabled(is_local)
 
     def _on_tag_revert_clicked(self) -> None:
         """Revert tag fields to the current track's saved values."""
@@ -873,21 +1081,20 @@ class DatabasePanel(QWidget):
             return
 
         self._database.update_song_tags(track.file_path, **updates)
-        self._database.save()
+        self.save_requested.emit()
 
         self.status_label.setText(f"Tags saved for {track.display_name}")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Tags saved for {track.display_name}")
 
-        # Refresh track list
-        self._tracks = list(self._database.iter_songs())
-        self.track_model.set_tracks(self._tracks)
+        # Refresh single track in-place (preserves selection/scroll)
+        self._refresh_single_track(track.file_path)
 
     # --- File Tags tab handlers ---
 
     def _on_tag_tab_changed(self, index: int) -> None:
         """Auto-read file tags when switching to File Tags tab."""
-        if index == 2 and self._editing_track is not None:
+        if index == self._file_tags_tab_index and self._editing_track is not None:
             self._on_file_tag_read()
 
     def _on_file_tag_read(self) -> None:
@@ -956,11 +1163,11 @@ class DatabasePanel(QWidget):
             ok = editor.write_tags(file_path, file_tags)
             if ok:
                 self.status_label.setText("File tags saved")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(f"File tags saved for {self._editing_track.display_name}")
             else:
                 self.status_label.setText("File tags save failed")
-                self.status_label.setStyleSheet("color: red;")
+                self._set_status_color("error")
         except Exception as e:
             QMessageBox.warning(self, "Write Error", f"Failed to write file tags:\n{e}")
 
@@ -986,13 +1193,13 @@ class DatabasePanel(QWidget):
             ok = editor.write_tags(self._editing_track.file_path, file_tags)
             if ok:
                 self.status_label.setText("VDJ tags synced to file")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(f"VDJ \u2192 File sync for {self._editing_track.display_name}")
                 # Re-read to show updated values
                 self._on_file_tag_read()
             else:
                 self.status_label.setText("Sync failed")
-                self.status_label.setStyleSheet("color: red;")
+                self._set_status_color("error")
         except Exception as e:
             QMessageBox.warning(self, "Sync Error", f"Failed to sync:\n{e}")
 
@@ -1020,11 +1227,10 @@ class DatabasePanel(QWidget):
             vdj_kwargs = file_tags_to_vdj_kwargs(file_tags)
             if vdj_kwargs:
                 self._database.update_song_tags(self._editing_track.file_path, **vdj_kwargs)
-                self._database.save()
-                self._tracks = list(self._database.iter_songs())
-                self.track_model.set_tracks(self._tracks)
+                self.save_requested.emit()
+                self._refresh_single_track(self._editing_track.file_path)
                 self.status_label.setText("File tags imported to VDJ")
-                self.status_label.setStyleSheet("color: green;")
+                self._set_status_color("success")
                 self._log_operation(
                     f"File \u2192 VDJ import for {self._editing_track.display_name}"
                 )
@@ -1042,7 +1248,13 @@ class DatabasePanel(QWidget):
         elif self._database is not None:
             self._tracks = list(self._database.iter_songs())
         self.track_model.set_tracks(self._tracks)
+        if self._column_browser.isVisible():
+            self._column_browser.set_tracks(self._tracks)
         self._update_result_count()
+
+    def _set_status_color(self, status: str) -> None:
+        """Update the status label color based on status keyword."""
+        self.status_label.setStyleSheet(f"color: {ThemeManager().status_color(status)}")
 
     def _log_operation(self, message: str) -> None:
         """Add a timestamped entry to the operation log.
@@ -1067,7 +1279,7 @@ class DatabasePanel(QWidget):
         db_path = self._database.db_path
         self.backup_btn.setEnabled(False)
         self.status_label.setText("Creating backup...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._backup_worker = BackupWorker(db_path)
         self._backup_worker.finished_work.connect(self._on_backup_finished)
@@ -1079,7 +1291,7 @@ class DatabasePanel(QWidget):
         """Handle backup completion."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup created: {Path(backup_path).name}")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Backup created: {Path(backup_path).name}")
 
     @Slot(str)
@@ -1087,7 +1299,7 @@ class DatabasePanel(QWidget):
         """Handle backup error."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _on_validate_clicked(self) -> None:
         """Handle validate button click."""
@@ -1099,7 +1311,7 @@ class DatabasePanel(QWidget):
 
         self.validate_btn.setEnabled(False)
         self.status_label.setText("Validating...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._validate_worker = ValidateWorker(self._tracks)
         self._validate_worker.finished_work.connect(self._on_validate_finished)
@@ -1122,7 +1334,7 @@ class DatabasePanel(QWidget):
             f"{non_audio} non-audio, {windows} Windows paths"
         )
         self.status_label.setText(summary)
-        self.status_label.setStyleSheet("color: green;" if missing == 0 else "color: orange;")
+        self._set_status_color("success" if missing == 0 else "warning")
 
         # Store for potential clean operation
         self._last_validation = report
@@ -1148,7 +1360,7 @@ class DatabasePanel(QWidget):
         """Handle validation error."""
         self.validate_btn.setEnabled(True)
         self.status_label.setText(f"Validation failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")
 
     def _on_clean_clicked(self) -> None:
         """Handle clean button click."""
@@ -1202,7 +1414,7 @@ class DatabasePanel(QWidget):
 
         self.clean_btn.setEnabled(False)
         self.status_label.setText("Cleaning...")
-        self.status_label.setStyleSheet("color: blue;")
+        self._set_status_color("loading")
 
         self._clean_worker = CleanWorker(self._database, to_remove)
         self._clean_worker.finished_work.connect(self._on_clean_finished)
@@ -1214,7 +1426,7 @@ class DatabasePanel(QWidget):
         """Handle clean completion."""
         self.clean_btn.setEnabled(True)
         self.status_label.setText(f"Cleaned {removed_count} entries")
-        self.status_label.setStyleSheet("color: green;")
+        self._set_status_color("success")
         self._log_operation(f"Cleaned {removed_count} invalid entries")
 
         # Refresh tracks
@@ -1230,4 +1442,4 @@ class DatabasePanel(QWidget):
         """Handle clean error."""
         self.clean_btn.setEnabled(True)
         self.status_label.setText(f"Clean failed: {error}")
-        self.status_label.setStyleSheet("color: red;")
+        self._set_status_color("error")

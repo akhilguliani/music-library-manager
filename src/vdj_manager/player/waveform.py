@@ -108,9 +108,9 @@ def generate_waveform_peaks(
 ) -> np.ndarray:
     """Generate waveform peak data from an audio file.
 
-    Uses soundfile directly for WAV/FLAC/OGG/AIFF (avoids librosa's
-    audioread fallback which leaks file descriptors). Falls back to
-    librosa for MP3/M4A and other compressed formats.
+    Tries soundfile first (handles WAV/FLAC/OGG/AIFF natively without
+    subprocess spawning). Falls back to librosa for MP3/M4A and other
+    compressed formats that soundfile cannot read.
 
     Args:
         file_path: Path to audio file.
@@ -120,20 +120,50 @@ def generate_waveform_peaks(
     Returns:
         1D numpy array of peak amplitudes (0.0-1.0), length = target_width.
     """
-    ext = Path(file_path).suffix.lower()
-    if ext in (".wav", ".flac", ".ogg", ".aiff", ".aif"):
-        import soundfile as sf
+    import soundfile as sf
 
+    try:
         data, file_sr = sf.read(file_path, dtype="float32", always_2d=True)
         y = data.mean(axis=1)  # mono mixdown
         if file_sr != sr:
             import librosa
 
             y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
-    else:
-        import librosa
+    except (RuntimeError, OSError):
+        # soundfile can't decode this format (MP3/M4A) — try ffmpeg pipe
+        import subprocess
 
-        y, _ = librosa.load(file_path, sr=sr, mono=True)
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i",
+                    file_path,
+                    "-f",
+                    "wav",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    str(sr),
+                    "-loglevel",
+                    "error",
+                    "pipe:1",
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode == 0 and len(result.stdout) > 44:
+                import io
+
+                data, _ = sf.read(io.BytesIO(result.stdout), dtype="float32")
+                y = data if data.ndim == 1 else data.mean(axis=1)
+            else:
+                raise RuntimeError("ffmpeg decode failed")
+        except (RuntimeError, OSError, subprocess.TimeoutExpired):
+            # Final fallback: librosa (may trigger audioread deprecation)
+            import librosa
+
+            y, _ = librosa.load(file_path, sr=sr, mono=True)
 
     if len(y) == 0:
         return np.zeros(target_width)

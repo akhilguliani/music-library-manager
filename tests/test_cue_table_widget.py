@@ -79,7 +79,7 @@ class TestCueTableWidget:
         received = []
         widget.cues_changed.connect(lambda c: received.append(c))
 
-        widget._on_delete_clicked(0)
+        widget._on_delete_by_num(1)  # delete cue with num=1 ("A")
         QApplication.processEvents()
 
         assert len(received) == 1
@@ -126,3 +126,4 @@ class TestCueTableWidget:
         assert CueTableWidget._parse_position("invalid") is None
         assert CueTableWidget._parse_position("-5.0") is None
         assert CueTableWidget._parse_position("-1:30.000") is None
+        assert CueTableWidget._parse_position("1:-30.000") is None  # negative seconds component

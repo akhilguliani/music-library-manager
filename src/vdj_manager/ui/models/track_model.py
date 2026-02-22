@@ -1,10 +1,16 @@
 """Qt table model for displaying tracks with virtual scrolling support."""
 
+import json
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, Qt, Signal
 
 from vdj_manager.core.models import Song
+
+TRACK_MIME_TYPE = "application/x-vdj-tracks"
+
+# Custom role for album art delegate: returns file_path for art lookup
+ALBUM_ART_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class TrackTableModel(QAbstractTableModel):
@@ -15,16 +21,21 @@ class TrackTableModel(QAbstractTableModel):
     Qt's built-in virtual scrolling.
 
     Columns:
-        0: Title (or display name)
-        1: Artist
-        2: BPM
-        3: Key
-        4: Energy
-        5: Duration
-        6: Genre
+        0: Art (album art thumbnail)
+        1: Title (or display name)
+        2: Artist
+        3: BPM
+        4: Key
+        5: Energy
+        6: Duration
+        7: Genre
     """
 
+    # Signal emitted when a tag edit is committed: (file_path, field_name, new_value)
+    tag_edit_requested = Signal(str, str, str)
+
     COLUMNS = [
+        ("", "art"),
         ("Title", "title"),
         ("Artist", "artist"),
         ("BPM", "bpm"),
@@ -32,7 +43,11 @@ class TrackTableModel(QAbstractTableModel):
         ("Energy", "energy"),
         ("Duration", "duration"),
         ("Genre", "genre"),
+        ("Mood", "mood"),
     ]
+
+    # Columns that support inline editing (by index)
+    EDITABLE_COLUMNS = {1, 2, 3, 4, 5, 7, 8}  # Title, Artist, BPM, Key, Energy, Genre, Mood
 
     def __init__(self, parent: Any = None) -> None:
         """Initialize the track model.
@@ -42,6 +57,7 @@ class TrackTableModel(QAbstractTableModel):
         """
         super().__init__(parent)
         self._tracks: list[Song] = []
+        self._filepath_to_row: dict[str, int] = {}
 
     @property
     def tracks(self) -> list[Song]:
@@ -56,12 +72,14 @@ class TrackTableModel(QAbstractTableModel):
         """
         self.beginResetModel()
         self._tracks = list(tracks)
+        self._filepath_to_row = {t.file_path: i for i, t in enumerate(self._tracks)}
         self.endResetModel()
 
     def clear(self) -> None:
         """Clear all tracks from the model."""
         self.beginResetModel()
         self._tracks = []
+        self._filepath_to_row = {}
         self.endResetModel()
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # type: ignore[override]
@@ -110,10 +128,12 @@ class TrackTableModel(QAbstractTableModel):
         col = index.column()
 
         if role == Qt.ItemDataRole.DisplayRole:
+            if col == 0:  # Art column has no text
+                return None
             return self._get_display_value(track, col)
         elif role == Qt.ItemDataRole.TextAlignmentRole:
             # Right-align numeric columns
-            if col in (2, 4, 5):  # BPM, Energy, Duration
+            if col in (3, 5, 6):  # BPM, Energy, Duration
                 return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         elif role == Qt.ItemDataRole.ToolTipRole:
@@ -121,8 +141,44 @@ class TrackTableModel(QAbstractTableModel):
         elif role == Qt.ItemDataRole.UserRole:
             # Return the Song object itself
             return track
+        elif role == ALBUM_ART_ROLE:
+            # Return file_path for album art delegate
+            return track.file_path
 
         return None
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:  # type: ignore[override]
+        """Return item flags, adding Editable and DragEnabled for supported columns."""
+        base_flags = super().flags(index)
+        if index.isValid():
+            base_flags |= Qt.ItemFlag.ItemIsDragEnabled
+            if index.column() in self.EDITABLE_COLUMNS:
+                base_flags |= Qt.ItemFlag.ItemIsEditable
+        return base_flags
+
+    def mimeTypes(self) -> list[str]:
+        """Return supported MIME types for drag operations."""
+        return [TRACK_MIME_TYPE]
+
+    def mimeData(self, indexes: list[QModelIndex]) -> QMimeData:  # type: ignore[override]
+        """Encode dragged rows as JSON list of file paths."""
+        rows = sorted({idx.row() for idx in indexes if idx.isValid()})
+        paths = [self._tracks[r].file_path for r in rows if r < len(self._tracks)]
+        data = QMimeData()
+        data.setData(TRACK_MIME_TYPE, json.dumps(paths).encode())
+        return data
+
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # type: ignore[override]
+        """Handle edit commits by emitting tag_edit_requested signal."""
+        if role != Qt.ItemDataRole.EditRole:
+            return False
+        if not index.isValid() or index.column() not in self.EDITABLE_COLUMNS:
+            return False
+
+        track = self._tracks[index.row()]
+        field_name = self.COLUMNS[index.column()][1]
+        self.tag_edit_requested.emit(track.file_path, field_name, str(value))
+        return True
 
     def _get_display_value(self, track: Song, column: int) -> str:
         """Get the display string for a track column.
@@ -134,37 +190,45 @@ class TrackTableModel(QAbstractTableModel):
         Returns:
             Display string for the cell.
         """
-        if column == 0:  # Title
+        if column == 1:  # Title
             if track.tags and track.tags.title:
                 return track.tags.title
             return track.display_name
-        elif column == 1:  # Artist
+        elif column == 2:  # Artist
             if track.tags and track.tags.author:
                 return track.tags.author
             return ""
-        elif column == 2:  # BPM
+        elif column == 3:  # BPM
+            # Prefer Tags.bpm (user-set, actual BPM), fall back to Scan.actual_bpm
+            if track.tags and track.tags.bpm is not None:
+                return f"{track.tags.bpm:.1f}"
             bpm = track.actual_bpm
             if bpm is not None:
                 return f"{bpm:.1f}"
             return ""
-        elif column == 3:  # Key
-            if track.scan and track.scan.key:
-                return track.scan.key
+        elif column == 4:  # Key
+            # Prefer Tags.key (user-set), fall back to Scan.key
             if track.tags and track.tags.key:
                 return track.tags.key
+            if track.scan and track.scan.key:
+                return track.scan.key
             return ""
-        elif column == 4:  # Energy
+        elif column == 5:  # Energy
             energy = track.energy
             if energy is not None:
                 return str(energy)
             return ""
-        elif column == 5:  # Duration
+        elif column == 6:  # Duration
             if track.infos and track.infos.song_length:
                 return self._format_duration(track.infos.song_length)
             return ""
-        elif column == 6:  # Genre
+        elif column == 7:  # Genre
             if track.tags and track.tags.genre:
                 return track.tags.genre
+            return ""
+        elif column == 8:  # Mood
+            if track.tags and track.tags.user2:
+                return track.tags.user2
             return ""
 
         return ""
@@ -238,13 +302,22 @@ class TrackTableModel(QAbstractTableModel):
     def find_track_row(self, file_path: str) -> int:
         """Find the row index of a track by file path.
 
+        Uses an internal index for O(1) lookups.
+
         Args:
             file_path: File path to search for.
 
         Returns:
             Row index, or -1 if not found.
         """
-        for i, track in enumerate(self._tracks):
-            if track.file_path == file_path:
-                return i
-        return -1
+        return self._filepath_to_row.get(file_path, -1)
+
+    def notify_art_changed(self, file_path: str) -> None:
+        """Notify that album art for a track has been loaded.
+
+        Emits dataChanged for the art column of the matching row.
+        """
+        row = self.find_track_row(file_path)
+        if row >= 0:
+            idx = self.index(row, 0)
+            self.dataChanged.emit(idx, idx, [ALBUM_ART_ROLE])
