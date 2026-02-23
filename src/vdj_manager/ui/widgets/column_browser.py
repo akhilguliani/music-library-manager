@@ -20,8 +20,7 @@ class ColumnBrowser(QWidget):
     Cascade: selecting genre -> filters artists -> filters albums.
 
     Signals:
-        filter_changed(list, list, list): Emitted when any filter changes.
-            Args are (selected_genres, selected_artists, selected_albums).
+        filter_changed(object): Emitted with set[str] of matching file paths, or None for "show all".
     """
 
     filter_changed = Signal(object)  # set[str] | None — matching file paths or None for "all"

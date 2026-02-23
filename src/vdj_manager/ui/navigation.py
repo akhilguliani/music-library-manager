@@ -86,10 +86,12 @@ class TabNavigationProvider:
 class SidebarItemButton(QPushButton):
     """A single navigation item in the sidebar."""
 
+    ITEM_HEIGHT = 40
+
     def __init__(self, name: str, icon: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.nav_name = name
-        self.setFixedHeight(40)
+        self.setFixedHeight(self.ITEM_HEIGHT)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
@@ -118,10 +120,11 @@ class SidebarWidget(QWidget):
     """Persistent left sidebar with section-grouped navigation items."""
 
     panel_requested = Signal(str)
+    SIDEBAR_WIDTH = 200
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedWidth(200)
+        self.setFixedWidth(self.SIDEBAR_WIDTH)
         self.setObjectName("SidebarWidget")
 
         self._layout = QVBoxLayout(self)
@@ -134,6 +137,8 @@ class SidebarWidget(QWidget):
     def add_item(self, item: NavigationItem) -> None:
         """Add a navigation item button to the sidebar."""
         btn = SidebarItemButton(item.name, item.icon)
+        if item.shortcut:
+            btn.setToolTip(f"{item.name} ({item.shortcut})")
         btn.clicked.connect(lambda: self.panel_requested.emit(item.name))
         self._buttons[item.name] = btn
         # Insert before the stretch at the end
@@ -186,8 +191,7 @@ class SidebarNavigationProvider:
     def __init__(self, sidebar: SidebarWidget, stack: QStackedWidget) -> None:
         self._sidebar = sidebar
         self._stack = stack
-        self._panels: dict[str, int] = {}
-        self._order: list[str] = []
+        self._panels: dict[str, int] = {}  # preserves insertion order (Python 3.7+)
         self._current: str = ""
         sidebar.panel_requested.connect(self.navigate_to)
 
@@ -209,7 +213,6 @@ class SidebarNavigationProvider:
         """Register a panel — adds to stack and sidebar."""
         idx = self._stack.addWidget(item.panel)
         self._panels[item.name] = idx
-        self._order.append(item.name)
         self._sidebar.add_item(item)
         # Auto-activate first panel so sidebar always shows an active state
         if len(self._panels) == 1:
@@ -218,4 +221,4 @@ class SidebarNavigationProvider:
 
     def panel_names(self) -> list[str]:
         """Get all registered panel names in registration order."""
-        return list(self._order)
+        return list(self._panels.keys())

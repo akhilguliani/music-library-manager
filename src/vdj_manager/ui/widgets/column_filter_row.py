@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QHeaderView, QLineEdit, QWidget
-
-if TYPE_CHECKING:
-    pass
 
 
 class ColumnFilterRow(QWidget):

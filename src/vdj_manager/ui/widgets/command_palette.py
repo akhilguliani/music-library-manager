@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
@@ -17,6 +18,8 @@ from PySide6.QtWidgets import (
 
 
 class CommandItem(NamedTuple):
+    """A command registered in the command palette."""
+
     name: str
     shortcut: str
     category: str
@@ -26,11 +29,16 @@ class CommandItem(NamedTuple):
 class CommandPalette(QDialog):
     """Floating search dialog for instant command access."""
 
+    _WIDTH = 500
+    _MAX_HEIGHT = 400
+    _TOP_OFFSET = 80
+    _MAX_RESULTS = 10
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        self.setFixedWidth(500)
-        self.setMaximumHeight(400)
+        self.setFixedWidth(self._WIDTH)
+        self.setMaximumHeight(self._MAX_HEIGHT)
 
         self._commands: list[CommandItem] = []
         self._item_commands: dict[int, CommandItem] = {}
@@ -64,16 +72,16 @@ class CommandPalette(QDialog):
         if parent_widget:
             global_pos = parent_widget.mapToGlobal(parent_widget.rect().topLeft())
             x = global_pos.x() + (parent_widget.width() - self.width()) // 2
-            y = global_pos.y() + 80
+            y = global_pos.y() + self._TOP_OFFSET
             self.move(x, y)
 
         self.show()
         self._search.setFocus()
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         """Handle keyboard navigation in search field."""
         if obj == self._search and event.type() == QEvent.Type.KeyPress:
-            key = event.key()
+            key = cast(QKeyEvent, event).key()
             if key == Qt.Key.Key_Down:
                 row = self._results.currentRow()
                 if row < self._results.count() - 1:
@@ -109,7 +117,7 @@ class CommandPalette(QDialog):
             ):
                 matched.append(cmd)
 
-        for idx, cmd in enumerate(matched[:10]):
+        for idx, cmd in enumerate(matched[: self._MAX_RESULTS]):
             display = f"{cmd.name}"
             if cmd.shortcut:
                 display = f"{cmd.name}    {cmd.shortcut}"

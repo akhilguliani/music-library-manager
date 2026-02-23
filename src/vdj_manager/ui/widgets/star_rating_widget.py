@@ -1,7 +1,11 @@
 """Clickable 5-star rating widget."""
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
+from __future__ import annotations
+
+import math
+
+from PySide6.QtCore import QEvent, QPointF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 
@@ -21,7 +25,7 @@ class StarRatingWidget(QWidget):
     STAR_SIZE = 20
     STAR_SPACING = 4
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._rating = 0
         self._hover_rating = -1
@@ -29,6 +33,7 @@ class StarRatingWidget(QWidget):
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(self.sizeHint())
+        self.setToolTip("Click to rate (1-5 stars). Click same star to clear.")
 
     def sizeHint(self) -> QSize:
         w = self.STAR_COUNT * (self.STAR_SIZE + self.STAR_SPACING) - self.STAR_SPACING
@@ -78,11 +83,11 @@ class StarRatingWidget(QWidget):
             self._hover_rating = star
             self.update()
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         self._hover_rating = -1
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -97,11 +102,6 @@ class StarRatingWidget(QWidget):
 
     def _draw_star(self, painter: QPainter, x: int, y: int, size: int, filled: bool) -> None:
         """Draw a single star at the given position."""
-        import math
-
-        from PySide6.QtCore import QPointF
-        from PySide6.QtGui import QPolygonF
-
         cx = x + size / 2
         cy = y + size / 2
         outer_r = size / 2

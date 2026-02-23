@@ -446,6 +446,6 @@ class TestWorkflowPanelResultsUI:
 
         panel._on_genre_finished({"analyzed": 5, "failed": 2})
 
-        assert "5 detected" in panel.genre_current_file.text()
+        assert "5 analyzed" in panel.genre_current_file.text()
         assert "3 cached" in panel.genre_current_file.text()
         assert "2 failed" in panel.genre_current_file.text()

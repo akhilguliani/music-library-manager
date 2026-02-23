@@ -3,9 +3,10 @@
 import logging
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow,
+    QMessageBox,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -35,6 +36,8 @@ from vdj_manager.ui.widgets.workflow_panel import WorkflowPanel
 
 class MainWindow(QMainWindow):
     """Main application window with sidebar navigation and mini player."""
+
+    _SAVE_DEBOUNCE_MS = 5000
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -461,7 +464,7 @@ class MainWindow(QMainWindow):
     def _schedule_save(self) -> None:
         """Schedule a debounced save (5s delay to batch rapid changes)."""
         self._save_pending = True
-        self._save_timer.start(5000)
+        self._save_timer.start(self._SAVE_DEBOUNCE_MS)
 
     @Slot()
     def _flush_save(self) -> None:
@@ -477,8 +480,6 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_about(self) -> None:
         """Show the about dialog."""
-        from PySide6.QtWidgets import QMessageBox
-
         QMessageBox.about(
             self,
             "About VDJ Manager",
@@ -492,7 +493,7 @@ class MainWindow(QMainWindow):
             "Version 0.2.0",
         )
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         """Flush pending saves and clean up player resources on close."""
         self._save_timer.stop()
         self._flush_save()

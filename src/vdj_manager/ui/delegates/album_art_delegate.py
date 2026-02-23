@@ -6,8 +6,8 @@ import logging
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QModelIndex, QObject, QRect, QRunnable, Qt, QThreadPool, Signal
-from PySide6.QtGui import QImage, QPainter, QPixmap
+from PySide6.QtCore import QModelIndex, QObject, QRect, QRunnable, QSize, Qt, QThreadPool, Signal
+from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 if TYPE_CHECKING:
@@ -140,8 +140,6 @@ class AlbumArtCache(QObject):
         painter.setPen(Qt.PenStyle.NoPen)
 
         # Draw rounded rect background
-        from PySide6.QtGui import QColor
-
         t = ThemeManager().theme
         painter.setBrush(QColor(t.bg_surface_alt))
         painter.drawRoundedRect(0, 0, _THUMB_SIZE, _THUMB_SIZE, 4, 4)
@@ -191,6 +189,4 @@ class AlbumArtDelegate(QStyledItemDelegate):
         painter.drawPixmap(x, y, pixmap)
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> Any:  # type: ignore[override]
-        from PySide6.QtCore import QSize
-
         return QSize(_THUMB_SIZE + 4, _THUMB_SIZE + 4)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal, Slot
+from PySide6.QtCore import QModelIndex, QPoint, QSortFilterProxyModel, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -75,6 +75,9 @@ class DatabasePanel(QWidget):
     play_next_requested = Signal(object)  # list[Song]
     add_to_queue_requested = Signal(object)  # list[Song]
     save_requested = Signal()  # Request debounced save via MainWindow
+
+    _SEARCH_DEBOUNCE_MS = 200
+    _MAX_LOG_ENTRIES = 20
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the database panel.
@@ -246,12 +249,10 @@ class DatabasePanel(QWidget):
         search_layout.addWidget(QLabel("Search:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filter tracks...")
-        # Debounce search: 200ms delay avoids per-keystroke proxy invalidation
-        from PySide6.QtCore import QTimer
-
+        # Debounce search to avoid per-keystroke proxy invalidation
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
-        self._search_debounce.setInterval(200)
+        self._search_debounce.setInterval(self._SEARCH_DEBOUNCE_MS)
         self._search_debounce.timeout.connect(self._on_search_changed)
         self.search_input.textChanged.connect(lambda _: self._search_debounce.start())
         search_layout.addWidget(self.search_input)
@@ -562,7 +563,7 @@ class DatabasePanel(QWidget):
         self._column_filter_model.set_inclusion_filter(matching_paths)
         self._update_result_count()
 
-    def _map_to_source(self, view_index):
+    def _map_to_source(self, view_index: QModelIndex) -> QModelIndex:
         """Map a view index through both proxy models to the source model.
 
         Args:
@@ -597,8 +598,8 @@ class DatabasePanel(QWidget):
             self._populate_tag_fields(track)
             self.track_selected.emit(track)
 
-    @Slot()
-    def _on_track_double_clicked(self, index) -> None:
+    @Slot(QModelIndex)
+    def _on_track_double_clicked(self, index: QModelIndex) -> None:
         """Handle track double-click for playback."""
         source_index = self._map_to_source(index)
         track = self.track_model.get_track(source_index.row())
@@ -649,7 +650,7 @@ class DatabasePanel(QWidget):
         return tracks
 
     @Slot()
-    def _on_track_context_menu(self, position) -> None:
+    def _on_track_context_menu(self, position: QPoint) -> None:
         """Show context menu for track table."""
         selected = self.get_selected_tracks()
         if not selected:
@@ -1265,8 +1266,7 @@ class DatabasePanel(QWidget):
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.operation_log.insertItem(0, f"[{timestamp}] {message}")
-        # Keep only last 20 entries
-        while self.operation_log.count() > 20:
+        while self.operation_log.count() > self._MAX_LOG_ENTRIES:
             self.operation_log.takeItem(self.operation_log.count() - 1)
 
     def _on_backup_clicked(self) -> None:
@@ -1288,7 +1288,7 @@ class DatabasePanel(QWidget):
         self._backup_worker.start()
 
     @Slot(object)
-    def _on_backup_finished(self, backup_path) -> None:
+    def _on_backup_finished(self, backup_path: str) -> None:
         """Handle backup completion."""
         self.backup_btn.setEnabled(True)
         self.status_label.setText(f"Backup created: {Path(backup_path).name}")
