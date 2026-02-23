@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
 from vdj_manager.ui.models.track_model import TRACK_MIME_TYPE
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 from vdj_manager.ui.widgets.cue_table_widget import CueTableWidget
 
 if TYPE_CHECKING:
@@ -84,8 +84,9 @@ class PlayerPanel(QWidget):
         # Album art
         self.album_art = QLabel()
         self.album_art.setFixedSize(120, 120)
+        t = ThemeManager().theme
         self.album_art.setStyleSheet(
-            f"background-color: {DARK_THEME.bg_surface}; border-radius: 6px; color: {DARK_THEME.text_disabled}; font-size: 40px;"
+            f"background-color: {t.bg_surface}; border-radius: 6px; color: {t.text_disabled}; font-size: 40px;"
         )
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setText("\u266b")
@@ -106,20 +107,20 @@ class PlayerPanel(QWidget):
         font = self.artist_label.font()
         font.setPointSize(14)
         self.artist_label.setFont(font)
-        self.artist_label.setStyleSheet(f"color: {DARK_THEME.text_secondary};")
+        self.artist_label.setStyleSheet(f"color: {t.text_secondary};")
         info_col.addWidget(self.artist_label)
 
         # BPM / Key / Energy row
         detail_row = QHBoxLayout()
         detail_row.setSpacing(16)
         self.bpm_label = QLabel("BPM: --")
-        self.bpm_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
+        self.bpm_label.setStyleSheet(f"color: {t.text_tertiary}; font-size: 12px;")
         self.key_label = QLabel("Key: --")
-        self.key_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
+        self.key_label.setStyleSheet(f"color: {t.text_tertiary}; font-size: 12px;")
         self.energy_label = QLabel("Energy: --")
-        self.energy_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
+        self.energy_label.setStyleSheet(f"color: {t.text_tertiary}; font-size: 12px;")
         self.mood_label = QLabel("Mood: --")
-        self.mood_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
+        self.mood_label.setStyleSheet(f"color: {t.text_tertiary}; font-size: 12px;")
         for lbl in (self.bpm_label, self.key_label, self.energy_label, self.mood_label):
             detail_row.addWidget(lbl)
         detail_row.addStretch()
@@ -129,7 +130,7 @@ class PlayerPanel(QWidget):
         rating_row = QHBoxLayout()
         rating_row.setSpacing(8)
         rating_lbl = QLabel("Rating:")
-        rating_lbl.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 12px;")
+        rating_lbl.setStyleSheet(f"color: {t.text_tertiary}; font-size: 12px;")
         rating_row.addWidget(rating_lbl)
         self.star_rating = StarRatingWidget()
         self.star_rating.rating_changed.connect(self._on_rating_changed)
@@ -144,7 +145,7 @@ class PlayerPanel(QWidget):
         speed_col = QVBoxLayout()
         speed_col.setSpacing(4)
         speed_title = QLabel("Speed")
-        speed_title.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px;")
+        speed_title.setStyleSheet(f"color: {t.text_tertiary}; font-size: 11px;")
         speed_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         speed_col.addWidget(speed_title)
 
@@ -156,7 +157,7 @@ class PlayerPanel(QWidget):
         speed_col.addWidget(self.speed_slider, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.speed_label = QLabel("1.0x")
-        self.speed_label.setStyleSheet(f"color: {DARK_THEME.text_secondary}; font-size: 11px;")
+        self.speed_label.setStyleSheet(f"color: {t.text_secondary}; font-size: 11px;")
         self.speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         speed_col.addWidget(self.speed_label)
 
@@ -199,7 +200,7 @@ class PlayerPanel(QWidget):
         # Queue duration label
         self.queue_duration_label = QLabel("0 tracks")
         self.queue_duration_label.setStyleSheet(
-            f"color: {DARK_THEME.text_tertiary}; font-size: 11px;"
+            f"color: {ThemeManager().theme.text_tertiary}; font-size: 11px;"
         )
         queue_layout.addWidget(self.queue_duration_label)
 

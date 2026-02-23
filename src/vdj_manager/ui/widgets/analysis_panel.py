@@ -25,7 +25,7 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
-from vdj_manager.ui.theme import DARK_THEME, ThemeManager
+from vdj_manager.ui.theme import ThemeManager
 from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
@@ -173,7 +173,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.energy_info_label = QLabel("No database loaded")
-        self.energy_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
+        self.energy_info_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.energy_info_label)
 
         # Controls
@@ -225,7 +225,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mik_info_label = QLabel("No database loaded")
-        self.mik_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
+        self.mik_info_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.mik_info_label)
 
         # Controls
@@ -270,7 +270,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.mood_info_label = QLabel("No database loaded")
-        self.mood_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
+        self.mood_info_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.mood_info_label)
 
         # Online mood controls
@@ -376,7 +376,7 @@ class AnalysisPanel(QWidget):
 
         # Info
         self.genre_info_label = QLabel("No database loaded")
-        self.genre_info_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary};")
+        self.genre_info_label.setStyleSheet(f"color: {ThemeManager().theme.text_tertiary};")
         layout.addWidget(self.genre_info_label)
 
         # Online toggle

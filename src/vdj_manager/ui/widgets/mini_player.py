@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from vdj_manager.player.bridge import PlaybackBridge
 from vdj_manager.player.engine import TrackInfo
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 
 
 class MiniPlayer(QWidget):
@@ -47,9 +47,10 @@ class MiniPlayer(QWidget):
         # Album art placeholder
         self.album_art = QLabel()
         self.album_art.setFixedSize(44, 44)
+        t = ThemeManager().theme
         self.album_art.setStyleSheet(
-            f"background-color: {DARK_THEME.bg_surface_alt}; border-radius: 4px; "
-            f"color: {DARK_THEME.text_muted}; font-size: 20px;"
+            f"background-color: {t.bg_surface_alt}; border-radius: 4px; "
+            f"color: {t.text_muted}; font-size: 20px;"
         )
         self.album_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art.setText("\u266b")  # Musical note
@@ -69,7 +70,7 @@ class MiniPlayer(QWidget):
         font = self.artist_label.font()
         font.setPointSize(10)
         self.artist_label.setFont(font)
-        self.artist_label.setStyleSheet(f"color: {DARK_THEME.text_secondary};")
+        self.artist_label.setStyleSheet(f"color: {t.text_secondary};")
         self.artist_label.setMaximumWidth(200)
         info_layout.addWidget(self.title_label)
         info_layout.addWidget(self.artist_label)

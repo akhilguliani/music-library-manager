@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vdj_manager.ui.theme import DARK_THEME
+from vdj_manager.ui.theme import ThemeManager
 
 
 class ResultsTable(QWidget):
@@ -235,7 +235,9 @@ class ConfigurableResultsTable(QWidget):
 
         # Row count label
         self.row_count_label = QLabel("0 results")
-        self.row_count_label.setStyleSheet(f"color: {DARK_THEME.text_tertiary}; font-size: 11px;")
+        self.row_count_label.setStyleSheet(
+            f"color: {ThemeManager().theme.text_tertiary}; font-size: 11px;"
+        )
         layout.addWidget(self.row_count_label)
 
     def clear(self) -> None:

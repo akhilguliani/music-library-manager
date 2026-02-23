@@ -329,8 +329,9 @@ class DatabasePanel(QWidget):
         self._filter_row.filter_changed.connect(self._on_column_filter_changed)
         layout.addWidget(self._filter_row)
 
-        # Connect selection
-        self.track_table.selectionModel().currentRowChanged.connect(self._on_track_selected)
+        # Connect selection — store reference so it stays valid if model swaps
+        self._selection_model = self.track_table.selectionModel()
+        self._selection_model.currentRowChanged.connect(self._on_track_selected)
         self.track_table.doubleClicked.connect(self._on_track_double_clicked)
 
         layout.addWidget(self.track_table)

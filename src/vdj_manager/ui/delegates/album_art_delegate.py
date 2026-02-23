@@ -130,7 +130,7 @@ class AlbumArtCache(QObject):
     @staticmethod
     def _create_placeholder() -> QPixmap:
         """Create a simple placeholder pixmap with a music note."""
-        from vdj_manager.ui.theme import DARK_THEME
+        from vdj_manager.ui.theme import ThemeManager
 
         pixmap = QPixmap(_THUMB_SIZE, _THUMB_SIZE)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -142,11 +142,12 @@ class AlbumArtCache(QObject):
         # Draw rounded rect background
         from PySide6.QtGui import QColor
 
-        painter.setBrush(QColor(DARK_THEME.bg_surface_alt))
+        t = ThemeManager().theme
+        painter.setBrush(QColor(t.bg_surface_alt))
         painter.drawRoundedRect(0, 0, _THUMB_SIZE, _THUMB_SIZE, 4, 4)
 
         # Draw music note
-        painter.setPen(QColor(DARK_THEME.text_muted))
+        painter.setPen(QColor(t.text_muted))
         font = painter.font()
         font.setPixelSize(20)
         painter.setFont(font)
