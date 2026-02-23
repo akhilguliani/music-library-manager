@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -22,6 +23,7 @@ from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
 from vdj_manager.files.path_remapper import PathRemapper
 from vdj_manager.files.validator import FileValidator
+from vdj_manager.ui.widgets.empty_state import EmptyStateWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.file_workers import (
     DuplicateWorker,
@@ -66,6 +68,10 @@ class FilesPanel(QWidget):
             self._tracks = list(database.iter_songs())
         else:
             self._tracks = []
+
+        # Switch to content when database is loaded, empty state otherwise
+        self._stacked.setCurrentIndex(1 if database is not None else 0)
+
         self._update_button_states()
 
     def _update_button_states(self) -> None:
@@ -80,6 +86,21 @@ class FilesPanel(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
 
+        # Stacked widget: empty state (page 0) vs main content (page 1)
+        self._stacked = QStackedWidget()
+
+        # Page 0: Empty state
+        self._empty_state = EmptyStateWidget(
+            title="No database loaded",
+            description="Load a database from the Database tab to manage files, scan directories, and fix paths.",
+        )
+        self._stacked.addWidget(self._empty_state)
+
+        # Page 1: Main content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
         self.sub_tabs = QTabWidget()
         self.sub_tabs.addTab(self._create_scan_tab(), "Scan")
         self.sub_tabs.addTab(self._create_import_tab(), "Import")
@@ -87,7 +108,12 @@ class FilesPanel(QWidget):
         self.sub_tabs.addTab(self._create_remap_tab(), "Remap")
         self.sub_tabs.addTab(self._create_duplicates_tab(), "Duplicates")
 
-        layout.addWidget(self.sub_tabs)
+        content_layout.addWidget(self.sub_tabs)
+        self._stacked.addWidget(content_widget)
+
+        # Start on empty state
+        self._stacked.setCurrentIndex(0)
+        layout.addWidget(self._stacked)
 
     # ---- Scan Tab ----
     def _create_scan_tab(self) -> QWidget:

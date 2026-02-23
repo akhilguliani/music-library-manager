@@ -1,18 +1,23 @@
 """Waveform display widget with playhead, editable cue points, and click-to-seek."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import numpy as np
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
     QLinearGradient,
     QMouseEvent,
     QPainter,
+    QPaintEvent,
     QPen,
 )
 from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
+
+from vdj_manager.ui.theme import ThemeManager
 
 
 @dataclass
@@ -56,19 +61,21 @@ class WaveformWidget(QWidget):
     seek_requested = Signal(float)
     cues_changed = Signal(list)
 
-    # Colors
-    COLOR_PLAYED_TOP = QColor("#4fc3f7")
-    COLOR_PLAYED_BOT = QColor("#0288d1")
-    COLOR_UNPLAYED_TOP = QColor("#1565c0")
-    COLOR_UNPLAYED_BOT = QColor("#0d47a1")
-    COLOR_PLAYHEAD = QColor("#ffffff")
-    COLOR_BG = QColor("#0d1117")
-
     MAX_CUES = 8
     CUE_HIT_RADIUS = 8  # pixels
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        # Waveform colors from theme
+        t = ThemeManager().theme
+        self._color_played_top = QColor(t.waveform_played_top)
+        self._color_played_bot = QColor(t.waveform_played_bottom)
+        self._color_unplayed_top = QColor(t.waveform_unplayed_top)
+        self._color_unplayed_bot = QColor(t.waveform_unplayed_bottom)
+        self._color_playhead = QColor(t.waveform_playhead)
+        self._color_bg = QColor(t.waveform_bg)
+        self._color_center_line = QColor(t.text_disabled)
+        self._color_empty_text = QColor(t.text_muted)
         self._peaks: np.ndarray | None = None
         self._position = 0.0  # 0.0 to 1.0
         self._duration = 0.0
@@ -78,6 +85,7 @@ class WaveformWidget(QWidget):
         self.setMinimumHeight(80)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Click to seek. Right-click to add/edit cue points. Drag markers to move.")
 
     def set_peaks(self, peaks: np.ndarray) -> None:
         """Set waveform peak data (0.0-1.0 array)."""
@@ -198,13 +206,13 @@ class WaveformWidget(QWidget):
             self._emit_cues_changed()
             self.update()
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         self._hovered_cue_index = -1
         self.update()
 
     # --- Context menus ---
 
-    def _show_cue_context_menu(self, global_pos, cue_index: int) -> None:
+    def _show_cue_context_menu(self, global_pos: QPoint, cue_index: int) -> None:
         menu = QMenu(self)
         cue = self._cue_points[cue_index]
 
@@ -223,7 +231,7 @@ class WaveformWidget(QWidget):
             self._emit_cues_changed()
             self.update()
 
-    def _show_add_cue_menu(self, global_pos, pixel_x: float) -> None:
+    def _show_add_cue_menu(self, global_pos: QPoint, pixel_x: float) -> None:
         if len(self._cue_points) >= self.MAX_CUES:
             return
         menu = QMenu(self)
@@ -239,7 +247,7 @@ class WaveformWidget(QWidget):
 
     # --- Painting ---
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -248,10 +256,10 @@ class WaveformWidget(QWidget):
         mid_y = h / 2
 
         # Background
-        painter.fillRect(0, 0, w, h, self.COLOR_BG)
+        painter.fillRect(0, 0, w, h, self._color_bg)
 
         if self._peaks is None or len(self._peaks) == 0:
-            painter.setPen(QColor("#555"))
+            painter.setPen(self._color_empty_text)
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No waveform data")
             painter.end()
             return
@@ -274,11 +282,11 @@ class WaveformWidget(QWidget):
             # Gradient for upper half
             grad = QLinearGradient(0, mid_y - bar_half_h, 0, mid_y)
             if played:
-                grad.setColorAt(0, self.COLOR_PLAYED_TOP)
-                grad.setColorAt(1, self.COLOR_PLAYED_BOT)
+                grad.setColorAt(0, self._color_played_top)
+                grad.setColorAt(1, self._color_played_bot)
             else:
-                grad.setColorAt(0, self.COLOR_UNPLAYED_TOP)
-                grad.setColorAt(1, self.COLOR_UNPLAYED_BOT)
+                grad.setColorAt(0, self._color_unplayed_top)
+                grad.setColorAt(1, self._color_unplayed_bot)
 
             bx = int(x)
             bw = max(1, int(bar_width))
@@ -290,7 +298,7 @@ class WaveformWidget(QWidget):
             painter.fillRect(bx, int(mid_y), bw, upper_h, grad)
 
         # Center line
-        painter.setPen(QPen(QColor("#333"), 1))
+        painter.setPen(QPen(self._color_center_line, 1))
         painter.drawLine(0, int(mid_y), w, int(mid_y))
 
         # Draw cue points
@@ -330,13 +338,8 @@ class WaveformWidget(QWidget):
                     painter.drawText(cx + 3, badge_h + 12, cue.name)
 
         # Draw playhead
-        painter.setPen(QPen(self.COLOR_PLAYHEAD, 2))
+        painter.setPen(QPen(self._color_playhead, 2))
         px = int(playhead_x)
         painter.drawLine(px, 0, px, h)
 
         painter.end()
-
-    @staticmethod
-    def _fmt(seconds: float) -> str:
-        m, s = divmod(int(max(0, seconds)), 60)
-        return f"{m}:{s:02d}"

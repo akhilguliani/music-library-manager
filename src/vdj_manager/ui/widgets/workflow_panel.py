@@ -31,6 +31,7 @@ from vdj_manager.analysis.analysis_cache import DEFAULT_ANALYSIS_CACHE_PATH
 from vdj_manager.config import AUDIO_EXTENSIONS, get_lastfm_api_key
 from vdj_manager.core.database import VDJDatabase
 from vdj_manager.core.models import Song
+from vdj_manager.ui.theme import ThemeManager
 from vdj_manager.ui.widgets.progress_widget import ProgressWidget
 from vdj_manager.ui.widgets.results_table import ConfigurableResultsTable
 from vdj_manager.ui.workers.analysis_workers import EnergyWorker, GenreWorker, MoodWorker
@@ -61,6 +62,7 @@ class WorkflowPanel(QWidget):
         self._norm_worker: NormalizationWorker | None = None
         self._unsaved_count: int = 0
         self._workers_running: int = 0
+        self._completed_workers: set[str] = set()
 
         # Per-operation result counters
         self._energy_counts = {"analyzed": 0, "cached": 0, "failed": 0}
@@ -193,7 +195,9 @@ class WorkflowPanel(QWidget):
 
         # Info label
         self.info_label = QLabel("No database loaded")
-        self.info_label.setStyleSheet("color: gray; font-size: 11px; padding: 2px 4px;")
+        self.info_label.setStyleSheet(
+            f"color: {ThemeManager().theme.text_tertiary}; font-size: 11px; padding: 2px 4px;"
+        )
         layout.addWidget(self.info_label)
 
         # Action buttons
@@ -221,7 +225,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.energy_progress)
 
         self.energy_current_file = QLabel("")
-        self.energy_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.energy_current_file.setStyleSheet(
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.energy_current_file.setVisible(False)
         layout.addWidget(self.energy_current_file)
 
@@ -243,7 +249,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.mood_progress)
 
         self.mood_current_file = QLabel("")
-        self.mood_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.mood_current_file.setStyleSheet(
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.mood_current_file.setVisible(False)
         layout.addWidget(self.mood_current_file)
 
@@ -265,7 +273,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.genre_progress)
 
         self.genre_current_file = QLabel("")
-        self.genre_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.genre_current_file.setStyleSheet(
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.genre_current_file.setVisible(False)
         layout.addWidget(self.genre_current_file)
 
@@ -288,7 +298,9 @@ class WorkflowPanel(QWidget):
         layout.addWidget(self.norm_progress)
 
         self.norm_current_file = QLabel("")
-        self.norm_current_file.setStyleSheet("color: #555; font-size: 11px; padding-left: 4px;")
+        self.norm_current_file.setStyleSheet(
+            f"color: {ThemeManager().theme.text_disabled}; font-size: 11px; padding-left: 4px;"
+        )
         self.norm_current_file.setVisible(False)
         layout.addWidget(self.norm_current_file)
 
@@ -341,8 +353,11 @@ class WorkflowPanel(QWidget):
             tracks.append(track)
         return tracks
 
-    def _get_mood_tracks(self) -> list[Song]:
-        """Get tracks eligible for mood analysis (includes Windows-path when online enabled)."""
+    def _get_metadata_eligible_tracks(self) -> list[Song]:
+        """Get tracks eligible for mood/genre analysis.
+
+        Includes Windows-path tracks since online lookup only needs metadata.
+        """
         tracks = []
         for track in self._tracks:
             if track.is_netsearch:
@@ -386,6 +401,7 @@ class WorkflowPanel(QWidget):
         self.run_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self._workers_running = 0
+        self._completed_workers.clear()
 
         if "energy" in checked:
             self._start_energy()
@@ -444,7 +460,7 @@ class WorkflowPanel(QWidget):
 
     def _start_mood(self) -> None:
         """Start mood analysis worker."""
-        tracks = self._get_mood_tracks()
+        tracks = self._get_metadata_eligible_tracks()
         if not tracks:
             return
 
@@ -576,56 +592,45 @@ class WorkflowPanel(QWidget):
         self._database.update_song_tags(result["file_path"], **tag_updates)
         self._unsaved_count += 1
 
-    @Slot(dict)
-    def _on_energy_result(self, result: dict) -> None:
-        """Handle a single energy analysis result for UI display."""
+    def _on_analysis_result(
+        self,
+        result: dict,
+        counts: dict[str, int],
+        label: QLabel,
+        table: ConfigurableResultsTable,
+    ) -> None:
+        """Handle a single analysis result for any worker type."""
         file_path = result.get("file_path", "")
         filename = Path(file_path).name if file_path else ""
-        self.energy_current_file.setText(f"Processing: {filename}")
+        label.setText(f"Processing: {filename}")
 
-        status = result.get("status", "ok")
+        status = str(result.get("status", "ok"))
         if status == "cached":
-            self._energy_counts["cached"] += 1
-        elif status in ("failed", "error"):
-            self._energy_counts["failed"] += 1
+            counts["cached"] += 1
+        elif status in ("failed", "none") or status.startswith("error"):
+            counts["failed"] += 1
         else:
-            self._energy_counts["analyzed"] += 1
+            counts["analyzed"] += 1
 
-        self.energy_results_table.add_result(result)
+        table.add_result(result)
+
+    @Slot(dict)
+    def _on_energy_result(self, result: dict) -> None:
+        self._on_analysis_result(
+            result, self._energy_counts, self.energy_current_file, self.energy_results_table
+        )
 
     @Slot(dict)
     def _on_mood_result(self, result: dict) -> None:
-        """Handle a single mood analysis result for UI display."""
-        file_path = result.get("file_path", "")
-        filename = Path(file_path).name if file_path else ""
-        self.mood_current_file.setText(f"Processing: {filename}")
-
-        status = result.get("status", "ok")
-        if status == "cached":
-            self._mood_counts["cached"] += 1
-        elif status in ("failed", "error"):
-            self._mood_counts["failed"] += 1
-        else:
-            self._mood_counts["analyzed"] += 1
-
-        self.mood_results_table.add_result(result)
+        self._on_analysis_result(
+            result, self._mood_counts, self.mood_current_file, self.mood_results_table
+        )
 
     @Slot(dict)
     def _on_genre_result(self, result: dict) -> None:
-        """Handle a single genre detection result for UI display."""
-        file_path = result.get("file_path", "")
-        filename = Path(file_path).name if file_path else ""
-        self.genre_current_file.setText(f"Processing: {filename}")
-
-        status = result.get("status", "ok")
-        if status == "cached":
-            self._genre_counts["cached"] += 1
-        elif status in ("failed", "none") or str(status).startswith("error"):
-            self._genre_counts["failed"] += 1
-        else:
-            self._genre_counts["analyzed"] += 1
-
-        self.genre_results_table.add_result(result)
+        self._on_analysis_result(
+            result, self._genre_counts, self.genre_current_file, self.genre_results_table
+        )
 
     @Slot(str, dict)
     def _on_norm_result(self, file_path: str, result: dict) -> None:
@@ -657,47 +662,72 @@ class WorkflowPanel(QWidget):
 
         self.norm_results_table.add_result(result)
 
-    def _on_energy_finished(self, result: dict) -> None:
-        """Handle energy worker completion."""
+    def _on_analysis_finished(
+        self,
+        key: str,
+        label_prefix: str,
+        result: dict,
+        counts: dict[str, int],
+        progress: ProgressWidget,
+        file_label: QLabel,
+    ) -> None:
+        """Handle any analysis worker completion."""
+        if key in self._completed_workers:
+            return
+        self._completed_workers.add(key)
         failed = result.get("failed", 0) if isinstance(result, dict) else 0
-        c = self._energy_counts
-        summary = f"Energy: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
-        self.energy_current_file.setText(summary)
+        summary = (
+            f"{label_prefix}: {counts['analyzed']} analyzed, "
+            f"{counts['cached']} cached, {counts['failed']} failed"
+        )
+        file_label.setText(summary)
         if failed > 0:
-            self.energy_progress.on_finished(False, f"Energy: {failed} failed")
+            progress.on_finished(False, f"{label_prefix}: {failed} failed")
         else:
-            self.energy_progress.on_finished(True, "Energy: Done")
+            progress.on_finished(True, f"{label_prefix}: Done")
         self._workers_running -= 1
         self._check_all_done()
+
+    def _on_energy_finished(self, result: dict) -> None:
+        self._on_analysis_finished(
+            "energy",
+            "Energy",
+            result,
+            self._energy_counts,
+            self.energy_progress,
+            self.energy_current_file,
+        )
 
     def _on_mood_finished(self, result: dict) -> None:
-        """Handle mood worker completion."""
-        failed = result.get("failed", 0) if isinstance(result, dict) else 0
-        c = self._mood_counts
-        summary = f"Mood: {c['analyzed']} analyzed, {c['cached']} cached, {c['failed']} failed"
-        self.mood_current_file.setText(summary)
-        if failed > 0:
-            self.mood_progress.on_finished(False, f"Mood: {failed} failed")
-        else:
-            self.mood_progress.on_finished(True, "Mood: Done")
-        self._workers_running -= 1
-        self._check_all_done()
+        self._on_analysis_finished(
+            "mood",
+            "Mood",
+            result,
+            self._mood_counts,
+            self.mood_progress,
+            self.mood_current_file,
+        )
 
     def _on_genre_finished(self, result: dict) -> None:
-        """Handle genre worker completion."""
-        failed = result.get("failed", 0) if isinstance(result, dict) else 0
-        c = self._genre_counts
-        summary = f"Genre: {c['analyzed']} detected, {c['cached']} cached, {c['failed']} failed"
-        self.genre_current_file.setText(summary)
-        if failed > 0:
-            self.genre_progress.on_finished(False, f"Genre: {failed} failed")
-        else:
-            self.genre_progress.on_finished(True, "Genre: Done")
-        self._workers_running -= 1
-        self._check_all_done()
+        self._on_analysis_finished(
+            "genre",
+            "Genre",
+            result,
+            self._genre_counts,
+            self.genre_progress,
+            self.genre_current_file,
+        )
 
-    def _on_norm_finished(self, success, message="") -> None:
-        """Handle normalization worker completion."""
+    @Slot(bool, str)
+    def _on_norm_finished(self, success: bool, message: str = "") -> None:
+        """Handle normalization worker completion.
+
+        Note: NormalizationWorker.finished_work emits (bool, str), unlike
+        analysis workers which emit finished_work(object/dict).
+        """
+        if "norm" in self._completed_workers:
+            return
+        self._completed_workers.add("norm")
         c = self._norm_counts
         summary = f"Normalization: {c['measured']} measured, {c['failed']} failed"
         self.norm_current_file.setText(summary)
@@ -710,6 +740,10 @@ class WorkflowPanel(QWidget):
 
     def _on_worker_error(self, name: str, error_msg: str) -> None:
         """Handle a worker error by decrementing the running count and showing the error."""
+        key = name.lower()
+        if key in self._completed_workers:
+            return  # Already counted down by finished handler
+        self._completed_workers.add(key)
         logger.error("%s worker error: %s", name, error_msg)
         self.status_label.setText(f"{name} error: {error_msg}")
         self._workers_running -= 1
@@ -736,19 +770,8 @@ class WorkflowPanel(QWidget):
                 self.status_label.setText("Failed to save database!")
 
     def _get_genre_tracks(self) -> list[Song]:
-        """Get tracks eligible for genre detection (includes Windows-path when online enabled)."""
-        tracks = []
-        for track in self._tracks:
-            if track.is_netsearch:
-                continue
-            if track.extension not in AUDIO_EXTENSIONS:
-                continue
-            file_exists = not track.is_windows_path and Path(track.file_path).exists()
-            has_metadata = track.tags and (track.tags.author or track.tags.title)
-            if not file_exists and not has_metadata and not track.is_windows_path:
-                continue
-            tracks.append(track)
-        return tracks
+        """Get tracks eligible for genre detection."""
+        return self._get_metadata_eligible_tracks()
 
     def _on_cancel_all_clicked(self) -> None:
         """Cancel all running workers."""

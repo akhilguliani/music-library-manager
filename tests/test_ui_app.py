@@ -84,25 +84,25 @@ class TestMainWindow:
         assert min_size.width() >= 900
         assert min_size.height() >= 600
 
-    def test_main_window_has_tab_widget(self, main_window):
-        """Test that main window has a tab widget inside the central container."""
-        from PySide6.QtWidgets import QTabWidget
+    def test_main_window_has_sidebar(self, main_window):
+        """Test that main window has a sidebar navigation widget."""
+        from vdj_manager.ui.navigation import SidebarWidget
 
-        assert isinstance(main_window.tab_widget, QTabWidget)
+        assert isinstance(main_window._sidebar, SidebarWidget)
 
-    def test_main_window_has_seven_tabs(self, main_window):
-        """Test that main window has all seven tabs."""
-        tab_widget = main_window.tab_widget
-        assert tab_widget.count() == 7
-
-        # Check tab names
-        assert tab_widget.tabText(0) == "Database"
-        assert tab_widget.tabText(1) == "Normalization"
-        assert tab_widget.tabText(2) == "Files"
-        assert tab_widget.tabText(3) == "Analysis"
-        assert tab_widget.tabText(4) == "Export"
-        assert tab_widget.tabText(5) == "Player"
-        assert tab_widget.tabText(6) == "Workflow"
+    def test_main_window_has_seven_panels(self, main_window):
+        """Test that main window has all seven panels registered."""
+        names = main_window._navigation.panel_names()
+        assert len(names) == 7
+        assert names == [
+            "Database",
+            "Normalization",
+            "Files",
+            "Analysis",
+            "Export",
+            "Player",
+            "Workflow",
+        ]
 
     def test_main_window_has_menu_bar(self, main_window):
         """Test that main window has a menu bar."""
@@ -128,16 +128,16 @@ class TestMainWindow:
         main_window.show()
         assert main_window.isVisible()
 
-    def test_tab_switching(self, main_window):
-        """Test that tabs can be switched."""
-        tab_widget = main_window.tab_widget
+    def test_panel_switching(self, main_window):
+        """Test that panels can be switched via navigation."""
+        nav = main_window._navigation
 
-        for i in range(5):
-            tab_widget.setCurrentIndex(i)
-            assert tab_widget.currentIndex() == i
+        for name in ["Normalization", "Files", "Analysis", "Export", "Player"]:
+            assert nav.navigate_to(name) is True
+            assert nav.current_panel_name() == name
 
-        tab_widget.setCurrentIndex(0)
-        assert tab_widget.currentIndex() == 0
+        assert nav.navigate_to("Database") is True
+        assert nav.current_panel_name() == "Database"
 
     def test_panels_accessible(self, main_window):
         """Test that all panel attributes are accessible."""

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from vdj_manager.ui.models.task_state import TaskState, TaskStatus
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
+from vdj_manager.ui.theme import ThemeManager
 
 
 class ResumeDialog(QDialog):
@@ -178,9 +179,9 @@ class ResumeDialog(QDialog):
         # Status
         status_text = task.status.value.title()
         if task.status == TaskStatus.PAUSED:
-            self.status_label.setStyleSheet("color: orange;")
+            self.status_label.setStyleSheet(f"color: {ThemeManager().status_color('paused')}")
         elif task.status == TaskStatus.RUNNING:
-            self.status_label.setStyleSheet("color: blue;")
+            self.status_label.setStyleSheet(f"color: {ThemeManager().status_color('loading')}")
             status_text = "Interrupted"
         else:
             self.status_label.setStyleSheet("")

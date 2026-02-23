@@ -105,6 +105,7 @@ module = [
     "pylast.*",
     "musicbrainzngs.*",
     "vlc.*",
+    "PIL.*",
 ]
 ignore_missing_imports = true
 

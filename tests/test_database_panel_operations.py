@@ -184,7 +184,10 @@ class TestDatabasePanelValidate:
         with patch.object(QMessageBox, "information"):
             panel._on_validate_finished(report)
 
-        assert "green" in panel.status_label.styleSheet()
+        # Status should use the success color from the theme
+        from vdj_manager.ui.theme import DARK_THEME
+
+        assert DARK_THEME.status_success in panel.status_label.styleSheet()
 
     def test_on_validate_error(self, qapp):
         panel = DatabasePanel()
@@ -290,6 +293,10 @@ class TestDatabasePanelTagEditing:
         panel.tag_key_combo.setCurrentText("Cm")
         panel.tag_comment_input.setText("energetic")
 
+        # Track save_requested signal emission instead of direct save
+        save_signals = []
+        panel.save_requested.connect(lambda: save_signals.append(True))
+
         panel._on_tag_save_clicked()
 
         mock_db.update_song_tags.assert_called_once_with(
@@ -298,7 +305,7 @@ class TestDatabasePanelTagEditing:
             Key="Cm",
             Comment="energetic",
         )
-        mock_db.save.assert_called_once()
+        assert len(save_signals) == 1
         assert "Tags saved" in panel.status_label.text()
 
     def test_tag_save_clears_energy(self, qapp):

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from vdj_manager.ui.models.task_state import TaskStatus
+from vdj_manager.ui.theme import ThemeManager
 
 
 class ProgressWidget(QWidget):
@@ -69,7 +70,9 @@ class ProgressWidget(QWidget):
         status_layout = QHBoxLayout()
 
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("font-weight: bold;")
+        font = self.status_label.font()
+        font.setBold(True)
+        self.status_label.setFont(font)
         status_layout.addWidget(self.status_label)
 
         status_layout.addStretch()
@@ -123,7 +126,7 @@ class ProgressWidget(QWidget):
         self._is_running = False
 
         self.status_label.setText("Ready")
-        self.status_label.setStyleSheet("font-weight: bold; color: black;")
+        self.status_label.setStyleSheet(f"color: {ThemeManager().status_color('info')}")
         self.progress_label.setText("0 / 0")
         self.progress_bar.setValue(0)
         self.pause_btn.setText("Pause")
@@ -141,7 +144,7 @@ class ProgressWidget(QWidget):
         self._is_paused = False
 
         self.status_label.setText("Processing...")
-        self.status_label.setStyleSheet("font-weight: bold; color: blue;")
+        self.status_label.setStyleSheet(f"color: {ThemeManager().status_color('loading')}")
         self.progress_label.setText(f"0 / {total_items}")
         self.progress_bar.setValue(0)
         self.pause_btn.setText("Pause")
@@ -204,14 +207,15 @@ class ProgressWidget(QWidget):
         self.status_label.setText(status)
 
         # Update colors based on status
+        tm = ThemeManager()
         if status.lower() in ("completed", "done", "finished"):
-            self.status_label.setStyleSheet("font-weight: bold; color: green;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('success')}")
         elif status.lower() in ("paused", "waiting"):
-            self.status_label.setStyleSheet("font-weight: bold; color: orange;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('warning')}")
         elif status.lower() in ("cancelled", "failed", "error"):
-            self.status_label.setStyleSheet("font-weight: bold; color: red;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('error')}")
         else:
-            self.status_label.setStyleSheet("font-weight: bold; color: blue;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('info')}")
 
     @Slot(str)
     def on_status_changed(self, status_str: str) -> None:
@@ -267,10 +271,11 @@ class ProgressWidget(QWidget):
         self.pause_btn.setEnabled(False)
         self.cancel_btn.setEnabled(False)
 
+        tm = ThemeManager()
         if success:
-            self.status_label.setStyleSheet("font-weight: bold; color: green;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('success')}")
         else:
-            self.status_label.setStyleSheet("font-weight: bold; color: red;")
+            self.status_label.setStyleSheet(f"color: {tm.status_color('error')}")
 
         self.status_label.setText(message)
 

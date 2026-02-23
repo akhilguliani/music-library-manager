@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from vdj_manager.ui.main_window import MainWindow
 from vdj_manager.ui.state.checkpoint_manager import CheckpointManager
+from vdj_manager.ui.theme import generate_stylesheet
 from vdj_manager.ui.widgets.resume_dialog import check_and_show_resume_dialog
 
 
@@ -48,6 +49,7 @@ def main() -> int:
     setup_logging(verbose=bool(os.environ.get("VDJ_VERBOSE")))
 
     app = create_application()
+    app.setStyleSheet(generate_stylesheet())
 
     window = MainWindow()
     window.show()
@@ -60,7 +62,7 @@ def main() -> int:
         # Resume the task in the appropriate panel
         if task.task_type.value in ("normalize", "measure"):
             window.normalization_panel.resume_task(task)
-            window.tab_widget.setCurrentIndex(1)  # Switch to normalization tab
+            window._navigation.navigate_to("Normalization")
     elif action == "discard" and task:
         # Delete the selected checkpoint
         checkpoint_manager.delete(task.task_id)
